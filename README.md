@@ -1,1 +1,225 @@
 # ulduar
+
+Anonymous multimodal chat app with:
+
+- Go backend
+- React frontend
+- PostgreSQL for sessions/messages/runs
+- Azure Blob Storage for uploaded files
+- Azure OpenAI Responses API for model execution
+
+## Repo Layout
+
+- [apps/backend](apps/backend)
+- [apps/frontend](apps/frontend)
+- [docs/design.md](docs/design.md)
+- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
+- [compose.yaml](compose.yaml)
+
+## Required Environment Variables
+
+The backend validates these at startup:
+
+- `BACKEND_PORT`
+  Default is `8080` if unset.
+- `BACKEND_READ_HEADER_TIMEOUT`
+  Optional duration. Default `5s`.
+- `BACKEND_READ_TIMEOUT`
+  Optional duration covering request body reads, including uploads. Default `90s`.
+- `BACKEND_IDLE_TIMEOUT`
+  Optional duration. Default `120s`.
+- `BACKEND_SHUTDOWN_TIMEOUT`
+  Optional duration. Default `10s`.
+- `BACKEND_REQUEST_TIMEOUT`
+  Optional duration for non-stream API handlers. Default `15s`.
+- `BACKEND_MESSAGE_REQUEST_TIMEOUT`
+  Optional duration for `POST /messages`. Default `90s`.
+- `DATABASE_URL`
+  Example: `postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable`
+- `AZURE_STORAGE_ACCOUNT_NAME`
+  Local Azurite value: `devstoreaccount1`
+- `AZURE_STORAGE_ACCOUNT_KEY`
+  Local Azurite dev key from the env examples
+- `AZURE_STORAGE_BLOB_ENDPOINT`
+  Manual local example: `http://localhost:10000/devstoreaccount1`
+  Compose example: `http://azurite:10000/devstoreaccount1`
+- `AZURE_STORAGE_CONTAINER`
+  Example: `chat-attachments`
+- `AZURE_OPENAI_ENDPOINT`
+  Example: `https://your-resource-name.openai.azure.com/`
+- `AZURE_OPENAI_API_KEY`
+  Azure OpenAI API key
+- `AZURE_OPENAI_API_VERSION`
+  Current app default is to pass through whatever you set. For the current implementation and examples, use `v1`.
+- `AZURE_OPENAI_DEPLOYMENT`
+  Azure OpenAI deployment name, for example `gpt-5-chat`
+- `AZURE_OPENAI_SYSTEM_PROMPT`
+  Optional
+- `AZURE_OPENAI_REQUEST_TIMEOUT`
+  Optional duration for non-stream Responses API calls. Default `90s`.
+- `AZURE_OPENAI_STREAM_TIMEOUT`
+  Optional duration for streamed Responses API calls. Default `10m`.
+- `CHAT_RUN_FINALIZATION_TIMEOUT`
+  Optional duration for persisting final run/message state after provider completion or failure. Default `15s`.
+- `VITE_API_BASE_URL`
+  Frontend API base URL. Manual local example: `http://localhost:8080`
+
+Reference files:
+
+- [.env.example](.env.example)
+- [.env.compose.example](.env.compose.example)
+
+## Local Startup
+
+### Option 1: Run Services Manually
+
+1. Start PostgreSQL on `localhost:5432`.
+2. Start Azurite blob storage on `localhost:10000`.
+3. Copy the root env example and adjust hostnames for manual local use.
+
+```bash
+cp .env.example .env
+```
+
+4. Run database migrations.
+
+```bash
+cd apps/backend
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable go run ./cmd/migrate up
+```
+
+5. Start the backend.
+
+```bash
+cd apps/backend
+export APP_ENV=development
+export BACKEND_PORT=8080
+export BACKEND_READ_HEADER_TIMEOUT=5s
+export BACKEND_READ_TIMEOUT=90s
+export BACKEND_IDLE_TIMEOUT=120s
+export BACKEND_SHUTDOWN_TIMEOUT=10s
+export BACKEND_REQUEST_TIMEOUT=15s
+export BACKEND_MESSAGE_REQUEST_TIMEOUT=90s
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable
+export AZURE_STORAGE_ACCOUNT_NAME=devstoreaccount1
+export AZURE_STORAGE_ACCOUNT_KEY='Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
+export AZURE_STORAGE_BLOB_ENDPOINT=http://localhost:10000/devstoreaccount1
+export AZURE_STORAGE_CONTAINER=chat-attachments
+export AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+export AZURE_OPENAI_API_KEY=replace-me
+export AZURE_OPENAI_API_VERSION=v1
+export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
+export AZURE_OPENAI_SYSTEM_PROMPT=
+export AZURE_OPENAI_REQUEST_TIMEOUT=90s
+export AZURE_OPENAI_STREAM_TIMEOUT=10m
+export CHAT_RUN_FINALIZATION_TIMEOUT=15s
+go run ./cmd/server
+```
+
+6. Start the frontend in a second shell.
+
+```bash
+cd apps/frontend
+export VITE_API_BASE_URL=http://localhost:8080
+npm install
+npm run dev
+```
+
+Frontend will be available at `http://localhost:3000`.
+
+### Option 2: Use `compose.yaml`
+
+The repository includes [compose.yaml](compose.yaml) for:
+
+- `frontend`
+- `backend`
+- `postgres`
+- `azurite`
+
+The compose file wires backend-only service-to-service hostnames internally:
+
+- backend talks to `postgres:5432`
+- backend talks to `azurite:10000`
+
+The browser-facing frontend bundle is built with `VITE_API_BASE_URL`, which defaults to `http://localhost:8080` in compose because requests originate from the browser and target the host-published backend port.
+
+If you want an env file for compose-oriented values, start from:
+
+```bash
+cp .env.compose.example .env.compose
+```
+
+The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
+
+Then start the stack with that env file:
+
+```bash
+podman compose --env-file .env.compose up -d --build
+```
+
+The backend container runs `migrate up` automatically on startup before serving requests.
+
+### Podman Compose Note
+
+`podman compose` is not a full standalone implementation. It shells out to an installed compose provider such as:
+
+- `podman-compose`
+- `docker-compose`
+
+If `podman compose` reports that no compose provider is installed, install one of those providers first and then run:
+
+```bash
+podman compose up --build
+```
+
+### WSL2 Podman Compose
+
+For Fedora on WSL2, use the WSL-specific compose file instead of the default bridge-network setup:
+
+```bash
+cp .env.compose.example .env.compose
+podman compose --env-file .env.compose -f compose.wsl.yaml up -d --build
+```
+
+This file switches services onto host networking and uses `localhost`-based defaults for database/blob/frontend URLs, which avoids the custom bridge-network failure path seen with rootless Podman on WSL2.
+
+For WSL2, update `.env.compose` with your real Azure OpenAI values. You can leave the database and blob URL values unset if you want the WSL-specific localhost defaults from [compose.wsl.yaml](compose.wsl.yaml) to apply. Keep `VITE_API_BASE_URL` aligned with the backend address that your browser will use.
+
+The backend container runs `migrate up` automatically on startup before serving requests. If you want to disable that behavior for a compose run, set `RUN_DB_MIGRATIONS=false` in `.env.compose`.
+
+## Database Migrations
+
+The backend includes an in-repo migration command under [apps/backend/cmd/migrate](apps/backend/cmd/migrate).
+
+Usage from the backend directory:
+
+```bash
+cd apps/backend
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable go run ./cmd/migrate
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable go run ./cmd/migrate up
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable go run ./cmd/migrate down
+```
+
+Notes:
+
+- No argument defaults to `up`
+- `up` applies all unapplied migrations in order
+- `down` rolls back only the latest applied migration
+- Migration files live in [apps/backend/db/migrations](apps/backend/db/migrations)
+
+## Verification Commands
+
+Backend:
+
+```bash
+cd apps/backend
+GOCACHE=/tmp/ulduar-go-build go test ./...
+```
+
+Frontend:
+
+```bash
+cd apps/frontend
+npm test
+npm run build
+```

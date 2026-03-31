@@ -1,0 +1,39 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.zed/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+
+# Go / backend
+bin/
+*.test
+*.out
+/apps/backend/server
+
+# Build artifacts
+build/
+tmp/
+.cache/
+*.tsbuildinfo
+/apps/frontend/vite.config.js
+/apps/frontend/vite.config.d.ts
+
+# Compose / local service data
+.podman/
+postgres-data/
+azurite-data/
