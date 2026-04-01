@@ -47,9 +47,10 @@ button {
 
 .app-shell {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   padding: 32px;
+  --chat-panel-height: calc(100dvh - 64px);
 }
 
 .app-backdrop {
@@ -173,7 +174,8 @@ button {
 .chat-panel {
   display: grid;
   grid-template-rows: auto minmax(360px, 1fr) auto;
-  min-height: calc(100vh - 64px);
+  height: var(--chat-panel-height);
+  min-height: 0;
   border-radius: 36px;
   overflow: hidden;
 }
@@ -196,6 +198,7 @@ button {
 }
 
 .message-list {
+  min-height: 0;
   overflow: auto;
   padding: 24px 28px;
   display: grid;
@@ -333,7 +336,7 @@ button {
 }
 
 .composer-input {
-  resize: vertical;
+  resize: none;
   min-height: 140px;
   border: 1px solid rgba(56, 44, 30, 0.12);
   border-radius: 24px;
@@ -396,6 +399,7 @@ button {
 @media (max-width: 980px) {
   .app-shell {
     padding: 18px;
+    --chat-panel-height: calc(100dvh - 36px);
   }
 
   .app-frame {
@@ -403,7 +407,7 @@ button {
   }
 
   .chat-panel {
-    min-height: auto;
+    height: var(--chat-panel-height);
   }
 
   .composer-submit {

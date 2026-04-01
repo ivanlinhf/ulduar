@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type UIEvent,
 } from "react";
 
 import { createMessage, createSession, streamRun } from "./lib/api";
@@ -54,6 +55,7 @@ export default function App() {
   const [screenError, setScreenError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const streamCleanupRef = useRef<(() => void) | null>(null);
+  const streamAutoScrollEnabledRef = useRef(true);
 
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit = (composerText.trim() !== "" || selectedFiles.length > 0) && !busy && bootstrapState === "ready";
@@ -77,11 +79,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    scrollMessagesToEnd("smooth");
   }, [messages.length]);
+
+  useEffect(() => {
+    if (submissionState !== "streaming" || !streamAutoScrollEnabledRef.current) {
+      return;
+    }
+
+    scrollMessagesToEnd("auto");
+  }, [messages, submissionState]);
 
   async function bootstrapSession() {
     closeStream();
+    streamAutoScrollEnabledRef.current = true;
     setBootstrapState("loading");
     setSubmissionState("idle");
     setScreenError("");
@@ -119,6 +130,7 @@ export default function App() {
     const optimisticAssistantId = createLocalId("assistant");
     const now = new Date().toISOString();
 
+    streamAutoScrollEnabledRef.current = true;
     setScreenError("");
     setSubmissionState("submitting");
     setComposerText("");
@@ -285,6 +297,20 @@ export default function App() {
     streamCleanupRef.current = null;
   }
 
+  function handleMessageListScroll(event: UIEvent<HTMLDivElement>) {
+    if (submissionState !== "streaming" || !streamAutoScrollEnabledRef.current) {
+      return;
+    }
+
+    if (!isScrolledToBottom(event.currentTarget)) {
+      streamAutoScrollEnabledRef.current = false;
+    }
+  }
+
+  function scrollMessagesToEnd(behavior: ScrollBehavior) {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  }
+
   return (
     <div className="app-shell">
       <div className="app-backdrop app-backdrop-left" />
@@ -324,7 +350,7 @@ export default function App() {
             </div>
           </header>
 
-          <div className="message-list">
+          <div className="message-list" onScroll={handleMessageListScroll}>
             {messages.length === 0 ? (
               <div className="empty-state">
                 <p>No messages yet.</p>
@@ -429,6 +455,11 @@ function Metric(props: { label: string; value: string }) {
       <strong>{props.value}</strong>
     </div>
   );
+}
+
+function isScrolledToBottom(element: HTMLDivElement) {
+  const scrollThreshold = 24;
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= scrollThreshold;
 }
 
 function validateAttachments(files: File[]) {

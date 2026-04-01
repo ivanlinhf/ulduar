@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,6 +93,67 @@ describe("App", () => {
     expect(screen.getByText("Explain this")).toBeInTheDocument();
     expect(screen.getByText("Assistant reply")).toBeInTheDocument();
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
+  });
+
+  it("auto-scrolls streamed responses until the user scrolls away", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    const scrollSpy = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const { container } = render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await userEvent.type(screen.getByLabelText("Message"), "Keep streaming");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(streamHandlers).toBeTruthy();
+    });
+
+    scrollSpy.mockClear();
+
+    await act(async () => {
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "First chunk",
+      });
+    });
+
+    expect(scrollSpy).toHaveBeenCalled();
+
+    const messageList = container.querySelector(".message-list");
+    expect(messageList).not.toBeNull();
+
+    Object.defineProperty(messageList, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(messageList, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    Object.defineProperty(messageList, "scrollTop", {
+      configurable: true,
+      value: 500,
+    });
+
+    scrollSpy.mockClear();
+
+    await act(async () => {
+      fireEvent.scroll(messageList!);
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: " Second chunk",
+      });
+    });
+
+    expect(scrollSpy).not.toHaveBeenCalled();
   });
 
   it("shows the send shortcut hint and submits on Shift+Enter", async () => {
