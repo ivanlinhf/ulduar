@@ -269,7 +269,7 @@ export default function App() {
       <main className="app-frame">
         <section className="hero-panel">
           <p className="eyebrow">Anonymous Multimodal Chat</p>
-          <h1>Ulduar</h1>
+          <div aria-hidden="true" className="hero-title-space" />
           <p className="hero-copy">
             Start a disposable chat session, send text with images or PDFs, and watch the assistant stream its answer
             back in real time.
