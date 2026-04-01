@@ -95,6 +95,41 @@ describe("App", () => {
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
   });
 
+  it("shows the send shortcut hint and submits on Shift+Enter", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    expect(screen.getByText("Shift + Enter to send")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Shortcut send{Shift>}{Enter}{/Shift}");
+
+    await waitFor(() => {
+      expect(mockedCreateMessage).toHaveBeenCalledWith({
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        text: "Shortcut send",
+        attachments: [],
+      });
+    });
+  });
+
+  it("keeps plain Enter available for multiline messages", async () => {
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    const composer = screen.getByLabelText("Message");
+    await userEvent.type(composer, "First line{Enter}Second line");
+
+    expect(mockedCreateMessage).not.toHaveBeenCalled();
+    expect(composer).toHaveValue("First line\nSecond line");
+  });
+
   it("updates assistant state when the stream fails", async () => {
     mockedCreateMessage.mockResolvedValue({
       runId: "44444444-4444-4444-4444-444444444444",

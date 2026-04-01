@@ -1,4 +1,13 @@
-import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 
 import { createMessage, createSession, streamRun } from "./lib/api";
 
@@ -93,8 +102,7 @@ export default function App() {
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitComposer() {
     if (!canSubmit || sessionId === "") {
       return;
     }
@@ -234,6 +242,22 @@ export default function App() {
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitComposer();
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+
+    if (event.key === "Enter" && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      void submitComposer();
+    }
+  }
+
   function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -345,6 +369,7 @@ export default function App() {
               className="composer-input"
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
               placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
               rows={5}
               disabled={busy}
@@ -362,13 +387,16 @@ export default function App() {
                 Add attachments
               </label>
 
-              <button className="primary-button" disabled={!canSubmit} type="submit">
-                {submissionState === "streaming"
-                  ? "Streaming..."
-                  : submissionState === "submitting"
-                    ? "Sending..."
-                    : "Send"}
-              </button>
+              <div className="composer-submit">
+                <span className="composer-hint">Shift + Enter to send</span>
+                <button className="primary-button" disabled={!canSubmit} type="submit">
+                  {submissionState === "streaming"
+                    ? "Streaming..."
+                    : submissionState === "submitting"
+                      ? "Sending..."
+                      : "Send"}
+                </button>
+              </div>
             </div>
 
             {attachmentSummary.length > 0 ? (
