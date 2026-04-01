@@ -374,7 +374,18 @@ export default function App() {
                     {message.text ? (
                       message.role === "assistant" ? (
                         <div className="message-markdown">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ node: _node, ...props }) => (
+                                <a
+                                  {...props}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                />
+                              ),
+                            }}
+                          >
                             {message.text}
                           </ReactMarkdown>
                         </div>

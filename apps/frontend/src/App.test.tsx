@@ -158,6 +158,8 @@ describe("App", () => {
     expect(assistantMessage?.querySelector("em")).toHaveTextContent("italic");
     expect(assistantMessage?.querySelector("del")).toHaveTextContent("strikethrough");
     expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://example.com");
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("rel", "noreferrer noopener");
     expect(assistantMessage?.querySelector("blockquote")).toHaveTextContent("Helpful note");
     expect(assistantMessage?.querySelector("pre code")).toHaveTextContent("const answer = 42;");
     expect(assistantMessage?.querySelector("table")).toHaveTextContent("Alpha");
@@ -211,6 +213,43 @@ describe("App", () => {
     });
 
     expect(assistantMessage?.querySelector("pre code")).toHaveTextContent("const answer = 42");
+  });
+
+  it("renders literal html-like assistant text visibly", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await userEvent.type(screen.getByLabelText("Message"), "Show literal tags");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(streamHandlers).toBeTruthy();
+    });
+
+    await act(async () => {
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "<div>Hello</div>\n<svg viewBox=\"0 0 10 10\" />",
+      });
+      streamHandlers?.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(assistantMessage).toHaveTextContent("<div>Hello</div>");
+    expect(assistantMessage).toHaveTextContent('<svg viewBox="0 0 10 10" />');
   });
 
   it("auto-scrolls streamed responses until the user scrolls away", async () => {
