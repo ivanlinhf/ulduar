@@ -464,38 +464,87 @@ function Metric(props: { label: string; value: string }) {
 }
 
 function renderAssistantMessageText(text: string): ReactNode {
-  const parts: ReactNode[] = [];
-  const emphasisPattern = /\*\*([^*]+)\*\*|\*([^*]+)\*/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  return parseAssistantMessageText(text, 0, undefined, "root").nodes;
+}
 
-  while ((match = emphasisPattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
+function parseAssistantMessageText(
+  text: string,
+  startIndex: number,
+  endDelimiter: "*" | "**" | undefined,
+  keyPrefix: string,
+): { nodes: ReactNode[]; nextIndex: number; closed: boolean } {
+  const nodes: ReactNode[] = [];
+  let currentText = "";
+  let index = startIndex;
+
+  function flushText() {
+    if (currentText === "") {
+      return;
     }
 
-    if (match[1] !== undefined) {
-      parts.push(
-        <strong key={`strong-${match.index}`}>
-          {match[1]}
-        </strong>,
-      );
-    } else if (match[2] !== undefined) {
-      parts.push(
-        <em key={`em-${match.index}`}>
-          {match[2]}
-        </em>,
-      );
+    nodes.push(currentText);
+    currentText = "";
+  }
+
+  while (index < text.length) {
+    if (text[index] === "\\" && index + 1 < text.length) {
+      currentText += text[index + 1];
+      index += 2;
+      continue;
     }
 
-    lastIndex = match.index + match[0].length;
+    if (endDelimiter === "**" && text.startsWith("**", index)) {
+      flushText();
+      return { nodes, nextIndex: index + 2, closed: true };
+    }
+
+    if (endDelimiter === "*" && text[index] === "*") {
+      flushText();
+      return { nodes, nextIndex: index + 1, closed: true };
+    }
+
+    if (text.startsWith("**", index)) {
+      const nested = parseAssistantMessageText(text, index + 2, "**", `${keyPrefix}-bold-${index}`);
+      if (nested.closed && nested.nodes.length > 0) {
+        flushText();
+        nodes.push(
+          <strong key={`${keyPrefix}-bold-${index}`}>
+            {nested.nodes}
+          </strong>,
+        );
+        index = nested.nextIndex;
+        continue;
+      }
+
+      currentText += "**";
+      index += 2;
+      continue;
+    }
+
+    if (text[index] === "*") {
+      const nested = parseAssistantMessageText(text, index + 1, "*", `${keyPrefix}-italic-${index}`);
+      if (nested.closed && nested.nodes.length > 0) {
+        flushText();
+        nodes.push(
+          <em key={`${keyPrefix}-italic-${index}`}>
+            {nested.nodes}
+          </em>,
+        );
+        index = nested.nextIndex;
+        continue;
+      }
+
+      currentText += "*";
+      index += 1;
+      continue;
+    }
+
+    currentText += text[index];
+    index += 1;
   }
 
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : text;
+  flushText();
+  return { nodes, nextIndex: index, closed: false };
 }
 
 function isScrolledToBottom(element: HTMLDivElement) {

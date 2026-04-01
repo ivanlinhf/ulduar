@@ -133,6 +133,44 @@ describe("App", () => {
     expect(screen.getByText("italic", { selector: "em" })).toBeInTheDocument();
   });
 
+  it("supports escaped asterisks and nested emphasis in assistant output", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await userEvent.type(screen.getByLabelText("Message"), "Use nested markdown");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(streamHandlers).toBeTruthy();
+    });
+
+    await act(async () => {
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Use \\*literal\\* with **bold and *nested italic*** text",
+      });
+      streamHandlers?.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(assistantMessage).toHaveTextContent("Use *literal* with bold and nested italic text");
+    expect(assistantMessage?.querySelector("strong")).toHaveTextContent("bold and nested italic");
+    expect(assistantMessage?.querySelector("em")).toHaveTextContent("nested italic");
+  });
+
   it("auto-scrolls streamed responses until the user scrolls away", async () => {
     mockedCreateMessage.mockResolvedValue({
       runId: "44444444-4444-4444-4444-444444444444",
