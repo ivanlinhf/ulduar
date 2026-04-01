@@ -147,6 +147,9 @@ func TestPrepareProviderInputBuildsTextImageAndPDFMessages(t *testing.T) {
 	if len(assistantMessage.Content) != 1 || assistantMessage.Content[0].Text != "The files look valid." {
 		t.Fatalf("unexpected assistant content: %#v", assistantMessage.Content)
 	}
+	if assistantMessage.Content[0].Type != providerOutputTextType {
+		t.Fatalf("expected assistant content type %q, got %#v", providerOutputTextType, assistantMessage.Content[0])
+	}
 }
 
 func TestPrepareProviderInputRejectsUnsupportedAttachmentType(t *testing.T) {

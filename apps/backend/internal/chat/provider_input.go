@@ -13,6 +13,7 @@ import (
 const (
 	providerMessageType      = "message"
 	providerInputTextType    = "input_text"
+	providerOutputTextType   = "output_text"
 	providerInputImageType   = "input_image"
 	providerInputFileType    = "input_file"
 	providerImageDetailLevel = "auto"
@@ -75,13 +76,14 @@ func (s *Service) prepareProviderInput(ctx context.Context, messages []MessageVi
 
 func (s *Service) prepareProviderMessage(ctx context.Context, message MessageView) (azureopenai.InputMessage, error) {
 	content := make([]azureopenai.InputContentItem, 0, len(message.Content.Parts)+len(message.Attachments))
+	textContentType := providerTextContentType(message.Message.Role)
 
 	for _, part := range message.Content.Parts {
 		switch part.Type {
 		case contentPartTypeText:
 			if text := strings.TrimSpace(part.Text); text != "" {
 				content = append(content, azureopenai.InputContentItem{
-					Type: providerInputTextType,
+					Type: textContentType,
 					Text: text,
 				})
 			}
@@ -103,6 +105,14 @@ func (s *Service) prepareProviderMessage(ctx context.Context, message MessageVie
 		Role:    message.Message.Role,
 		Content: content,
 	}, nil
+}
+
+func providerTextContentType(role string) string {
+	if role == messageRoleAssistant {
+		return providerOutputTextType
+	}
+
+	return providerInputTextType
 }
 
 func (s *Service) prepareAttachmentInput(ctx context.Context, attachment repository.Attachment) (azureopenai.InputContentItem, error) {
