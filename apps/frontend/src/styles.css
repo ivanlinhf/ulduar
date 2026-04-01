@@ -97,32 +97,45 @@ button {
 }
 
 .hero-panel {
+  display: flex;
+  flex-direction: column;
   border-radius: 32px;
   padding: 28px;
+  --hero-intro-gap: 2.4rem;
+  --hero-session-shift: calc(var(--hero-intro-gap) * 3);
+}
+
+.hero-intro {
+  display: grid;
+  gap: var(--hero-intro-gap);
 }
 
 .eyebrow {
-  margin: 0 0 10px;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.18em;
   font-size: 0.72rem;
   color: var(--muted);
 }
 
-.hero-title-space {
-  height: clamp(2.8rem, 4vw, 4.4rem);
-}
-
 .hero-copy {
-  margin: 18px 0 0;
+  margin: 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.hero-session {
+  display: grid;
+  gap: 28px;
+  justify-items: stretch;
+  margin-top: auto;
+  margin-bottom: auto;
+  transform: translateY(calc(var(--hero-session-shift) * -1));
 }
 
 .hero-metrics {
   display: grid;
   gap: 12px;
-  margin-top: 26px;
 }
 
 .metric-card {
@@ -157,7 +170,6 @@ button {
 }
 
 .secondary-button {
-  margin-top: 28px;
   margin-left: auto;
   display: block;
   padding: 12px 18px;
@@ -181,19 +193,13 @@ button {
 }
 
 .chat-header {
-  padding: 24px 28px 20px;
+  padding: 18px 28px 14px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0));
 }
 
-.chat-title {
-  margin: 0;
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 1.4rem;
-}
-
 .chat-subtitle {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--muted);
 }
 
@@ -206,15 +212,18 @@ button {
   align-content: start;
 }
 
+.message-list-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
-  min-height: 320px;
-  border: 1px dashed rgba(56, 44, 30, 0.18);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.4);
   text-align: center;
   padding: 20px;
+  max-width: 28rem;
 }
 
 .empty-state p {
@@ -229,7 +238,7 @@ button {
 
 .message-card {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   align-self: start;
   max-width: min(740px, 100%);
   padding: 18px 20px;
@@ -250,17 +259,17 @@ button {
 .message-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: var(--muted);
 }
 
 .status-badge,
 .model-badge {
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   background: rgba(32, 23, 15, 0.08);
 }
@@ -326,13 +335,6 @@ button {
   padding: 20px 28px 28px;
   border-top: 1px solid var(--line);
   background: rgba(255, 252, 247, 0.82);
-}
-
-.composer-label {
-  font-size: 0.84rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
 }
 
 .composer-input {
@@ -404,6 +406,12 @@ button {
 
   .app-frame {
     grid-template-columns: 1fr;
+  }
+
+  .hero-session {
+    margin-top: 28px;
+    margin-bottom: 0;
+    transform: none;
   }
 
   .chat-panel {

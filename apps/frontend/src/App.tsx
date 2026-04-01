@@ -318,39 +318,42 @@ export default function App() {
 
       <main className="app-frame">
         <section className="hero-panel">
-          <p className="eyebrow">Anonymous Multimodal Chat</p>
-          <div aria-hidden="true" className="hero-title-space" />
-          <p className="hero-copy">
-            Start a disposable chat session, send text with images or PDFs, and watch the assistant stream its answer
-            back in real time.
-          </p>
-
-          <div className="hero-metrics">
-            <Metric label="Session" value={sessionId ? sessionId.slice(0, 8) : "Pending"} />
-            <Metric label="State" value={bootstrapState} />
-            <Metric label="Messages" value={String(messages.length)} />
+          <div className="hero-intro">
+            <p className="eyebrow">Anonymous Multimodal Chat</p>
+            <p className="hero-copy">
+              Start a disposable chat session, send text with images or PDFs, and watch the assistant stream its answer
+              back in real time.
+            </p>
           </div>
 
-          <button className="secondary-button" onClick={() => void bootstrapSession()} type="button">
-            New chat
-          </button>
+          <div className="hero-session">
+            <div className="hero-metrics">
+              <Metric label="Session" value={sessionId ? sessionId.slice(0, 8) : "Pending"} />
+              <Metric label="State" value={bootstrapState} />
+              <Metric label="Messages" value={String(messages.length)} />
+            </div>
+
+            <button className="secondary-button" onClick={() => void bootstrapSession()} type="button">
+              New chat
+            </button>
+          </div>
         </section>
 
         <section className="chat-panel">
           <header className="chat-header">
-            <div>
-              <p className="chat-title">Session console</p>
-              <p className="chat-subtitle">
-                {submissionState === "streaming"
-                  ? "Streaming assistant output..."
-                  : bootstrapState === "loading"
-                    ? "Creating session..."
-                    : "Ready for the next turn."}
-              </p>
-            </div>
+            <p className="chat-subtitle">
+              {submissionState === "streaming"
+                ? "Streaming assistant output..."
+                : bootstrapState === "loading"
+                  ? "Creating session..."
+                  : "Ready for the next turn."}
+            </p>
           </header>
 
-          <div className="message-list" onScroll={handleMessageListScroll}>
+          <div
+            className={messages.length === 0 ? "message-list message-list-empty" : "message-list"}
+            onScroll={handleMessageListScroll}
+          >
             {messages.length === 0 ? (
               <div className="empty-state">
                 <p>No messages yet.</p>
@@ -387,12 +390,10 @@ export default function App() {
           </div>
 
           <form className="composer" onSubmit={handleSubmit}>
-            <label className="composer-label" htmlFor="prompt">
-              Message
-            </label>
             <textarea
               id="prompt"
               className="composer-input"
+              aria-label="Message"
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
               onKeyDown={handleComposerKeyDown}
