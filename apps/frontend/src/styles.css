@@ -353,6 +353,18 @@ button {
   gap: 12px;
 }
 
+.composer-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.composer-hint {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .attachment-button {
   display: inline-flex;
   align-items: center;
@@ -390,5 +402,10 @@ button {
 
   .chat-panel {
     min-height: auto;
+  }
+
+  .composer-submit {
+    width: 100%;
+    justify-content: space-between;
   }
 }
