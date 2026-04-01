@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   type UIEvent,
 } from "react";
 
@@ -369,7 +370,11 @@ export default function App() {
                   </div>
 
                   <div className="message-body">
-                    {message.text ? <p>{message.text}</p> : <p className="message-placeholder">Waiting for text...</p>}
+                    {message.text ? (
+                      <p>{message.role === "assistant" ? renderAssistantMessageText(message.text) : message.text}</p>
+                    ) : (
+                      <p className="message-placeholder">Waiting for text...</p>
+                    )}
                     {message.attachments.length > 0 ? (
                       <ul className="attachment-list">
                         {message.attachments.map((attachment) => (
@@ -456,6 +461,41 @@ function Metric(props: { label: string; value: string }) {
       <strong>{props.value}</strong>
     </div>
   );
+}
+
+function renderAssistantMessageText(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  const emphasisPattern = /\*\*([^*]+)\*\*|\*([^*]+)\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = emphasisPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[1] !== undefined) {
+      parts.push(
+        <strong key={`strong-${match.index}`}>
+          {match[1]}
+        </strong>,
+      );
+    } else if (match[2] !== undefined) {
+      parts.push(
+        <em key={`em-${match.index}`}>
+          {match[2]}
+        </em>,
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
 }
 
 function isScrolledToBottom(element: HTMLDivElement) {
