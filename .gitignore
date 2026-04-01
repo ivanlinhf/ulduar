@@ -37,3 +37,6 @@ tmp/
 .podman/
 postgres-data/
 azurite-data/
+
+# Codex runtime mountpoint
+/.codex
