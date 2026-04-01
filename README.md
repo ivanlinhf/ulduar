@@ -54,7 +54,7 @@ The backend validates these at startup:
 - `AZURE_OPENAI_DEPLOYMENT`
   Azure OpenAI deployment name, for example `gpt-5-chat`
 - `AZURE_OPENAI_SYSTEM_PROMPT`
-  Optional. Defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON.
+  Optional. If unset, defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
   Optional duration for non-stream Responses API calls. Default `90s`.
 - `AZURE_OPENAI_STREAM_TIMEOUT`
@@ -109,7 +109,9 @@ export AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
 export AZURE_OPENAI_API_KEY=replace-me
 export AZURE_OPENAI_API_VERSION=v1
 export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
-export AZURE_OPENAI_SYSTEM_PROMPT=
+# Leave AZURE_OPENAI_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
+# Set it to an empty string only if you want to disable the default prompt explicitly.
+# export AZURE_OPENAI_SYSTEM_PROMPT=
 export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s

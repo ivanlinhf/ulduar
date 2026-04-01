@@ -71,7 +71,7 @@ func Load() (Config, error) {
 		AzureOpenAIAPIKey:       strings.TrimSpace(os.Getenv("AZURE_OPENAI_API_KEY")),
 		AzureOpenAIAPIVersion:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_API_VERSION")),
 		AzureOpenAIDeployment:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_DEPLOYMENT")),
-		AzureOpenAISystemPrompt: envOrDefault("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
+		AzureOpenAISystemPrompt: envOrDefaultUnlessSet("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
 	}
 
 	if cfg.Port == "" {
@@ -173,6 +173,15 @@ func (c Config) HTTPAddress() string {
 func envOrDefault(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
+		return fallback
+	}
+
+	return value
+}
+
+func envOrDefaultUnlessSet(key, fallback string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
 		return fallback
 	}
 
