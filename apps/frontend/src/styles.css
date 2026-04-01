@@ -282,7 +282,9 @@ button {
   color: var(--danger);
 }
 
-.message-body p {
+.message-user .message-body > p,
+.message-placeholder,
+.message-error {
   margin: 0;
   line-height: 1.65;
   white-space: pre-wrap;
@@ -300,10 +302,6 @@ button {
 
 .message-markdown :is(p, li) {
   line-height: 1.65;
-}
-
-.message-markdown p {
-  white-space: pre-wrap;
 }
 
 .message-markdown :is(ul, ol) {

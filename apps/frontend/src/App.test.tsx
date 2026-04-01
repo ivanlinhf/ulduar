@@ -252,6 +252,54 @@ describe("App", () => {
     expect(assistantMessage).toHaveTextContent('<svg viewBox="0 0 10 10" />');
   });
 
+  it("renders assistant soft line breaks with normal markdown paragraph whitespace", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await userEvent.type(screen.getByLabelText("Message"), "User first line{Enter}User second line");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(streamHandlers).toBeTruthy();
+    });
+    expect(mockedCreateMessage).toHaveBeenCalledWith({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      text: "User first line\nUser second line",
+      attachments: [],
+    });
+
+    await act(async () => {
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "First line\nsecond line",
+      });
+      streamHandlers?.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const userMessage = screen.getByText("You").closest("article");
+    const userParagraph = userMessage?.querySelector(".message-body > p");
+    expect(userParagraph).not.toBeNull();
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    const assistantParagraph = assistantMessage?.querySelector(".message-markdown p");
+    expect(assistantParagraph).not.toBeNull();
+    expect(assistantParagraph).toHaveTextContent("First line second line");
+    expect(assistantMessage?.querySelectorAll(".message-markdown p")).toHaveLength(1);
+    expect(assistantMessage?.querySelector(".message-markdown br")).toBeNull();
+  });
+
   it("auto-scrolls streamed responses until the user scrolls away", async () => {
     mockedCreateMessage.mockResolvedValue({
       runId: "44444444-4444-4444-4444-444444444444",
