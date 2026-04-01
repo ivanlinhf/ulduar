@@ -95,7 +95,7 @@ describe("App", () => {
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
   });
 
-  it("renders markdown emphasis in assistant output", async () => {
+  it("renders common markdown and gfm content in assistant output", async () => {
     mockedCreateMessage.mockResolvedValue({
       runId: "44444444-4444-4444-4444-444444444444",
       userMessageId: "22222222-2222-2222-2222-222222222222",
@@ -117,7 +117,30 @@ describe("App", () => {
       streamHandlers?.onMessageDelta?.({
         runId: "44444444-4444-4444-4444-444444444444",
         messageId: "33333333-3333-3333-3333-333333333333",
-        delta: "This is **bold** and *italic* text",
+        delta: [
+          "# Plan",
+          "",
+          "Intro with **bold**, *italic*, ~~strikethrough~~, and a [Docs](https://example.com) link.",
+          "",
+          "1. First item",
+          "2. Second item",
+          "",
+          "- Bullet one",
+          "- Bullet two",
+          "",
+          "> Helpful note",
+          "",
+          "- [x] Done",
+          "- [ ] Pending",
+          "",
+          "| Name | Value |",
+          "| --- | --- |",
+          "| Alpha | 1 |",
+          "",
+          "```ts",
+          "const answer = 42;",
+          "```",
+        ].join("\n"),
       });
       streamHandlers?.onRunCompleted?.({
         runId: "44444444-4444-4444-4444-444444444444",
@@ -128,12 +151,23 @@ describe("App", () => {
 
     const assistantMessage = screen.getByText("Assistant").closest("article");
     expect(assistantMessage).not.toBeNull();
-    expect(assistantMessage).toHaveTextContent("This is bold and italic text");
-    expect(screen.getByText("bold", { selector: "strong" })).toBeInTheDocument();
-    expect(screen.getByText("italic", { selector: "em" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByText("First item")).toBeInTheDocument();
+    expect(screen.getByText("Bullet one")).toBeInTheDocument();
+    expect(assistantMessage?.querySelector("strong")).toHaveTextContent("bold");
+    expect(assistantMessage?.querySelector("em")).toHaveTextContent("italic");
+    expect(assistantMessage?.querySelector("del")).toHaveTextContent("strikethrough");
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://example.com");
+    expect(assistantMessage?.querySelector("blockquote")).toHaveTextContent("Helpful note");
+    expect(assistantMessage?.querySelector("pre code")).toHaveTextContent("const answer = 42;");
+    expect(assistantMessage?.querySelector("table")).toHaveTextContent("Alpha");
+    const taskItems = assistantMessage?.querySelectorAll('input[type="checkbox"]');
+    expect(taskItems).toHaveLength(2);
+    expect(taskItems?.[0]).toBeChecked();
+    expect(taskItems?.[1]).not.toBeChecked();
   });
 
-  it("supports escaped asterisks and nested emphasis in assistant output", async () => {
+  it("keeps rendering when streamed markdown is incomplete", async () => {
     mockedCreateMessage.mockResolvedValue({
       runId: "44444444-4444-4444-4444-444444444444",
       userMessageId: "22222222-2222-2222-2222-222222222222",
@@ -155,7 +189,19 @@ describe("App", () => {
       streamHandlers?.onMessageDelta?.({
         runId: "44444444-4444-4444-4444-444444444444",
         messageId: "33333333-3333-3333-3333-333333333333",
-        delta: "Use \\*literal\\* with **bold and *nested italic*** text",
+        delta: "```ts\nconst answer = 42",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(assistantMessage).toHaveTextContent("const answer = 42");
+
+    await act(async () => {
+      streamHandlers?.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "\n```",
       });
       streamHandlers?.onRunCompleted?.({
         runId: "44444444-4444-4444-4444-444444444444",
@@ -164,11 +210,7 @@ describe("App", () => {
       });
     });
 
-    const assistantMessage = screen.getByText("Assistant").closest("article");
-    expect(assistantMessage).not.toBeNull();
-    expect(assistantMessage).toHaveTextContent("Use *literal* with bold and nested italic text");
-    expect(assistantMessage?.querySelector("strong")).toHaveTextContent("bold and nested italic");
-    expect(assistantMessage?.querySelector("em")).toHaveTextContent("nested italic");
+    expect(assistantMessage?.querySelector("pre code")).toHaveTextContent("const answer = 42");
   });
 
   it("auto-scrolls streamed responses until the user scrolls away", async () => {

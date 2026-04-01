@@ -54,7 +54,7 @@ The backend validates these at startup:
 - `AZURE_OPENAI_DEPLOYMENT`
   Azure OpenAI deployment name, for example `gpt-5-chat`
 - `AZURE_OPENAI_SYSTEM_PROMPT`
-  Optional
+  Optional. Defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
   Optional duration for non-stream Responses API calls. Default `90s`.
 - `AZURE_OPENAI_STREAM_TIMEOUT`

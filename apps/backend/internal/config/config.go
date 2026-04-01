@@ -22,6 +22,7 @@ const (
 	defaultOpenAIRequestTimeout  = 90 * time.Second
 	defaultOpenAIStreamTimeout   = 10 * time.Minute
 	defaultFinalizationTimeout   = 15 * time.Second
+	defaultOpenAISystemPrompt    = "Format responses in Markdown when it improves readability. Use plain paragraphs for simple replies. Use lists, tables, and fenced code blocks only when helpful. Do not use raw HTML. If the user asks for plain text or a machine-readable format such as JSON, follow that request instead."
 )
 
 type Config struct {
@@ -70,7 +71,7 @@ func Load() (Config, error) {
 		AzureOpenAIAPIKey:       strings.TrimSpace(os.Getenv("AZURE_OPENAI_API_KEY")),
 		AzureOpenAIAPIVersion:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_API_VERSION")),
 		AzureOpenAIDeployment:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_DEPLOYMENT")),
-		AzureOpenAISystemPrompt: strings.TrimSpace(os.Getenv("AZURE_OPENAI_SYSTEM_PROMPT")),
+		AzureOpenAISystemPrompt: envOrDefault("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
 	}
 
 	if cfg.Port == "" {

@@ -7,9 +7,10 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
-  type ReactNode,
   type UIEvent,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { createMessage, createSession, streamRun } from "./lib/api";
 
@@ -371,7 +372,15 @@ export default function App() {
 
                   <div className="message-body">
                     {message.text ? (
-                      <p>{message.role === "assistant" ? renderAssistantMessageText(message.text) : message.text}</p>
+                      message.role === "assistant" ? (
+                        <div className="message-markdown">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                            {message.text}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p>{message.text}</p>
+                      )
                     ) : (
                       <p className="message-placeholder">Waiting for text...</p>
                     )}
@@ -461,90 +470,6 @@ function Metric(props: { label: string; value: string }) {
       <strong>{props.value}</strong>
     </div>
   );
-}
-
-function renderAssistantMessageText(text: string): ReactNode {
-  return parseAssistantMessageText(text, 0, undefined, "root").nodes;
-}
-
-function parseAssistantMessageText(
-  text: string,
-  startIndex: number,
-  endDelimiter: "*" | "**" | undefined,
-  keyPrefix: string,
-): { nodes: ReactNode[]; nextIndex: number; closed: boolean } {
-  const nodes: ReactNode[] = [];
-  let currentText = "";
-  let index = startIndex;
-
-  function flushText() {
-    if (currentText === "") {
-      return;
-    }
-
-    nodes.push(currentText);
-    currentText = "";
-  }
-
-  while (index < text.length) {
-    if (text[index] === "\\" && index + 1 < text.length) {
-      currentText += text[index + 1];
-      index += 2;
-      continue;
-    }
-
-    if (endDelimiter === "**" && text.startsWith("**", index)) {
-      flushText();
-      return { nodes, nextIndex: index + 2, closed: true };
-    }
-
-    if (endDelimiter === "*" && text[index] === "*") {
-      flushText();
-      return { nodes, nextIndex: index + 1, closed: true };
-    }
-
-    if (text.startsWith("**", index)) {
-      const nested = parseAssistantMessageText(text, index + 2, "**", `${keyPrefix}-bold-${index}`);
-      if (nested.closed && nested.nodes.length > 0) {
-        flushText();
-        nodes.push(
-          <strong key={`${keyPrefix}-bold-${index}`}>
-            {nested.nodes}
-          </strong>,
-        );
-        index = nested.nextIndex;
-        continue;
-      }
-
-      currentText += "**";
-      index += 2;
-      continue;
-    }
-
-    if (text[index] === "*") {
-      const nested = parseAssistantMessageText(text, index + 1, "*", `${keyPrefix}-italic-${index}`);
-      if (nested.closed && nested.nodes.length > 0) {
-        flushText();
-        nodes.push(
-          <em key={`${keyPrefix}-italic-${index}`}>
-            {nested.nodes}
-          </em>,
-        );
-        index = nested.nextIndex;
-        continue;
-      }
-
-      currentText += "*";
-      index += 1;
-      continue;
-    }
-
-    currentText += text[index];
-    index += 1;
-  }
-
-  flushText();
-  return { nodes, nextIndex: index, closed: false };
 }
 
 function isScrolledToBottom(element: HTMLDivElement) {
