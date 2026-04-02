@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ComponentPropsWithoutRef,
   type FormEvent,
   type KeyboardEvent,
   type UIEvent,
@@ -53,8 +54,14 @@ export default function App() {
   const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [composerText, setComposerText] = useState("");
+  const [isExpandedComposerOpen, setIsExpandedComposerOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [screenError, setScreenError] = useState("");
+  const appFrameRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const inlineComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const expandedComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldRestoreInlineFocusRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const streamAutoScrollEnabledRef = useRef(true);
@@ -92,6 +99,27 @@ export default function App() {
     scrollMessagesToEnd("auto");
   }, [messages, submissionState]);
 
+  useEffect(() => {
+    if (!isExpandedComposerOpen) {
+      document.body.style.removeProperty("overflow");
+      appFrameRef.current?.removeAttribute("inert");
+      if (shouldRestoreInlineFocusRef.current) {
+        shouldRestoreInlineFocusRef.current = false;
+        focusTextareaAtEnd(inlineComposerRef.current);
+      }
+      return;
+    }
+
+    document.body.style.overflow = "hidden";
+    appFrameRef.current?.setAttribute("inert", "");
+    focusTextareaAtEnd(expandedComposerRef.current);
+
+    return () => {
+      document.body.style.removeProperty("overflow");
+      appFrameRef.current?.removeAttribute("inert");
+    };
+  }, [isExpandedComposerOpen]);
+
   async function bootstrapSession() {
     closeStream();
     streamAutoScrollEnabledRef.current = true;
@@ -101,6 +129,7 @@ export default function App() {
     setMessages([]);
     setSessionId("");
     setComposerText("");
+    setIsExpandedComposerOpen(false);
     setSelectedFiles([]);
 
     try {
@@ -115,7 +144,7 @@ export default function App() {
     }
   }
 
-  async function submitComposer() {
+  async function submitComposer(options: { closeExpandedComposer?: boolean } = {}) {
     if (!canSubmit || sessionId === "") {
       return;
     }
@@ -124,6 +153,10 @@ export default function App() {
     if (validationError) {
       setScreenError(validationError);
       return;
+    }
+
+    if (options.closeExpandedComposer) {
+      setIsExpandedComposerOpen(false);
     }
 
     const draftText = composerText;
@@ -258,17 +291,66 @@ export default function App() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await submitComposer();
+    await submitComposer({ closeExpandedComposer: isExpandedComposerOpen });
   }
 
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>, closeExpandedComposer = false) {
     if (event.nativeEvent.isComposing) {
       return;
     }
 
     if (event.key === "Enter" && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
-      void submitComposer();
+      void submitComposer({ closeExpandedComposer });
+    }
+  }
+
+  function openExpandedComposer() {
+    if (busy) {
+      return;
+    }
+
+    setIsExpandedComposerOpen(true);
+  }
+
+  function closeExpandedComposer() {
+    shouldRestoreInlineFocusRef.current = true;
+    setIsExpandedComposerOpen(false);
+  }
+
+  function handleExpandedDialogKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      closeExpandedComposer();
+      return;
+    }
+
+    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    trapExpandedDialogFocus(event);
+  }
+
+  function trapExpandedDialogFocus(event: KeyboardEvent<HTMLElement>) {
+    const focusableElements = getFocusableElements(dialogRef.current);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+
+    if (!event.shiftKey && activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+
+    if (event.shiftKey && activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
     }
   }
 
@@ -318,7 +400,7 @@ export default function App() {
       <div className="app-backdrop app-backdrop-left" />
       <div className="app-backdrop app-backdrop-right" />
 
-      <main className="app-frame">
+      <main className="app-frame" ref={appFrameRef} aria-hidden={isExpandedComposerOpen ? "true" : undefined}>
         <section className="hero-panel">
           <div className="hero-intro">
             <p className="eyebrow">Anonymous Multimodal Chat</p>
@@ -377,7 +459,7 @@ export default function App() {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              a: ({ node: _node, ...props }) => (
+                              a: ({ node: _node, ...props }: MarkdownLinkProps) => (
                                 <a
                                   {...props}
                                   target="_blank"
@@ -415,17 +497,34 @@ export default function App() {
           </div>
 
           <form className="composer" onSubmit={handleSubmit}>
-            <textarea
-              id="prompt"
-              className="composer-input"
-              aria-label="Message"
-              value={composerText}
-              onChange={(event) => setComposerText(event.target.value)}
-              onKeyDown={handleComposerKeyDown}
-              placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
-              rows={5}
-              disabled={busy}
-            />
+            <div className="composer-input-shell">
+              <textarea
+                id="prompt"
+                ref={inlineComposerRef}
+                className="composer-input"
+                aria-label="Message"
+                value={composerText}
+                onChange={(event) => setComposerText(event.target.value)}
+                onKeyDown={(event) => handleComposerKeyDown(event)}
+                placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
+                rows={5}
+                disabled={busy}
+              />
+              <button
+                className="composer-expand-button"
+                type="button"
+                onClick={openExpandedComposer}
+                aria-label="Expand message editor"
+                disabled={busy}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M8 4H4v4" />
+                  <path d="M16 4h4v4" />
+                  <path d="M20 16v4h-4" />
+                  <path d="M4 16v4h4" />
+                </svg>
+              </button>
+            </div>
 
             <div className="composer-toolbar">
               <label className="attachment-button">
@@ -470,6 +569,52 @@ export default function App() {
           </form>
         </section>
       </main>
+
+      {isExpandedComposerOpen ? (
+        <div className="composer-dialog-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            closeExpandedComposer();
+          }
+        }}>
+          <section
+            className="composer-dialog"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded message editor"
+            onKeyDown={handleExpandedDialogKeyDown}
+          >
+            <textarea
+              ref={expandedComposerRef}
+              className="composer-dialog-input"
+              aria-label="Expanded message"
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={(event) => handleComposerKeyDown(event, true)}
+              placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
+              disabled={busy}
+            />
+
+            <div className="composer-dialog-footer">
+              <div className="composer-dialog-actions">
+                <span className="composer-hint">Shift + Enter to send</span>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void submitComposer({ closeExpandedComposer: true })}
+                  disabled={!canSubmit}
+                >
+                  {submissionState === "streaming"
+                    ? "Streaming..."
+                    : submissionState === "submitting"
+                      ? "Sending..."
+                      : "Send"}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -518,6 +663,30 @@ function fileToAttachment(file: File): ChatAttachment {
     mediaType: file.type,
     sizeBytes: file.size,
   };
+}
+
+type MarkdownLinkProps = { node?: unknown } & ComponentPropsWithoutRef<"a">;
+
+function focusTextareaAtEnd(textarea: HTMLTextAreaElement | null) {
+  if (!textarea) {
+    return;
+  }
+
+  const cursorPosition = textarea.value.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursorPosition, cursorPosition);
+}
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
 }
 
 function compactMediaType(mediaType: string) {

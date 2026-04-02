@@ -385,6 +385,105 @@ describe("App", () => {
     });
   });
 
+  it("opens the expanded composer with the current text and syncs it back on outside click", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    const inlineComposer = screen.getByLabelText("Message");
+    await user.type(inlineComposer, "Long draft");
+    await user.click(screen.getByRole("button", { name: "Expand message editor" }));
+
+    const expandedComposer = screen.getByLabelText("Expanded message");
+    expect(expandedComposer).toHaveValue("Long draft");
+    expect(expandedComposer).toHaveFocus();
+    expect(expandedComposer).toHaveProperty("selectionStart", "Long draft".length);
+    expect(expandedComposer).toHaveProperty("selectionEnd", "Long draft".length);
+
+    await user.type(expandedComposer, " with more detail");
+    fireEvent.mouseDown(container.querySelector(".composer-dialog-backdrop")!);
+
+    const inlineComposerAfterClose = screen.getByLabelText("Message");
+    expect(screen.queryByRole("dialog", { name: "Expanded message editor" })).not.toBeInTheDocument();
+    expect(inlineComposerAfterClose).toHaveValue("Long draft with more detail");
+    expect(inlineComposerAfterClose).toHaveFocus();
+    expect(inlineComposerAfterClose).toHaveProperty("selectionStart", "Long draft with more detail".length);
+    expect(inlineComposerAfterClose).toHaveProperty("selectionEnd", "Long draft with more detail".length);
+  });
+
+  it("traps focus inside the expanded composer and makes the background inert", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await user.type(screen.getByLabelText("Message"), "Focus trap");
+    await user.click(screen.getByRole("button", { name: "Expand message editor" }));
+
+    const appFrame = container.querySelector(".app-frame");
+    const expandedComposer = screen.getByLabelText("Expanded message");
+    const dialogSendButton = screen.getByRole("button", { name: "Send" });
+
+    expect(appFrame).toHaveAttribute("inert");
+    expect(appFrame).toHaveAttribute("aria-hidden", "true");
+    expect(expandedComposer).toHaveFocus();
+
+    await user.tab();
+    expect(dialogSendButton).toHaveFocus();
+
+    await user.tab();
+    expect(expandedComposer).toHaveFocus();
+
+    await user.tab({ shift: true });
+    expect(dialogSendButton).toHaveFocus();
+  });
+
+  it("submits from the expanded composer on Shift+Enter and closes the dialog", async () => {
+    mockedCreateMessage.mockResolvedValue({
+      runId: "44444444-4444-4444-4444-444444444444",
+      userMessageId: "22222222-2222-2222-2222-222222222222",
+      assistantMessageId: "33333333-3333-3333-3333-333333333333",
+      createdAt: "2026-03-31T10:01:00Z",
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await user.type(screen.getByLabelText("Message"), "Expanded shortcut send");
+    await user.click(screen.getByRole("button", { name: "Expand message editor" }));
+    await user.type(screen.getByLabelText("Expanded message"), "{Shift>}{Enter}{/Shift}");
+
+    await waitFor(() => {
+      expect(mockedCreateMessage).toHaveBeenCalledWith({
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        text: "Expanded shortcut send",
+        attachments: [],
+      });
+    });
+
+    expect(screen.queryByRole("dialog", { name: "Expanded message editor" })).not.toBeInTheDocument();
+  });
+
+  it("closes the expanded composer on Escape and restores the inline caret to the end", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+
+    await user.type(screen.getByLabelText("Message"), "abc");
+    await user.click(screen.getByRole("button", { name: "Expand message editor" }));
+
+    const expandedComposer = screen.getByLabelText("Expanded message");
+    expect(expandedComposer).toHaveProperty("selectionStart", 3);
+
+    await user.keyboard("{Escape}");
+
+    const inlineComposer = screen.getByLabelText("Message");
+    expect(screen.queryByRole("dialog", { name: "Expanded message editor" })).not.toBeInTheDocument();
+    expect(inlineComposer).toHaveFocus();
+    expect(inlineComposer).toHaveProperty("selectionStart", 3);
+    expect(inlineComposer).toHaveProperty("selectionEnd", 3);
+  });
+
   it("keeps plain Enter available for multiline messages", async () => {
     render(<App />);
     await screen.findByText("Ready for the next turn.");
