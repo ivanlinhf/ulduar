@@ -1,0 +1,126 @@
+.composer {
+  display: grid;
+  gap: 14px;
+  padding: 20px 28px 28px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 252, 247, 0.82);
+}
+
+.composer-input-shell {
+  position: relative;
+}
+
+.composer-input {
+  resize: none;
+  min-height: 140px;
+  width: 100%;
+  border: 1px solid rgba(56, 44, 30, 0.12);
+  border-radius: 24px;
+  padding: 18px 64px 20px 18px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.composer-input:focus,
+.composer-dialog-input:focus {
+  outline: 2px solid rgba(182, 71, 30, 0.18);
+  border-color: rgba(182, 71, 30, 0.28);
+}
+
+.composer-expand-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: rgba(32, 23, 15, 0.56);
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.composer-expand-button:hover {
+  transform: translateY(-1px);
+  color: var(--ink);
+}
+
+.composer-expand-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.composer-expand-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.composer-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.composer-hint {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.attachment-button {
+  padding: 12px 16px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.visually-hidden-file-input {
+  display: none;
+}
+
+.composer-attachments {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+
+.composer-attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.composer-attachments button {
+  margin-left: auto;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.08);
+  color: var(--danger);
+}

@@ -1,0 +1,195 @@
+.message-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 28px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.message-list-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 20px;
+  max-width: 28rem;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.empty-state span {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.message-card {
+  display: grid;
+  gap: 10px;
+  align-self: start;
+  max-width: min(740px, 100%);
+  padding: 18px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(56, 44, 30, 0.08);
+}
+
+.message-user {
+  justify-self: end;
+  background: linear-gradient(160deg, #fff6ef 0%, #ffe2d0 100%);
+}
+
+.message-assistant {
+  justify-self: start;
+  background: linear-gradient(160deg, #ffffff 0%, #eef7ef 100%);
+}
+
+.message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.status-badge,
+.model-badge {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(32, 23, 15, 0.08);
+}
+
+.status-completed {
+  color: var(--success);
+}
+
+.status-failed {
+  color: var(--danger);
+}
+
+.message-user .message-body > p,
+.message-placeholder,
+.message-error {
+  margin: 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.message-markdown {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.message-markdown > * {
+  margin: 0;
+}
+
+.message-markdown :is(p, li) {
+  line-height: 1.65;
+}
+
+.message-markdown :is(ul, ol) {
+  margin-left: 1.25rem;
+  padding-left: 0.25rem;
+}
+
+.message-markdown li + li {
+  margin-top: 4px;
+}
+
+.message-markdown blockquote {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 3px solid rgba(56, 44, 30, 0.16);
+  color: var(--muted);
+}
+
+.message-markdown code {
+  padding: 0.12em 0.35em;
+  border-radius: 8px;
+  background: rgba(56, 44, 30, 0.08);
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 0.95em;
+}
+
+.message-markdown pre {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  overflow-x: auto;
+  background: rgba(32, 23, 15, 0.92);
+  color: #fff8ef;
+}
+
+.message-markdown pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.message-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.message-markdown :is(th, td) {
+  padding: 8px 10px;
+  border: 1px solid rgba(56, 44, 30, 0.12);
+  text-align: left;
+}
+
+.message-markdown th {
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.message-markdown input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.message-placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.message-error,
+.screen-error {
+  color: var(--danger);
+}
+
+.attachment-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+
+.attachment-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  font-size: 0.92rem;
+}

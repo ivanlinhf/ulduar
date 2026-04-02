@@ -1,0 +1,46 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap");
+
+:root {
+  color-scheme: light;
+  --bg: #f4efe6;
+  --surface: rgba(255, 251, 245, 0.86);
+  --surface-strong: #fffdf8;
+  --line: rgba(56, 44, 30, 0.12);
+  --ink: #20170f;
+  --muted: #6b5a49;
+  --accent: #b6471e;
+  --accent-soft: #ffd2b4;
+  --success: #1f7a45;
+  --danger: #b42318;
+  --shadow: 0 24px 80px rgba(64, 41, 15, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "IBM Plex Sans", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 196, 143, 0.72), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(146, 214, 180, 0.52), transparent 26%),
+    linear-gradient(135deg, #efe8dd 0%, #f7f3ec 42%, #ede4d7 100%);
+  color: var(--ink);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
