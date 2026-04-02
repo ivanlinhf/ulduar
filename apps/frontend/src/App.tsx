@@ -9,6 +9,8 @@ import {
   type KeyboardEvent,
   type UIEvent,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { createMessage, createSession, streamRun } from "./lib/api";
 
@@ -369,7 +371,30 @@ export default function App() {
                   </div>
 
                   <div className="message-body">
-                    {message.text ? <p>{message.text}</p> : <p className="message-placeholder">Waiting for text...</p>}
+                    {message.text ? (
+                      message.role === "assistant" ? (
+                        <div className="message-markdown">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ node: _node, ...props }) => (
+                                <a
+                                  {...props}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                />
+                              ),
+                            }}
+                          >
+                            {message.text}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p>{message.text}</p>
+                      )
+                    ) : (
+                      <p className="message-placeholder">Waiting for text...</p>
+                    )}
                     {message.attachments.length > 0 ? (
                       <ul className="attachment-list">
                         {message.attachments.map((attachment) => (

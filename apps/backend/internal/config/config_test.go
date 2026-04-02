@@ -37,6 +37,9 @@ func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
 	if cfg.ReadTimeout != defaultReadTimeout {
 		t.Fatalf("cfg.ReadTimeout = %v, want %v", cfg.ReadTimeout, defaultReadTimeout)
 	}
+	if cfg.AzureOpenAISystemPrompt != defaultOpenAISystemPrompt {
+		t.Fatalf("cfg.AzureOpenAISystemPrompt = %q", cfg.AzureOpenAISystemPrompt)
+	}
 }
 
 func TestLoadRejectsInvalidValues(t *testing.T) {
@@ -68,5 +71,51 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "azure openai stream timeout") {
 		t.Fatalf("Load() error = %v", err)
+	}
+}
+
+func TestLoadUsesCustomSystemPromptOverride(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("BACKEND_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	t.Setenv("AZURE_OPENAI_SYSTEM_PROMPT", "Reply in plain text.")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.AzureOpenAISystemPrompt != "Reply in plain text." {
+		t.Fatalf("cfg.AzureOpenAISystemPrompt = %q", cfg.AzureOpenAISystemPrompt)
+	}
+}
+
+func TestLoadPreservesExplicitlyEmptySystemPrompt(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("BACKEND_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	t.Setenv("AZURE_OPENAI_SYSTEM_PROMPT", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.AzureOpenAISystemPrompt != "" {
+		t.Fatalf("cfg.AzureOpenAISystemPrompt = %q", cfg.AzureOpenAISystemPrompt)
 	}
 }
