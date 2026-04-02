@@ -6,8 +6,8 @@ import {
   useState,
   type ChangeEvent,
   type ComponentPropsWithoutRef,
-  type FormEvent,
   type KeyboardEvent,
+  type SubmitEvent,
   type UIEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
@@ -61,6 +61,7 @@ export default function App() {
   const dialogRef = useRef<HTMLElement | null>(null);
   const inlineComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const expandedComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldRestoreInlineFocusRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const streamCleanupRef = useRef<(() => void) | null>(null);
@@ -68,6 +69,12 @@ export default function App() {
 
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit = (composerText.trim() !== "" || selectedFiles.length > 0) && !busy && bootstrapState === "ready";
+  const submitButtonLabel =
+    submissionState === "streaming"
+      ? "Streaming..."
+      : submissionState === "submitting"
+        ? "Sending..."
+        : "Send";
 
   const attachmentSummary = useMemo(
     () =>
@@ -289,7 +296,7 @@ export default function App() {
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     await submitComposer({ closeExpandedComposer: isExpandedComposerOpen });
   }
@@ -372,6 +379,14 @@ export default function App() {
     setSelectedFiles(nextFiles);
   }
 
+  function openFilePicker() {
+    if (busy) {
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }
+
   function removeAttachment(filename: string) {
     setSelectedFiles((current) => current.filter((file) => file.name !== filename));
   }
@@ -417,8 +432,14 @@ export default function App() {
               <Metric label="Messages" value={String(messages.length)} />
             </div>
 
-            <button className="secondary-button" onClick={() => void bootstrapSession()} type="button">
-              New chat
+            <button
+              aria-label="New chat"
+              className="secondary-button icon-only-button new-chat-button"
+              onClick={() => void bootstrapSession()}
+              title="New chat"
+              type="button"
+            >
+              <IconNewChat />
             </button>
           </div>
         </section>
@@ -527,25 +548,37 @@ export default function App() {
             </div>
 
             <div className="composer-toolbar">
-              <label className="attachment-button">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
-                  multiple
-                  onChange={handleFileSelection}
-                  disabled={busy}
-                />
-                Add attachments
-              </label>
+              <button
+                aria-label="Add attachments"
+                className="attachment-button icon-only-button"
+                disabled={busy}
+                onClick={openFilePicker}
+                title="Add attachments"
+                type="button"
+              >
+                <IconAttachment />
+              </button>
+              <input
+                ref={fileInputRef}
+                className="visually-hidden-file-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                multiple
+                onChange={handleFileSelection}
+                disabled={busy}
+                tabIndex={-1}
+              />
 
               <div className="composer-submit">
                 <span className="composer-hint">Shift + Enter to send</span>
-                <button className="primary-button" disabled={!canSubmit} type="submit">
-                  {submissionState === "streaming"
-                    ? "Streaming..."
-                    : submissionState === "submitting"
-                      ? "Sending..."
-                      : "Send"}
+                <button
+                  aria-label={submitButtonLabel}
+                  className="primary-button icon-only-button send-button"
+                  disabled={!canSubmit}
+                  title={submitButtonLabel}
+                  type="submit"
+                >
+                  {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
                 </button>
               </div>
             </div>
@@ -599,16 +632,14 @@ export default function App() {
               <div className="composer-dialog-actions">
                 <span className="composer-hint">Shift + Enter to send</span>
                 <button
-                  className="primary-button"
+                  aria-label={submitButtonLabel}
+                  className="primary-button icon-only-button send-button"
                   type="button"
                   onClick={() => void submitComposer({ closeExpandedComposer: true })}
                   disabled={!canSubmit}
+                  title={submitButtonLabel}
                 >
-                  {submissionState === "streaming"
-                    ? "Streaming..."
-                    : submissionState === "submitting"
-                      ? "Sending..."
-                      : "Send"}
+                  {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
                 </button>
               </div>
             </div>
@@ -625,6 +656,42 @@ function Metric(props: { label: string; value: string }) {
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
+  );
+}
+
+function IconNewChat() {
+  return (
+    <svg aria-hidden="true" className="button-icon new-chat-icon" viewBox="0 0 24 24">
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      <path d="M12 8v8" />
+      <path d="M8 12h8" />
+    </svg>
+  );
+}
+
+function IconAttachment() {
+  return (
+    <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">
+      <path d="m21.44 11.05-8.49 8.49a6 6 0 0 1-8.48-8.48l8.48-8.49a4 4 0 0 1 5.66 5.66l-8.49 8.48a2 2 0 0 1-2.82-2.82L15.78 5.4" />
+    </svg>
+  );
+}
+
+function IconSend() {
+  return (
+    <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">
+      <path d="M3 11.5 21 3 13 21l-2.5-7L3 11.5Z" />
+      <path d="M10.5 14 21 3" />
+    </svg>
+  );
+}
+
+function IconSpinner() {
+  return (
+    <svg aria-hidden="true" className="button-icon button-spinner" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="7.5" opacity="0.25" />
+      <path d="M12 4.5a7.5 7.5 0 0 1 7.5 7.5" />
+    </svg>
   );
 }
 
