@@ -1,0 +1,25 @@
+name: Backend Verify
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - apps/backend/**
+      - .github/workflows/backend-verify.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/backend/go.mod
+      - run: go test ./...
+      - run: go build ./cmd/server
