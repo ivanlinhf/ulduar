@@ -1,0 +1,64 @@
+name: Frontend Deploy
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - apps/frontend/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      FRONTEND_CONTAINER_APP_NAME: ${{ vars.FRONTEND_CONTAINER_APP_NAME }}
+      FRONTEND_VITE_API_BASE_URL: ${{ vars.FRONTEND_VITE_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'refs/heads/main' || github.event.pull_request.merge_commit_sha }}
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure Container Apps extension
+        run: az extension add --name containerapp --upgrade --allow-preview true
+
+      - name: Resolve frontend image name
+        run: |
+          registry_server="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
+          image_tag="$(git rev-parse HEAD)"
+          echo "FRONTEND_IMAGE=${registry_server}/ulduar-frontend:${image_tag}" >> "$GITHUB_ENV"
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$AZURE_ACR_NAME"
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -f apps/frontend/Dockerfile \
+            --build-arg VITE_API_BASE_URL="$FRONTEND_VITE_API_BASE_URL" \
+            -t "$FRONTEND_IMAGE" \
+            apps/frontend
+
+      - name: Push frontend image
+        run: docker push "$FRONTEND_IMAGE"
+
+      - name: Update frontend Container App
+        run: |
+          az containerapp update \
+            --name "$FRONTEND_CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$FRONTEND_IMAGE"
