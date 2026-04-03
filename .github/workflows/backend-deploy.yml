@@ -40,7 +40,7 @@ jobs:
       - name: Resolve backend image name
         run: |
           registry_server="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
-          image_tag="$(git rev-parse HEAD)"
+          image_tag="$GITHUB_SHA"
           echo "BACKEND_IMAGE=${registry_server}/ulduar-backend:${image_tag}" >> "$GITHUB_ENV"
 
       - name: Log in to Azure Container Registry

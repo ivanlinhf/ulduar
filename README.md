@@ -227,11 +227,11 @@ Each workflow supports:
 - automatic deployment on pushes to `main`, limited to changes under its corresponding app directory
 - manual deployment through `workflow_dispatch`
 
-Both workflows check out the `main` revision being deployed, authenticate to Azure with GitHub OIDC via `azure/login`, build a new image, push it to Azure Container Registry, and update the target Azure Container App. Each workflow also uses GitHub Actions concurrency control so overlapping deploys for the same app run serially.
+Both workflows check out the triggering commit being deployed (`github.sha`): the pushed `main` commit for automatic runs, or the selected ref's commit for manual `workflow_dispatch` runs. They then authenticate to Azure with GitHub OIDC via `azure/login`, build a new image, push it to Azure Container Registry, and update the target Azure Container App. Each workflow also uses GitHub Actions concurrency control so overlapping deploys for the same app run serially.
 
 Backend deployment additionally:
 
-- runs database migrations exactly once from the freshly built backend image before the Container App update
+- runs database migrations once per deploy run from the freshly built backend image before the Container App update
 - sets `RUN_DB_MIGRATIONS=false` on the backend Container App so backend container startup, restarts, and scaling events do not run migrations
 
 Required GitHub repository secrets:
