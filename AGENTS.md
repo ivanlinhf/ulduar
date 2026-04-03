@@ -53,6 +53,13 @@ If you change request or response shapes, update backend, frontend, tests, and d
 - When changing behavior, add or update tests close to the affected code.
 - Do not silently change env var names, ports, or API routes without updating docs.
 
+## Git Workflow
+
+- The remote `main` branch is protected and requires pull requests for all changes, including admin changes.
+- Do not push commits directly to `main`.
+- Create a feature branch from `main` for each change, commit there, and open a pull request back into `main`.
+- Keep pull requests focused, include relevant verification notes, and update docs alongside behavior or API changes.
+
 ## Local Commands
 
 Backend:
