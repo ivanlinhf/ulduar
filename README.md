@@ -13,7 +13,6 @@ Anonymous multimodal chat app with:
 - [apps/backend](apps/backend)
 - [apps/frontend](apps/frontend)
 - [docs/design.md](docs/design.md)
-- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 - [compose.yaml](compose.yaml)
 
 ## Required Environment Variables
