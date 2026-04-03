@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'refs/heads/main' || github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.event.pull_request.merge_commit_sha }}
 
       - uses: azure/login@v2
         with:
@@ -33,7 +33,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Install Azure Container Apps extension
-        run: az extension add --name containerapp --upgrade --allow-preview true
+        run: az extension add --name containerapp --upgrade
 
       - name: Resolve backend image name
         run: |
@@ -53,7 +53,7 @@ jobs:
       - name: Run database migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: docker run --rm --entrypoint migrate -e DATABASE_URL="$DATABASE_URL" "$BACKEND_IMAGE" up
+        run: docker run --rm --entrypoint migrate --env DATABASE_URL "$BACKEND_IMAGE" up
 
       - name: Update backend Container App
         run: |

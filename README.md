@@ -229,7 +229,7 @@ Both workflows check out the merged `main` revision, authenticate to Azure with 
 Backend deployment additionally:
 
 - runs database migrations exactly once from the freshly built backend image before the Container App update
-- sets `RUN_DB_MIGRATIONS=false` on the backend Container App so normal replica startup does not run migrations
+- sets `RUN_DB_MIGRATIONS=false` on the backend Container App so backend container startup, restarts, and scaling events do not run migrations
 
 Required GitHub repository secrets:
 
