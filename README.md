@@ -17,7 +17,7 @@ Anonymous multimodal chat app with:
 
 ## Required Environment Variables
 
-The backend validates these at startup:
+Backend app startup validates these:
 
 - `BACKEND_PORT`
   Default is `8080` if unset.
@@ -60,6 +60,9 @@ The backend validates these at startup:
   Optional duration for streamed Responses API calls. Default `10m`.
 - `CHAT_RUN_FINALIZATION_TIMEOUT`
   Optional duration for persisting final run/message state after provider completion or failure. Default `15s`.
+
+Container/entrypoint and frontend build settings:
+
 - `RUN_DB_MIGRATIONS`
   Optional container-only flag. Default `true`. Set it to `false` when database migrations are run separately before backend app rollout.
 - `VITE_API_BASE_URL`
@@ -221,10 +224,10 @@ This repository includes separate Azure Container Apps deploy workflows:
 
 Each workflow supports:
 
-- automatic deployment after a pull request to `main` is closed and merged, limited to changes under its corresponding app directory
+- automatic deployment on pushes to `main`, limited to changes under its corresponding app directory
 - manual deployment through `workflow_dispatch`
 
-Both workflows check out the merged `main` revision, authenticate to Azure with GitHub OIDC via `azure/login`, build a new image, push it to Azure Container Registry, and update the target Azure Container App.
+Both workflows check out the `main` revision being deployed, authenticate to Azure with GitHub OIDC via `azure/login`, build a new image, push it to Azure Container Registry, and update the target Azure Container App. Each workflow also uses GitHub Actions concurrency control so overlapping deploys for the same app run serially.
 
 Backend deployment additionally:
 

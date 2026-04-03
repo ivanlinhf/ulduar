@@ -1,18 +1,19 @@
 name: Frontend Deploy
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - main
     paths:
       - apps/frontend/**
   workflow_dispatch:
 
+concurrency:
+  group: frontend-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
 
       - uses: azure/login@v2
         with:
