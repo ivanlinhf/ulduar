@@ -12,12 +12,29 @@ type MessageCardProps = {
 type MarkdownLinkProps = { node?: unknown } & ComponentPropsWithoutRef<"a">;
 
 export function MessageCard({ message }: MessageCardProps) {
+  const tokenUsageLabel = formatTokenUsage(message);
+  const tokenUsageTitle =
+    message.inputTokens !== undefined || message.outputTokens !== undefined || message.totalTokens !== undefined
+      ? [
+          message.inputTokens !== undefined ? `in ${message.inputTokens}` : "",
+          message.outputTokens !== undefined ? `out ${message.outputTokens}` : "",
+          message.totalTokens !== undefined ? `total ${message.totalTokens}` : "",
+        ]
+          .filter(Boolean)
+          .join(" / ")
+      : undefined;
+
   return (
     <article className={`message-card message-${message.role}`}>
       <div className="message-meta">
         <span>{message.role === "user" ? "You" : "Assistant"}</span>
         <span className={`status-badge status-${message.status}`}>{message.status}</span>
         {message.modelName ? <span className="model-badge">{message.modelName}</span> : null}
+        {tokenUsageLabel ? (
+          <span className="token-badge" title={tokenUsageTitle}>
+            {tokenUsageLabel}
+          </span>
+        ) : null}
       </div>
 
       <div className="message-body">
@@ -62,4 +79,17 @@ export function MessageCard({ message }: MessageCardProps) {
       </div>
     </article>
   );
+}
+
+function formatTokenUsage(message: ChatMessage): string | null {
+  if (message.role !== "assistant") {
+    return null;
+  }
+  if (message.totalTokens !== undefined) {
+    return `${message.totalTokens} tokens`;
+  }
+  if (message.inputTokens !== undefined && message.outputTokens !== undefined) {
+    return `in ${message.inputTokens} / out ${message.outputTokens}`;
+  }
+  return null;
 }

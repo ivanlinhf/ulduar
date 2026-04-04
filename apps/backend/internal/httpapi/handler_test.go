@@ -263,7 +263,75 @@ func TestCreateMessageHandlerMultipartFlow(t *testing.T) {
 	}
 }
 
+func TestGetSessionHandlerIncludesAssistantTokenUsage(t *testing.T) {
+	inputTokens := int64(45)
+	outputTokens := int64(78)
+	totalTokens := int64(123)
+	createdAt := time.Date(2026, 3, 31, 9, 15, 0, 0, time.UTC)
+
+	service := &fakeChatService{
+		getSessionFn: func(context.Context, string) (chat.SessionView, error) {
+			return chat.SessionView{
+				Session: repository.Session{
+					ID:            "11111111-1111-1111-1111-111111111111",
+					Status:        "active",
+					CreatedAt:     createdAt,
+					LastMessageAt: createdAt,
+				},
+				Messages: []chat.MessageView{
+					{
+						Message: repository.Message{
+							ID:        "33333333-3333-3333-3333-333333333333",
+							Role:      "assistant",
+							Status:    "completed",
+							ModelName: "gpt-5",
+							CreatedAt: createdAt,
+						},
+						Content: chat.MessageContent{
+							Parts: []chat.MessageContentPart{{Type: "text", Text: "Assistant reply"}},
+						},
+						TokenUsage: &chat.TokenUsage{
+							InputTokens:  &inputTokens,
+							OutputTokens: &outputTokens,
+							TotalTokens:  &totalTokens,
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111", nil)
+
+	NewHandler(service).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var payload sessionDetailResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Messages) != 1 {
+		t.Fatalf("len(payload.Messages) = %d", len(payload.Messages))
+	}
+	if payload.Messages[0].InputTokens == nil || *payload.Messages[0].InputTokens != 45 {
+		t.Fatalf("payload.Messages[0].InputTokens = %v", payload.Messages[0].InputTokens)
+	}
+	if payload.Messages[0].OutputTokens == nil || *payload.Messages[0].OutputTokens != 78 {
+		t.Fatalf("payload.Messages[0].OutputTokens = %v", payload.Messages[0].OutputTokens)
+	}
+	if payload.Messages[0].TotalTokens == nil || *payload.Messages[0].TotalTokens != 123 {
+		t.Fatalf("payload.Messages[0].TotalTokens = %v", payload.Messages[0].TotalTokens)
+	}
+}
+
 func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
+	inputTokens := int64(45)
+	outputTokens := int64(78)
+	totalTokens := int64(123)
 	service := &fakeChatService{
 		streamRunFn: func(_ context.Context, sessionID, runID string, emit func(chat.RunStreamEvent) error) error {
 			if sessionID != "11111111-1111-1111-1111-111111111111" {
@@ -291,11 +359,14 @@ func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
 				return err
 			}
 			return emit(chat.RunStreamEvent{
-				Type:       "run.completed",
-				RunID:      runID,
-				MessageID:  "33333333-3333-3333-3333-333333333333",
-				ResponseID: "resp_123",
-				ModelName:  "gpt-5",
+				Type:         "run.completed",
+				RunID:        runID,
+				MessageID:    "33333333-3333-3333-3333-333333333333",
+				ResponseID:   "resp_123",
+				ModelName:    "gpt-5",
+				InputTokens:  &inputTokens,
+				OutputTokens: &outputTokens,
+				TotalTokens:  &totalTokens,
 			})
 		},
 	}
@@ -323,6 +394,9 @@ func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
 		"event: message.delta",
 		`"delta":"hello"`,
 		"event: run.completed",
+		`"inputTokens":45`,
+		`"outputTokens":78`,
+		`"totalTokens":123`,
 	} {
 		if !strings.Contains(body, fragment) {
 			t.Fatalf("stream body missing %q:\n%s", fragment, body)

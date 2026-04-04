@@ -109,6 +109,9 @@ func TestMapRun(t *testing.T) {
 		UserMessageID:      mustUUID(t, "22222222-2222-2222-2222-222222222222"),
 		AssistantMessageID: mustUUID(t, "55555555-5555-5555-5555-555555555555"),
 		ProviderResponseID: textValue("resp_123"),
+		InputTokens:        mustInt8(45),
+		OutputTokens:       mustInt8(78),
+		TotalTokens:        mustInt8(123),
 		Status:             "completed",
 		ErrorCode:          textValue(""),
 		StartedAt:          mustTime(startedAt),
@@ -128,6 +131,15 @@ func TestMapRun(t *testing.T) {
 	}
 	if run.ProviderResponseID != "resp_123" {
 		t.Fatalf("run.ProviderResponseID = %q", run.ProviderResponseID)
+	}
+	if run.InputTokens == nil || *run.InputTokens != 45 {
+		t.Fatalf("run.InputTokens = %v", run.InputTokens)
+	}
+	if run.OutputTokens == nil || *run.OutputTokens != 78 {
+		t.Fatalf("run.OutputTokens = %v", run.OutputTokens)
+	}
+	if run.TotalTokens == nil || *run.TotalTokens != 123 {
+		t.Fatalf("run.TotalTokens = %v", run.TotalTokens)
 	}
 	if run.CompletedAt == nil || !run.CompletedAt.Equal(completedAt) {
 		t.Fatalf("run.CompletedAt = %v", run.CompletedAt)
@@ -158,6 +170,13 @@ func mustUUID(t *testing.T, value string) pgtype.UUID {
 func mustTime(value time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{
 		Time:  value,
+		Valid: true,
+	}
+}
+
+func mustInt8(value int64) pgtype.Int8 {
+	return pgtype.Int8{
+		Int64: value,
 		Valid: true,
 	}
 }

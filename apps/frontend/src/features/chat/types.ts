@@ -17,5 +17,8 @@ export type ChatMessage = {
   text: string;
   attachments: ChatAttachment[];
   modelName?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
   error?: string;
 };

@@ -73,6 +73,13 @@ type MessageView struct {
 	Message     repository.Message
 	Content     MessageContent
 	Attachments []repository.Attachment
+	TokenUsage  *TokenUsage
+}
+
+type TokenUsage struct {
+	InputTokens  *int64
+	OutputTokens *int64
+	TotalTokens  *int64
 }
 
 type CreateMessageParams struct {
@@ -89,14 +96,17 @@ type MessageCreation struct {
 }
 
 type RunStreamEvent struct {
-	Type       string
-	RunID      string
-	MessageID  string
-	ResponseID string
-	ModelName  string
-	Delta      string
-	Error      string
-	ErrorCode  string
+	Type         string
+	RunID        string
+	MessageID    string
+	ResponseID   string
+	ModelName    string
+	Delta        string
+	Error        string
+	ErrorCode    string
+	InputTokens  *int64
+	OutputTokens *int64
+	TotalTokens  *int64
 }
 
 func NewService(db *pgxpool.Pool, blobs BlobStore, responses ResponseClient, options ServiceOptions) *Service {
@@ -133,6 +143,7 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 	sessionRepo := repository.NewSessionRepository(s.db)
 	messageRepo := repository.NewMessageRepository(s.db)
 	attachmentRepo := repository.NewAttachmentRepository(s.db)
+	runRepo := repository.NewRunRepository(s.db)
 
 	session, err := sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
@@ -142,6 +153,23 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 	messages, err := messageRepo.ListBySession(ctx, sessionID)
 	if err != nil {
 		return SessionView{}, fmt.Errorf("list session messages: %w", err)
+	}
+
+	runs, err := runRepo.ListBySession(ctx, sessionID)
+	if err != nil {
+		return SessionView{}, fmt.Errorf("list session runs: %w", err)
+	}
+
+	tokenUsageByMessageID := make(map[string]*TokenUsage, len(runs))
+	for _, run := range runs {
+		if run.AssistantMessageID == "" {
+			continue
+		}
+		usage := tokenUsageFromRun(run)
+		if usage == nil {
+			continue
+		}
+		tokenUsageByMessageID[run.AssistantMessageID] = usage
 	}
 
 	items := make([]MessageView, 0, len(messages))
@@ -160,6 +188,7 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 			Message:     message,
 			Content:     content,
 			Attachments: attachments,
+			TokenUsage:  tokenUsageByMessageID[message.ID],
 		})
 	}
 
@@ -349,6 +378,9 @@ func (s *Service) ExecuteRun(ctx context.Context, runID string) error {
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -467,11 +499,14 @@ func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, em
 	}
 
 	return emit(RunStreamEvent{
-		Type:       "run.completed",
-		RunID:      run.ID,
-		MessageID:  run.AssistantMessageID,
-		ResponseID: run.ProviderResponseID,
-		ModelName:  assistantMessage.ModelName,
+		Type:         "run.completed",
+		RunID:        run.ID,
+		MessageID:    run.AssistantMessageID,
+		ResponseID:   run.ProviderResponseID,
+		ModelName:    assistantMessage.ModelName,
+		InputTokens:  run.InputTokens,
+		OutputTokens: run.OutputTokens,
+		TotalTokens:  run.TotalTokens,
 	})
 }
 
@@ -627,11 +662,14 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 	}
 
 	return emit(RunStreamEvent{
-		Type:       "run.completed",
-		RunID:      run.ID,
-		MessageID:  run.AssistantMessageID,
-		ResponseID: responseMeta.ID,
-		ModelName:  responseMeta.Model,
+		Type:         "run.completed",
+		RunID:        run.ID,
+		MessageID:    run.AssistantMessageID,
+		ResponseID:   responseMeta.ID,
+		ModelName:    responseMeta.Model,
+		InputTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
+		OutputTokens: usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
+		TotalTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
 	})
 }
 
@@ -684,6 +722,9 @@ func (s *Service) completeRun(ctx context.Context, run repository.Run, response 
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -748,6 +789,27 @@ func contentText(content MessageContent) string {
 	}
 
 	return builder.String()
+}
+
+func tokenUsageFromRun(run repository.Run) *TokenUsage {
+	if run.InputTokens == nil && run.OutputTokens == nil && run.TotalTokens == nil {
+		return nil
+	}
+
+	return &TokenUsage{
+		InputTokens:  run.InputTokens,
+		OutputTokens: run.OutputTokens,
+		TotalTokens:  run.TotalTokens,
+	}
+}
+
+func usageField[T any](usage *T, getter func(*T) int64) *int64 {
+	if usage == nil {
+		return nil
+	}
+
+	value := getter(usage)
+	return &value
 }
 
 func validateUUID(value, field string) error {

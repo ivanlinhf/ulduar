@@ -17,6 +17,9 @@ type Run struct {
 	UserMessageID      string
 	AssistantMessageID string
 	ProviderResponseID string
+	InputTokens        *int64
+	OutputTokens       *int64
+	TotalTokens        *int64
 	Status             string
 	ErrorCode          string
 	StartedAt          time.Time
@@ -28,6 +31,9 @@ type CreateRunParams struct {
 	UserMessageID      string
 	AssistantMessageID string
 	ProviderResponseID string
+	InputTokens        *int64
+	OutputTokens       *int64
+	TotalTokens        *int64
 	Status             string
 	ErrorCode          string
 	StartedAt          time.Time
@@ -38,6 +44,9 @@ type UpdateRunStateParams struct {
 	ID                 string
 	AssistantMessageID string
 	ProviderResponseID string
+	InputTokens        *int64
+	OutputTokens       *int64
+	TotalTokens        *int64
 	Status             string
 	ErrorCode          string
 	CompletedAt        *time.Time
@@ -74,6 +83,9 @@ func (r *RunRepository) Create(ctx context.Context, params CreateRunParams) (Run
 		UserMessageID:      userMessageID,
 		AssistantMessageID: assistantMessageID,
 		ProviderResponseID: textValue(params.ProviderResponseID),
+		InputTokens:        int8PointerValue(params.InputTokens),
+		OutputTokens:       int8PointerValue(params.OutputTokens),
+		TotalTokens:        int8PointerValue(params.TotalTokens),
 		Status:             params.Status,
 		ErrorCode:          textValue(params.ErrorCode),
 		StartedAt:          timestamptzValue(params.StartedAt),
@@ -89,6 +101,29 @@ func (r *RunRepository) Create(ctx context.Context, params CreateRunParams) (Run
 	}
 
 	return run, nil
+}
+
+func (r *RunRepository) ListBySession(ctx context.Context, sessionID string) ([]Run, error) {
+	id, err := parseUUID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("parse session id: %w", err)
+	}
+
+	rows, err := r.queries.ListRunsBySession(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("list runs for session %s: %w", sessionID, err)
+	}
+
+	runs := make([]Run, 0, len(rows))
+	for _, row := range rows {
+		run, err := mapRun(row)
+		if err != nil {
+			return nil, fmt.Errorf("map run for session %s: %w", sessionID, err)
+		}
+		runs = append(runs, run)
+	}
+
+	return runs, nil
 }
 
 func (r *RunRepository) GetByID(ctx context.Context, runID string) (Run, error) {
@@ -128,6 +163,9 @@ func (r *RunRepository) UpdateState(ctx context.Context, params UpdateRunStatePa
 		ID:                 id,
 		AssistantMessageID: assistantMessageID,
 		ProviderResponseID: textValue(params.ProviderResponseID),
+		InputTokens:        int8PointerValue(params.InputTokens),
+		OutputTokens:       int8PointerValue(params.OutputTokens),
+		TotalTokens:        int8PointerValue(params.TotalTokens),
 		Status:             params.Status,
 		ErrorCode:          textValue(params.ErrorCode),
 		CompletedAt:        timestamptzPointerValue(params.CompletedAt),
@@ -162,6 +200,9 @@ func mapRun(row dbsqlc.ChatRun) (Run, error) {
 		UserMessageID:      row.UserMessageID.String(),
 		AssistantMessageID: nullableUUID(row.AssistantMessageID),
 		ProviderResponseID: nullableText(row.ProviderResponseID),
+		InputTokens:        nullableInt8(row.InputTokens),
+		OutputTokens:       nullableInt8(row.OutputTokens),
+		TotalTokens:        nullableInt8(row.TotalTokens),
 		Status:             row.Status,
 		ErrorCode:          nullableText(row.ErrorCode),
 		StartedAt:          row.StartedAt.Time,
@@ -210,4 +251,24 @@ func nullableTime(value pgtype.Timestamptz) *time.Time {
 
 	t := value.Time
 	return &t
+}
+
+func int8PointerValue(value *int64) pgtype.Int8 {
+	if value == nil {
+		return pgtype.Int8{}
+	}
+
+	return pgtype.Int8{
+		Int64: *value,
+		Valid: true,
+	}
+}
+
+func nullableInt8(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+
+	v := value.Int64
+	return &v
 }

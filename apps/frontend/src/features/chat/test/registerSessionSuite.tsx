@@ -47,11 +47,15 @@ export function registerSessionSuite(context: AppTestContext) {
         runId: "44444444-4444-4444-4444-444444444444",
         messageId: "33333333-3333-3333-3333-333333333333",
         modelName: "gpt-5",
+        inputTokens: 45,
+        outputTokens: 78,
+        totalTokens: 123,
       });
     });
 
     expect(screen.getByText("Explain this")).toBeInTheDocument();
     expect(screen.getByText("Assistant reply")).toBeInTheDocument();
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
+    expect(screen.getByText("123 tokens")).toBeInTheDocument();
   });
 }
