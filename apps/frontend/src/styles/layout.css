@@ -218,10 +218,12 @@
   background: var(--surface-strong);
   box-shadow: 0 20px 48px rgba(64, 41, 15, 0.16);
   opacity: 0;
+  pointer-events: none;
   transform: translateY(-4px);
   transition:
     opacity 160ms ease,
     transform 160ms ease;
+  visibility: hidden;
 }
 
 .action-tooltip-below .action-tooltip-panel {
@@ -240,11 +242,11 @@
   right: 0;
 }
 
-.action-tooltip-anchor:hover .action-tooltip-panel,
-.action-tooltip-anchor:focus-within .action-tooltip-panel {
+.action-tooltip-panel[data-open="true"] {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+  visibility: visible;
 }
 
 .action-tooltip-label {

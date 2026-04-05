@@ -36,10 +36,10 @@ export function ActionTooltip({
       ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
           "aria-describedby": [
             (children.props as { "aria-describedby"?: string })["aria-describedby"],
-            tooltipId,
+            isOpen ? tooltipId : undefined,
           ]
             .filter(Boolean)
-            .join(" "),
+            .join(" ") || undefined,
         })
       : children;
 
@@ -63,7 +63,7 @@ export function ActionTooltip({
       <div
         aria-hidden={!isOpen}
         className={tooltipClassNames}
-        hidden={!isOpen}
+        data-open={isOpen ? "true" : "false"}
         id={tooltipId}
         role="tooltip"
       >
