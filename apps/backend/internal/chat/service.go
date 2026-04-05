@@ -55,6 +55,8 @@ type Service struct {
 	responseTimeout     time.Duration
 	streamTimeout       time.Duration
 	finalizationTimeout time.Duration
+	loadRunForSessionFn func(context.Context, string, string) (repository.Run, error)
+	getMessageByIDFn    func(context.Context, string) (repository.Message, error)
 }
 
 type ServiceOptions struct {
@@ -136,6 +138,19 @@ func (s *Service) GetSession(ctx context.Context, sessionID string) (SessionView
 }
 
 func (s *Service) loadSessionView(ctx context.Context, sessionID string) (SessionView, error) {
+	view, err := s.loadSessionMessages(ctx, sessionID)
+	if err != nil {
+		return SessionView{}, err
+	}
+
+	if err := s.enrichMessageTokenUsage(ctx, sessionID, view.Messages); err != nil {
+		return SessionView{}, err
+	}
+
+	return view, nil
+}
+
+func (s *Service) loadSessionMessages(ctx context.Context, sessionID string) (SessionView, error) {
 	if err := validateUUID(sessionID, "sessionId"); err != nil {
 		return SessionView{}, err
 	}
@@ -143,7 +158,6 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 	sessionRepo := repository.NewSessionRepository(s.db)
 	messageRepo := repository.NewMessageRepository(s.db)
 	attachmentRepo := repository.NewAttachmentRepository(s.db)
-	runRepo := repository.NewRunRepository(s.db)
 
 	session, err := sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
@@ -153,23 +167,6 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 	messages, err := messageRepo.ListBySession(ctx, sessionID)
 	if err != nil {
 		return SessionView{}, fmt.Errorf("list session messages: %w", err)
-	}
-
-	runs, err := runRepo.ListBySession(ctx, sessionID)
-	if err != nil {
-		return SessionView{}, fmt.Errorf("list session runs: %w", err)
-	}
-
-	tokenUsageByMessageID := make(map[string]*TokenUsage, len(runs))
-	for _, run := range runs {
-		if run.AssistantMessageID == "" {
-			continue
-		}
-		usage := tokenUsageFromRun(run)
-		if usage == nil {
-			continue
-		}
-		tokenUsageByMessageID[run.AssistantMessageID] = usage
 	}
 
 	items := make([]MessageView, 0, len(messages))
@@ -188,7 +185,6 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 			Message:     message,
 			Content:     content,
 			Attachments: attachments,
-			TokenUsage:  tokenUsageByMessageID[message.ID],
 		})
 	}
 
@@ -196,6 +192,32 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 		Session:  session,
 		Messages: items,
 	}, nil
+}
+
+func (s *Service) enrichMessageTokenUsage(ctx context.Context, sessionID string, messages []MessageView) error {
+	runRepo := repository.NewRunRepository(s.db)
+	runs, err := runRepo.ListBySession(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("list session runs: %w", err)
+	}
+
+	tokenUsageByMessageID := make(map[string]*TokenUsage, len(runs))
+	for _, run := range runs {
+		if run.AssistantMessageID == "" {
+			continue
+		}
+		usage := tokenUsageFromRun(run)
+		if usage == nil {
+			continue
+		}
+		tokenUsageByMessageID[run.AssistantMessageID] = usage
+	}
+
+	for i := range messages {
+		messages[i].TokenUsage = tokenUsageByMessageID[messages[i].Message.ID]
+	}
+
+	return nil
 }
 
 func (s *Service) CreateMessage(ctx context.Context, params CreateMessageParams) (MessageCreation, error) {
@@ -459,6 +481,10 @@ func validateCreateMessageParams(params CreateMessageParams) error {
 }
 
 func (s *Service) loadRunForSession(ctx context.Context, sessionID, runID string) (repository.Run, error) {
+	if s.loadRunForSessionFn != nil {
+		return s.loadRunForSessionFn(ctx, sessionID, runID)
+	}
+
 	runRepo := repository.NewRunRepository(s.db)
 	run, err := runRepo.GetByID(ctx, runID)
 	if err != nil {
@@ -475,8 +501,7 @@ func (s *Service) loadRunForSession(ctx context.Context, sessionID, runID string
 }
 
 func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, emit func(RunStreamEvent) error) error {
-	messageRepo := repository.NewMessageRepository(s.db)
-	assistantMessage, err := messageRepo.GetByID(ctx, run.AssistantMessageID)
+	assistantMessage, err := s.getMessageByID(ctx, run.AssistantMessageID)
 	if err != nil {
 		return mapRepositoryError(err, "run not found")
 	}
@@ -508,6 +533,15 @@ func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, em
 		OutputTokens: run.OutputTokens,
 		TotalTokens:  run.TotalTokens,
 	})
+}
+
+func (s *Service) getMessageByID(ctx context.Context, messageID string) (repository.Message, error) {
+	if s.getMessageByIDFn != nil {
+		return s.getMessageByIDFn(ctx, messageID)
+	}
+
+	messageRepo := repository.NewMessageRepository(s.db)
+	return messageRepo.GetByID(ctx, messageID)
 }
 
 func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit func(RunStreamEvent) error) error {
