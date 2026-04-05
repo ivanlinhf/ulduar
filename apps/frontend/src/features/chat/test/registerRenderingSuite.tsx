@@ -6,7 +6,7 @@ import { markdownAssistantReply } from "./fixtures";
 import type { AppTestContext } from "./testContext";
 
 export function registerRenderingSuite(context: AppTestContext) {
-  let originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  let originalClipboardDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
@@ -477,7 +477,7 @@ export function registerRenderingSuite(context: AppTestContext) {
   });
 }
 
-function setClipboard(clipboard: { writeText: ReturnType<typeof vi.fn> } | undefined) {
+function setClipboard(clipboard: Pick<Clipboard, "writeText"> | undefined) {
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: clipboard,
