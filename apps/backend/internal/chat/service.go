@@ -55,6 +55,8 @@ type Service struct {
 	responseTimeout     time.Duration
 	streamTimeout       time.Duration
 	finalizationTimeout time.Duration
+	loadRunForSessionFn func(context.Context, string, string) (repository.Run, error)
+	getMessageByIDFn    func(context.Context, string) (repository.Message, error)
 }
 
 type ServiceOptions struct {
@@ -73,6 +75,13 @@ type MessageView struct {
 	Message     repository.Message
 	Content     MessageContent
 	Attachments []repository.Attachment
+	TokenUsage  *TokenUsage
+}
+
+type TokenUsage struct {
+	InputTokens  *int64
+	OutputTokens *int64
+	TotalTokens  *int64
 }
 
 type CreateMessageParams struct {
@@ -89,14 +98,17 @@ type MessageCreation struct {
 }
 
 type RunStreamEvent struct {
-	Type       string
-	RunID      string
-	MessageID  string
-	ResponseID string
-	ModelName  string
-	Delta      string
-	Error      string
-	ErrorCode  string
+	Type         string
+	RunID        string
+	MessageID    string
+	ResponseID   string
+	ModelName    string
+	Delta        string
+	Error        string
+	ErrorCode    string
+	InputTokens  *int64
+	OutputTokens *int64
+	TotalTokens  *int64
 }
 
 func NewService(db *pgxpool.Pool, blobs BlobStore, responses ResponseClient, options ServiceOptions) *Service {
@@ -126,6 +138,19 @@ func (s *Service) GetSession(ctx context.Context, sessionID string) (SessionView
 }
 
 func (s *Service) loadSessionView(ctx context.Context, sessionID string) (SessionView, error) {
+	view, err := s.loadSessionMessages(ctx, sessionID)
+	if err != nil {
+		return SessionView{}, err
+	}
+
+	if err := s.enrichMessageTokenUsage(ctx, sessionID, view.Messages); err != nil {
+		return SessionView{}, err
+	}
+
+	return view, nil
+}
+
+func (s *Service) loadSessionMessages(ctx context.Context, sessionID string) (SessionView, error) {
 	if err := validateUUID(sessionID, "sessionId"); err != nil {
 		return SessionView{}, err
 	}
@@ -167,6 +192,32 @@ func (s *Service) loadSessionView(ctx context.Context, sessionID string) (Sessio
 		Session:  session,
 		Messages: items,
 	}, nil
+}
+
+func (s *Service) enrichMessageTokenUsage(ctx context.Context, sessionID string, messages []MessageView) error {
+	runRepo := repository.NewRunRepository(s.db)
+	runs, err := runRepo.ListBySession(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("list session runs: %w", err)
+	}
+
+	tokenUsageByMessageID := make(map[string]*TokenUsage, len(runs))
+	for _, run := range runs {
+		if run.AssistantMessageID == "" {
+			continue
+		}
+		usage := tokenUsageFromRun(run)
+		if usage == nil {
+			continue
+		}
+		tokenUsageByMessageID[run.AssistantMessageID] = usage
+	}
+
+	for i := range messages {
+		messages[i].TokenUsage = tokenUsageByMessageID[messages[i].Message.ID]
+	}
+
+	return nil
 }
 
 func (s *Service) CreateMessage(ctx context.Context, params CreateMessageParams) (MessageCreation, error) {
@@ -349,6 +400,9 @@ func (s *Service) ExecuteRun(ctx context.Context, runID string) error {
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -427,6 +481,10 @@ func validateCreateMessageParams(params CreateMessageParams) error {
 }
 
 func (s *Service) loadRunForSession(ctx context.Context, sessionID, runID string) (repository.Run, error) {
+	if s.loadRunForSessionFn != nil {
+		return s.loadRunForSessionFn(ctx, sessionID, runID)
+	}
+
 	runRepo := repository.NewRunRepository(s.db)
 	run, err := runRepo.GetByID(ctx, runID)
 	if err != nil {
@@ -443,8 +501,7 @@ func (s *Service) loadRunForSession(ctx context.Context, sessionID, runID string
 }
 
 func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, emit func(RunStreamEvent) error) error {
-	messageRepo := repository.NewMessageRepository(s.db)
-	assistantMessage, err := messageRepo.GetByID(ctx, run.AssistantMessageID)
+	assistantMessage, err := s.getMessageByID(ctx, run.AssistantMessageID)
 	if err != nil {
 		return mapRepositoryError(err, "run not found")
 	}
@@ -467,12 +524,24 @@ func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, em
 	}
 
 	return emit(RunStreamEvent{
-		Type:       "run.completed",
-		RunID:      run.ID,
-		MessageID:  run.AssistantMessageID,
-		ResponseID: run.ProviderResponseID,
-		ModelName:  assistantMessage.ModelName,
+		Type:         "run.completed",
+		RunID:        run.ID,
+		MessageID:    run.AssistantMessageID,
+		ResponseID:   run.ProviderResponseID,
+		ModelName:    assistantMessage.ModelName,
+		InputTokens:  run.InputTokens,
+		OutputTokens: run.OutputTokens,
+		TotalTokens:  run.TotalTokens,
 	})
+}
+
+func (s *Service) getMessageByID(ctx context.Context, messageID string) (repository.Message, error) {
+	if s.getMessageByIDFn != nil {
+		return s.getMessageByIDFn(ctx, messageID)
+	}
+
+	messageRepo := repository.NewMessageRepository(s.db)
+	return messageRepo.GetByID(ctx, messageID)
 }
 
 func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit func(RunStreamEvent) error) error {
@@ -627,11 +696,14 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 	}
 
 	return emit(RunStreamEvent{
-		Type:       "run.completed",
-		RunID:      run.ID,
-		MessageID:  run.AssistantMessageID,
-		ResponseID: responseMeta.ID,
-		ModelName:  responseMeta.Model,
+		Type:         "run.completed",
+		RunID:        run.ID,
+		MessageID:    run.AssistantMessageID,
+		ResponseID:   responseMeta.ID,
+		ModelName:    responseMeta.Model,
+		InputTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens: usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 	})
 }
 
@@ -684,6 +756,9 @@ func (s *Service) completeRun(ctx context.Context, run repository.Run, response 
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -748,6 +823,26 @@ func contentText(content MessageContent) string {
 	}
 
 	return builder.String()
+}
+
+func tokenUsageFromRun(run repository.Run) *TokenUsage {
+	if run.InputTokens == nil && run.OutputTokens == nil && run.TotalTokens == nil {
+		return nil
+	}
+
+	return &TokenUsage{
+		InputTokens:  run.InputTokens,
+		OutputTokens: run.OutputTokens,
+		TotalTokens:  run.TotalTokens,
+	}
+}
+
+func usageField[T any](usage *T, getter func(*T) *int64) *int64 {
+	if usage == nil {
+		return nil
+	}
+
+	return getter(usage)
 }
 
 func validateUUID(value, field string) error {

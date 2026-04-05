@@ -63,7 +63,8 @@
 }
 
 .status-badge,
-.model-badge {
+.model-badge,
+.token-badge {
   padding: 3px 7px;
   border-radius: 999px;
   background: rgba(32, 23, 15, 0.08);

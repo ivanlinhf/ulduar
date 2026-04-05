@@ -207,7 +207,14 @@ export function useChatApp() {
           setMessages((current) =>
             current.map((message) =>
               message.id === payload.messageId
-                ? { ...message, modelName: payload.modelName ?? message.modelName, status: "pending" }
+                ? {
+                    ...message,
+                    modelName: payload.modelName ?? message.modelName,
+                    inputTokens: payload.inputTokens ?? message.inputTokens,
+                    outputTokens: payload.outputTokens ?? message.outputTokens,
+                    totalTokens: payload.totalTokens ?? message.totalTokens,
+                    status: "pending",
+                  }
                 : message,
             ),
           );
@@ -233,6 +240,9 @@ export function useChatApp() {
                     ...message,
                     status: "completed",
                     modelName: payload.modelName ?? message.modelName,
+                    inputTokens: payload.inputTokens ?? message.inputTokens,
+                    outputTokens: payload.outputTokens ?? message.outputTokens,
+                    totalTokens: payload.totalTokens ?? message.totalTokens,
                   }
                 : message,
             ),

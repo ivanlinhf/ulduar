@@ -264,6 +264,8 @@ Returns session metadata and ordered messages for that session.
 
 This endpoint is mainly useful while the SPA is still open. There is no v1 flow to rediscover a lost `sessionId`.
 
+Completed assistant messages may include optional `inputTokens`, `outputTokens`, and `totalTokens` fields populated from provider-reported usage.
+
 ### `POST /api/v1/sessions/{sessionId}/messages`
 
 Accepts:
@@ -288,8 +290,10 @@ Suggested event types:
 
 - `run.started`
 - `message.delta`
-- `message.completed`
+- `run.completed`
 - `run.failed`
+
+When available, `run.completed` includes optional numeric `inputTokens`, `outputTokens`, and `totalTokens` fields from the provider response usage.
 
 ## Frontend Behavior
 

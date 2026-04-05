@@ -62,13 +62,16 @@ type sessionDetailResponse struct {
 }
 
 type messageResponse struct {
-	MessageID   string               `json:"messageId"`
-	Role        string               `json:"role"`
-	Status      string               `json:"status"`
-	ModelName   string               `json:"modelName,omitempty"`
-	CreatedAt   time.Time            `json:"createdAt"`
-	Content     chat.MessageContent  `json:"content"`
-	Attachments []attachmentResponse `json:"attachments"`
+	MessageID    string               `json:"messageId"`
+	Role         string               `json:"role"`
+	Status       string               `json:"status"`
+	ModelName    string               `json:"modelName,omitempty"`
+	InputTokens  *int64               `json:"inputTokens,omitempty"`
+	OutputTokens *int64               `json:"outputTokens,omitempty"`
+	TotalTokens  *int64               `json:"totalTokens,omitempty"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	Content      chat.MessageContent  `json:"content"`
+	Attachments  []attachmentResponse `json:"attachments"`
 }
 
 type attachmentResponse struct {
@@ -246,13 +249,16 @@ func (h *Handler) getSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		messages = append(messages, messageResponse{
-			MessageID:   item.Message.ID,
-			Role:        item.Message.Role,
-			Status:      item.Message.Status,
-			ModelName:   item.Message.ModelName,
-			CreatedAt:   item.Message.CreatedAt,
-			Content:     item.Content,
-			Attachments: attachments,
+			MessageID:    item.Message.ID,
+			Role:         item.Message.Role,
+			Status:       item.Message.Status,
+			ModelName:    item.Message.ModelName,
+			InputTokens:  tokenUsageField(item.TokenUsage, func(usage *chat.TokenUsage) *int64 { return usage.InputTokens }),
+			OutputTokens: tokenUsageField(item.TokenUsage, func(usage *chat.TokenUsage) *int64 { return usage.OutputTokens }),
+			TotalTokens:  tokenUsageField(item.TokenUsage, func(usage *chat.TokenUsage) *int64 { return usage.TotalTokens }),
+			CreatedAt:    item.Message.CreatedAt,
+			Content:      item.Content,
+			Attachments:  attachments,
 		})
 	}
 
@@ -306,7 +312,7 @@ func (h *Handler) streamRunHandler(w http.ResponseWriter, r *http.Request) {
 		r.PathValue("sessionId"),
 		r.PathValue("runId"),
 		func(event chat.RunStreamEvent) error {
-			payload := map[string]string{
+			payload := map[string]any{
 				"runId":     event.RunID,
 				"messageId": event.MessageID,
 			}
@@ -324,6 +330,15 @@ func (h *Handler) streamRunHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			if event.ErrorCode != "" {
 				payload["errorCode"] = event.ErrorCode
+			}
+			if event.InputTokens != nil {
+				payload["inputTokens"] = *event.InputTokens
+			}
+			if event.OutputTokens != nil {
+				payload["outputTokens"] = *event.OutputTokens
+			}
+			if event.TotalTokens != nil {
+				payload["totalTokens"] = *event.TotalTokens
 			}
 
 			if err := writeSSEEvent(w, event.Type, payload); err != nil {
@@ -412,6 +427,14 @@ func coalesceText(values ...string) string {
 	}
 
 	return ""
+}
+
+func tokenUsageField[T any](value *T, getter func(*T) *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+
+	return getter(value)
 }
 
 func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {

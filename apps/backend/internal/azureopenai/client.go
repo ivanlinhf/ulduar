@@ -64,7 +64,14 @@ type Response struct {
 	Status     string         `json:"status"`
 	OutputText string         `json:"output_text"`
 	Output     []ResponseItem `json:"output"`
+	Usage      *ResponseUsage `json:"usage,omitempty"`
 	Error      *ResponseError `json:"error,omitempty"`
+}
+
+type ResponseUsage struct {
+	InputTokens  *int64 `json:"input_tokens,omitempty"`
+	OutputTokens *int64 `json:"output_tokens,omitempty"`
+	TotalTokens  *int64 `json:"total_tokens,omitempty"`
 }
 
 type ResponseItem struct {

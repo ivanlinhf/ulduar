@@ -27,6 +27,9 @@ export type StreamEventPayload = {
   messageId: string;
   responseId?: string;
   modelName?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
   delta?: string;
   error?: string;
   errorCode?: string;

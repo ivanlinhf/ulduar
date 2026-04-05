@@ -21,7 +21,7 @@ const (
 )
 
 func (s *Service) ReconstructConversation(ctx context.Context, sessionID string) ([]azureopenai.InputMessage, error) {
-	view, err := s.loadSessionView(ctx, sessionID)
+	view, err := s.loadSessionMessages(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (s *Service) ReconstructConversation(ctx context.Context, sessionID string)
 }
 
 func (s *Service) ReconstructConversationForTurn(ctx context.Context, sessionID, userMessageID string) ([]azureopenai.InputMessage, error) {
-	view, err := s.loadSessionView(ctx, sessionID)
+	view, err := s.loadSessionMessages(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}

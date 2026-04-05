@@ -37,6 +37,9 @@ type ChatRun struct {
 	UserMessageID      pgtype.UUID        `json:"user_message_id"`
 	AssistantMessageID pgtype.UUID        `json:"assistant_message_id"`
 	ProviderResponseID pgtype.Text        `json:"provider_response_id"`
+	InputTokens        pgtype.Int8        `json:"input_tokens"`
+	OutputTokens       pgtype.Int8        `json:"output_tokens"`
+	TotalTokens        pgtype.Int8        `json:"total_tokens"`
 	Status             string             `json:"status"`
 	ErrorCode          pgtype.Text        `json:"error_code"`
 	StartedAt          pgtype.Timestamptz `json:"started_at"`

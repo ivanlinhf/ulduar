@@ -1,6 +1,7 @@
 package azureopenai
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -38,5 +39,69 @@ func TestReadSSEStreamParsesDataFrames(t *testing.T) {
 	}
 	if events[2] != "[DONE]" {
 		t.Fatalf("unexpected done event: %q", events[2])
+	}
+}
+
+func TestResponseDecodesUsage(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"id": "resp_123",
+		"model": "gpt-5",
+		"status": "completed",
+		"usage": {
+			"input_tokens": 45,
+			"output_tokens": 78,
+			"total_tokens": 123
+		}
+	}`)
+
+	var response Response
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if response.Usage == nil {
+		t.Fatal("response.Usage is nil")
+	}
+	if response.Usage.InputTokens == nil || *response.Usage.InputTokens != 45 {
+		t.Fatalf("response.Usage.InputTokens = %v", response.Usage.InputTokens)
+	}
+	if response.Usage.OutputTokens == nil || *response.Usage.OutputTokens != 78 {
+		t.Fatalf("response.Usage.OutputTokens = %v", response.Usage.OutputTokens)
+	}
+	if response.Usage.TotalTokens == nil || *response.Usage.TotalTokens != 123 {
+		t.Fatalf("response.Usage.TotalTokens = %v", response.Usage.TotalTokens)
+	}
+}
+
+func TestResponseDecodesPartialUsageWithoutDefaultingMissingFieldsToZero(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"id": "resp_124",
+		"model": "gpt-5",
+		"status": "completed",
+		"usage": {
+			"total_tokens": 123
+		}
+	}`)
+
+	var response Response
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if response.Usage == nil {
+		t.Fatal("response.Usage is nil")
+	}
+	if response.Usage.InputTokens != nil {
+		t.Fatalf("response.Usage.InputTokens = %v, want nil", response.Usage.InputTokens)
+	}
+	if response.Usage.OutputTokens != nil {
+		t.Fatalf("response.Usage.OutputTokens = %v, want nil", response.Usage.OutputTokens)
+	}
+	if response.Usage.TotalTokens == nil || *response.Usage.TotalTokens != 123 {
+		t.Fatalf("response.Usage.TotalTokens = %v", response.Usage.TotalTokens)
 	}
 }

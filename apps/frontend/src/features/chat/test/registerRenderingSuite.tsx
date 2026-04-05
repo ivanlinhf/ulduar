@@ -95,6 +95,33 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(assistantMessage?.querySelector("pre code")).toHaveTextContent("const answer = 42");
   });
 
+  it("renders a fallback token badge when only input and output counts are available", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Show token counts");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+        inputTokens: 45,
+        outputTokens: 78,
+      });
+    });
+
+    expect(screen.getByText("in 45 / out 78")).toBeInTheDocument();
+  });
+
   it("renders literal html-like assistant text visibly", async () => {
     context.mockSuccessfulCreateMessage();
 
