@@ -3,6 +3,7 @@ import type { ChangeEvent, KeyboardEvent, RefObject, SubmitEvent } from "react";
 import { attachmentInputAccept } from "../constants";
 import { compactMediaType, formatBytes } from "../utils";
 import type { ChatAttachment, SubmissionState } from "../types";
+import { ActionTooltip } from "./ActionTooltip";
 import { IconAttachment, IconExpand, IconSend, IconSpinner } from "./icons";
 
 type ChatComposerProps = {
@@ -57,28 +58,36 @@ export function ChatComposer({
           rows={5}
           disabled={busy}
         />
-        <button
-          className="composer-expand-button"
-          type="button"
-          onClick={onOpenExpandedComposer}
-          aria-label="Expand message editor"
-          disabled={busy}
+        <ActionTooltip
+          align="right"
+          side="below"
+          wrapperClassName="composer-expand-tooltip"
+          content={<span className="action-tooltip-label">Expand editor</span>}
         >
-          <IconExpand />
-        </button>
+          <button
+            className="composer-expand-button"
+            type="button"
+            onClick={onOpenExpandedComposer}
+            aria-label="Expand message editor"
+            disabled={busy}
+          >
+            <IconExpand />
+          </button>
+        </ActionTooltip>
       </div>
 
       <div className="composer-toolbar">
-        <button
-          aria-label="Add attachments"
-          className="attachment-button icon-only-button"
-          disabled={busy}
-          onClick={onOpenFilePicker}
-          title="Add attachments"
-          type="button"
-        >
-          <IconAttachment />
-        </button>
+        <ActionTooltip side="above" content={<span className="action-tooltip-label">Add attachments</span>}>
+          <button
+            aria-label="Add attachments"
+            className="attachment-button icon-only-button"
+            disabled={busy}
+            onClick={onOpenFilePicker}
+            type="button"
+          >
+            <IconAttachment />
+          </button>
+        </ActionTooltip>
         <input
           ref={fileInputRef}
           className="visually-hidden-file-input"
@@ -92,15 +101,20 @@ export function ChatComposer({
 
         <div className="composer-submit">
           <span className="composer-hint">Shift + Enter to send</span>
-          <button
-            aria-label={submitButtonLabel}
-            className="primary-button icon-only-button send-button"
-            disabled={!canSubmit}
-            title={submitButtonLabel}
-            type="submit"
+          <ActionTooltip
+            align="right"
+            side="above"
+            content={<span className="action-tooltip-label">{submitButtonLabel}</span>}
           >
-            {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
-          </button>
+            <button
+              aria-label={submitButtonLabel}
+              className="primary-button icon-only-button send-button"
+              disabled={!canSubmit}
+              type="submit"
+            >
+              {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
+            </button>
+          </ActionTooltip>
         </div>
       </div>
 

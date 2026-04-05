@@ -1,3 +1,5 @@
+import { ActionTooltip } from "./features/chat/components/ActionTooltip";
+import { IconInfo, IconNewChat } from "./features/chat/components/icons";
 import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ChatHero } from "./features/chat/components/ChatHero";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
@@ -6,6 +8,7 @@ import { useChatApp } from "./features/chat/useChatApp";
 
 export default function App() {
   const chat = useChatApp();
+  const turnCount = chat.messages.filter((message) => message.role === "user").length;
 
   return (
     <div className="app-shell">
@@ -13,16 +16,50 @@ export default function App() {
       <div className="app-backdrop app-backdrop-right" />
 
       <main className="app-frame" ref={chat.appFrameRef} aria-hidden={chat.isExpandedComposerOpen ? "true" : undefined}>
-        <ChatHero
-          bootstrapState={chat.bootstrapState}
-          messageCount={chat.messages.length}
-          onNewChat={chat.startNewChat}
-          sessionId={chat.sessionId}
-        />
+        <ChatHero />
 
         <section className="chat-panel">
           <header className="chat-header">
             <p className="chat-subtitle">{chat.chatSubtitle}</p>
+
+            <div className="chat-header-actions">
+              <ActionTooltip
+                align="right"
+                wrapperClassName="session-info"
+                tooltipClassName="session-info-tooltip"
+                content={
+                  <div className="session-info-tooltip-content">
+                    <div className="session-info-row">
+                      <span>Session ID</span>
+                      <strong>{chat.sessionId || "Pending"}</strong>
+                    </div>
+                    <div className="session-info-row">
+                      <span>Turn count</span>
+                      <strong>{turnCount}</strong>
+                    </div>
+                  </div>
+                }
+              >
+                <button
+                  aria-label="Session details"
+                  className="secondary-button icon-only-button info-button"
+                  type="button"
+                >
+                  <IconInfo />
+                </button>
+              </ActionTooltip>
+
+              <ActionTooltip align="right" content={<span className="action-tooltip-label">New chat</span>}>
+                <button
+                  aria-label="New chat"
+                  className="secondary-button icon-only-button new-chat-button"
+                  onClick={chat.startNewChat}
+                  type="button"
+                >
+                  <IconNewChat />
+                </button>
+              </ActionTooltip>
+            </div>
           </header>
 
           <MessageList

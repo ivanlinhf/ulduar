@@ -10,6 +10,12 @@
   position: relative;
 }
 
+.composer-expand-tooltip {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
 .composer-input {
   resize: none;
   min-height: 140px;
@@ -29,9 +35,6 @@
 }
 
 .composer-expand-button {
-  position: absolute;
-  top: 16px;
-  right: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

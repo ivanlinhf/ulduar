@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { compactMediaType, formatBytes } from "../utils";
 import type { ChatMessage } from "../types";
+import { ActionTooltip } from "./ActionTooltip";
 
 type MessageCardProps = {
   message: ChatMessage;
@@ -128,18 +129,22 @@ function AssistantMessageToolbar({ message }: { message: ChatMessage }) {
 
   return (
     <div className="message-toolbar" role="toolbar" aria-label="Assistant message actions">
-      <button
-        type="button"
-        className="message-toolbar-button"
-        aria-label={copied ? "Copied assistant message" : "Copy assistant message"}
-        title={copied ? "Copied" : "Copy"}
-        onClick={() => {
-          void handleCopy();
-        }}
-        disabled={!canCopyMessage}
+      <ActionTooltip
+        tooltipClassName="message-action-tooltip"
+        content={<span className="action-tooltip-label message-action-tooltip-label">Copy message</span>}
       >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
+        <button
+          type="button"
+          className="message-toolbar-button"
+          aria-label={copied ? "Copied assistant message" : "Copy assistant message"}
+          onClick={() => {
+            void handleCopy();
+          }}
+          disabled={!canCopyMessage}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+      </ActionTooltip>
       {copied ? (
         <span className="message-toolbar-feedback" role="status">
           Copied

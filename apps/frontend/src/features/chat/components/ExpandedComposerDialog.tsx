@@ -1,6 +1,7 @@
 import type { ChangeEvent, KeyboardEvent, MouseEvent, RefObject } from "react";
 
 import type { SubmissionState } from "../types";
+import { ActionTooltip } from "./ActionTooltip";
 import { IconSend, IconSpinner } from "./icons";
 
 type ExpandedComposerDialogProps = {
@@ -62,16 +63,21 @@ export function ExpandedComposerDialog({
         <div className="composer-dialog-footer">
           <div className="composer-dialog-actions">
             <span className="composer-hint">Shift + Enter to send</span>
-            <button
-              aria-label={submitButtonLabel}
-              className="primary-button icon-only-button send-button"
-              type="button"
-              onClick={() => void onSendClick()}
-              disabled={!canSubmit}
-              title={submitButtonLabel}
+            <ActionTooltip
+              align="right"
+              side="above"
+              content={<span className="action-tooltip-label">{submitButtonLabel}</span>}
             >
-              {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
-            </button>
+              <button
+                aria-label={submitButtonLabel}
+                className="primary-button icon-only-button send-button"
+                type="button"
+                onClick={() => void onSendClick()}
+                disabled={!canSubmit}
+              >
+                {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
+              </button>
+            </ActionTooltip>
           </div>
         </div>
       </section>
