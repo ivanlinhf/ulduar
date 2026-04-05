@@ -28,7 +28,7 @@ export default function App() {
                 wrapperClassName="session-info"
                 tooltipClassName="session-info-tooltip"
                 content={
-                  <div className="session-info-tooltip-content" role="tooltip">
+                  <div className="session-info-tooltip-content">
                     <div className="session-info-row">
                       <span>Session ID</span>
                       <strong>{chat.sessionId || "Pending"}</strong>

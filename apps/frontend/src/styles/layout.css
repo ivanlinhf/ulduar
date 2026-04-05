@@ -134,6 +134,10 @@
   margin-left: auto;
 }
 
+.chat-header-actions .secondary-button {
+  margin-left: 0;
+}
+
 .action-tooltip-anchor {
   position: relative;
   display: inline-flex;
@@ -214,7 +218,6 @@
   background: var(--surface-strong);
   box-shadow: 0 20px 48px rgba(64, 41, 15, 0.16);
   opacity: 0;
-  pointer-events: none;
   transform: translateY(-4px);
   transition:
     opacity 160ms ease,
@@ -241,6 +244,7 @@
 .action-tooltip-anchor:focus-within .action-tooltip-panel {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
 .action-tooltip-label {
