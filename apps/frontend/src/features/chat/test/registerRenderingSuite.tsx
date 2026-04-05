@@ -15,10 +15,9 @@ export function registerRenderingSuite(context: AppTestContext) {
   afterEach(() => {
     if (originalClipboardDescriptor) {
       Object.defineProperty(window.navigator, "clipboard", originalClipboardDescriptor);
-      return;
+    } else {
+      Reflect.deleteProperty(window.navigator, "clipboard");
     }
-
-    Reflect.deleteProperty(window.navigator, "clipboard");
   });
 
   it("renders common markdown and gfm content in assistant output", async () => {
