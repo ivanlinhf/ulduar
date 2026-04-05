@@ -89,7 +89,6 @@
 .history-sidebar-footer,
 .history-row p,
 .history-row-meta {
-  margin: 0;
   color: var(--muted);
 }
 
