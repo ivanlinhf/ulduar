@@ -8,6 +8,16 @@ export function IconNewChat() {
   );
 }
 
+export function IconInfo() {
+  return (
+    <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 10v6" />
+      <path d="M12 7.25h.01" />
+    </svg>
+  );
+}
+
 export function IconAttachment() {
   return (
     <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">

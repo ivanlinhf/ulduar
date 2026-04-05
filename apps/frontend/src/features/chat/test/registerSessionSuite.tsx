@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 
@@ -10,7 +10,12 @@ export function registerSessionSuite(context: AppTestContext) {
 
     expect(context.mockedCreateSession).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Ready for the next turn.")).toBeInTheDocument();
-    expect(screen.getByText("11111111")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Session details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+    const tooltip = screen.getByRole("tooltip");
+    expect(within(tooltip).getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
+    expect(within(tooltip).getByText("Turn count")).toBeInTheDocument();
+    expect(within(tooltip).getByText("0")).toBeInTheDocument();
   });
 
   it("sends a message and renders streamed assistant output", async () => {
@@ -57,5 +62,6 @@ export function registerSessionSuite(context: AppTestContext) {
     expect(screen.getByText("Assistant reply")).toBeInTheDocument();
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
     expect(screen.getByText("123 tokens")).toBeInTheDocument();
+    expect(within(screen.getByRole("tooltip")).getByText("1")).toBeInTheDocument();
   });
 }
