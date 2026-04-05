@@ -14,6 +14,7 @@ import (
 type Session struct {
 	ID            string
 	Status        string
+	Title         string
 	CreatedAt     time.Time
 	LastMessageAt time.Time
 }
@@ -81,6 +82,23 @@ func (r *SessionRepository) TouchLastMessageAt(ctx context.Context, sessionID st
 	return nil
 }
 
+func (r *SessionRepository) SetTitleIfEmpty(ctx context.Context, sessionID string, title string) error {
+	id, err := parseUUID(sessionID)
+	if err != nil {
+		return fmt.Errorf("parse session id: %w", err)
+	}
+
+	_, err = r.queries.SetSessionTitleIfEmpty(ctx, dbsqlc.SetSessionTitleIfEmptyParams{
+		ID:    id,
+		Title: pgtype.Text{String: title, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("set session title %s: %w", sessionID, err)
+	}
+
+	return nil
+}
+
 func mapSession(row dbsqlc.ChatSession) (Session, error) {
 	if !row.ID.Valid {
 		return Session{}, errors.New("session id is invalid")
@@ -95,6 +113,7 @@ func mapSession(row dbsqlc.ChatSession) (Session, error) {
 	return Session{
 		ID:            row.ID.String(),
 		Status:        row.Status,
+		Title:         row.Title.String,
 		CreatedAt:     row.CreatedAt.Time,
 		LastMessageAt: row.LastMessageAt.Time,
 	}, nil

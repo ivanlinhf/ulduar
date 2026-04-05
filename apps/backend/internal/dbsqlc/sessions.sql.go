@@ -13,7 +13,7 @@ import (
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO chat_sessions DEFAULT VALUES
-RETURNING id, status, created_at, last_message_at
+RETURNING id, status, title, created_at, last_message_at
 `
 
 func (q *Queries) CreateSession(ctx context.Context) (ChatSession, error) {
@@ -22,6 +22,7 @@ func (q *Queries) CreateSession(ctx context.Context) (ChatSession, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Status,
+		&i.Title,
 		&i.CreatedAt,
 		&i.LastMessageAt,
 	)
@@ -29,7 +30,7 @@ func (q *Queries) CreateSession(ctx context.Context) (ChatSession, error) {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, status, created_at, last_message_at
+SELECT id, status, title, created_at, last_message_at
 FROM chat_sessions
 WHERE id = $1
 `
@@ -40,6 +41,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (ChatSession, 
 	err := row.Scan(
 		&i.ID,
 		&i.Status,
+		&i.Title,
 		&i.CreatedAt,
 		&i.LastMessageAt,
 	)
@@ -54,6 +56,26 @@ WHERE id = $1
 
 func (q *Queries) TouchSessionLastMessageAt(ctx context.Context, id pgtype.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, touchSessionLastMessageAt, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setSessionTitleIfEmpty = `-- name: SetSessionTitleIfEmpty :execrows
+UPDATE chat_sessions
+SET title = $2
+WHERE id = $1
+  AND (title IS NULL OR title = '')
+`
+
+type SetSessionTitleIfEmptyParams struct {
+	ID    pgtype.UUID `json:"id"`
+	Title pgtype.Text `json:"title"`
+}
+
+func (q *Queries) SetSessionTitleIfEmpty(ctx context.Context, arg SetSessionTitleIfEmptyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setSessionTitleIfEmpty, arg.ID, arg.Title)
 	if err != nil {
 		return 0, err
 	}

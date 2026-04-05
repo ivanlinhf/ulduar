@@ -49,6 +49,7 @@ type ChatRun struct {
 type ChatSession struct {
 	ID            pgtype.UUID        `json:"id"`
 	Status        string             `json:"status"`
+	Title         pgtype.Text        `json:"title"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	LastMessageAt pgtype.Timestamptz `json:"last_message_at"`
 }

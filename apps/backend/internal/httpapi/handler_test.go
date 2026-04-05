@@ -47,8 +47,44 @@ func TestCreateSessionHandler(t *testing.T) {
 	if payload.SessionID != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("payload.SessionID = %q", payload.SessionID)
 	}
+	if payload.Title != nil {
+		t.Fatalf("payload.Title = %v, want nil", payload.Title)
+	}
 	if got := recorder.Header().Get("X-Request-Id"); got == "" {
 		t.Fatal("X-Request-Id header is empty")
+	}
+}
+
+func TestCreateSessionHandlerIncludesTitle(t *testing.T) {
+	service := &fakeChatService{
+		createSessionFn: func(context.Context) (repository.Session, error) {
+			now := time.Date(2026, 3, 31, 9, 0, 0, 0, time.UTC)
+			return repository.Session{
+				ID:            "11111111-1111-1111-1111-111111111111",
+				Status:        "active",
+				Title:         "Hello world",
+				CreatedAt:     now,
+				LastMessageAt: now,
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", nil)
+
+	NewHandler(service).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusCreated)
+	}
+
+	var payload sessionResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if payload.Title == nil || *payload.Title != "Hello world" {
+		t.Fatalf("payload.Title = %v, want %q", payload.Title, "Hello world")
 	}
 }
 

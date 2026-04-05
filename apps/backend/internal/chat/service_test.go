@@ -122,3 +122,50 @@ func TestStreamRunReplaysCompletedRunWithPersistedTokenUsage(t *testing.T) {
 		t.Fatalf("events[1].TotalTokens = %v, want %d", events[1].TotalTokens, totalTokens)
 	}
 }
+
+func TestDeriveSessionTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty string", input: "", want: ""},
+		{name: "whitespace only", input: "   \t\n  ", want: ""},
+		{name: "simple message", input: "Hello world", want: "Hello world"},
+		{name: "normalizes whitespace", input: "  Hello   world  ", want: "Hello world"},
+		{name: "multiline takes first sentence", input: "First line.\nSecond line.", want: "First line."},
+		{name: "sentence boundary", input: "Ask about Go. Then ask about Rust.", want: "Ask about Go."},
+		{name: "no sentence boundary", input: "Ask about Go and Rust", want: "Ask about Go and Rust"},
+		{name: "empty input from null bytes", input: "", want: ""},
+		{
+			name:  "truncates long non-empty text",
+			input: "Explain the concept of distributed systems and how they relate to modern computing practices in great detail",
+			want:  "Explain the concept of distributed systems and how they relate to modern computi",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := deriveSessionTitle(test.input)
+			if got != test.want {
+				t.Fatalf("deriveSessionTitle(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestDeriveSessionTitleTruncatesAt80(t *testing.T) {
+	t.Parallel()
+
+	longText := ""
+	for i := range 100 {
+		longText += string(rune('a' + (i % 26)))
+	}
+
+	got := deriveSessionTitle(longText)
+	if len(got) != sessionTitleMaxLength {
+		t.Fatalf("len(deriveSessionTitle) = %d, want %d", len(got), sessionTitleMaxLength)
+	}
+}

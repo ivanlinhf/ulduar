@@ -120,10 +120,13 @@ This flow is correct for v1 and satisfies the reboot-survival requirement.
 - `created_at`
 - `last_message_at`
 - `status`
+- `title` nullable
 
 Suggested `status` values:
 
 - `active`
+
+The `title` column is nullable. New sessions start without a title. A deterministic title is derived from the first user text message and stored once. Later messages do not overwrite the title.
 
 ### `chat_messages`
 

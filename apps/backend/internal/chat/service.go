@@ -316,6 +316,12 @@ func (s *Service) CreateMessage(ctx context.Context, params CreateMessageParams)
 		return MessageCreation{}, mapRepositoryError(err, "session not found")
 	}
 
+	if title := deriveSessionTitle(params.Text); title != "" {
+		if err := sessionRepo.SetTitleIfEmpty(ctx, params.SessionID, title); err != nil {
+			return MessageCreation{}, fmt.Errorf("set session title: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return MessageCreation{}, fmt.Errorf("commit transaction: %w", err)
 	}
@@ -896,4 +902,27 @@ func (s *Service) withFinalizationTimeout(ctx context.Context) (context.Context,
 	}
 
 	return context.WithTimeout(base, s.finalizationTimeout)
+}
+
+const sessionTitleMaxLength = 80
+
+// deriveSessionTitle produces a deterministic title from the first user message text.
+// It normalizes whitespace, takes the first non-empty line or sentence, and truncates
+// to sessionTitleMaxLength characters. Returns "" if the input has no usable text.
+func deriveSessionTitle(text string) string {
+	normalized := strings.Join(strings.Fields(text), " ")
+	if normalized == "" {
+		return ""
+	}
+
+	// Use the first sentence boundary (period followed by a space or end) if present.
+	if idx := strings.Index(normalized, ". "); idx >= 0 {
+		normalized = normalized[:idx+1]
+	}
+
+	if len(normalized) > sessionTitleMaxLength {
+		normalized = normalized[:sessionTitleMaxLength]
+	}
+
+	return normalized
 }

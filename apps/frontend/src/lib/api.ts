@@ -1,6 +1,7 @@
 export type SessionResponse = {
   sessionId: string;
   status: string;
+  title?: string | null;
   createdAt: string;
   lastMessageAt: string;
 };
@@ -49,6 +50,10 @@ export async function createSession(): Promise<SessionResponse> {
   return requestJSON<SessionResponse>("/api/v1/sessions", {
     method: "POST",
   });
+}
+
+export async function getSession(sessionId: string): Promise<SessionResponse> {
+  return requestJSON<SessionResponse>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {});
 }
 
 export async function createMessage(input: {

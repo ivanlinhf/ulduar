@@ -7,6 +7,7 @@ import * as api from "../../../lib/api";
 export function setupAppTestContext() {
   const mockedCreateSession = vi.mocked(api.createSession);
   const mockedCreateMessage = vi.mocked(api.createMessage);
+  const mockedGetSession = vi.mocked(api.getSession);
   const mockedStreamRun = vi.mocked(api.streamRun);
 
   let streamHandlers: Parameters<typeof api.streamRun>[2] | undefined;
@@ -20,6 +21,12 @@ export function setupAppTestContext() {
       status: "active",
       createdAt: "2026-03-31T10:00:00Z",
       lastMessageAt: "2026-03-31T10:00:00Z",
+    });
+    mockedGetSession.mockResolvedValue({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      status: "active",
+      createdAt: "2026-03-31T10:00:00Z",
+      lastMessageAt: "2026-03-31T10:01:00Z",
     });
     mockedStreamRun.mockImplementation((_sessionId, _runId, handlers) => {
       streamHandlers = handlers;
@@ -59,6 +66,7 @@ export function setupAppTestContext() {
     mockSuccessfulCreateMessage,
     mockedCreateMessage,
     mockedCreateSession,
+    mockedGetSession,
     renderApp,
     requireStreamHandlers,
     waitForReady,

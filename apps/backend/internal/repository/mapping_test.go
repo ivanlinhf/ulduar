@@ -13,6 +13,7 @@ func TestMapSession(t *testing.T) {
 	row := dbsqlc.ChatSession{
 		ID:            mustUUID(t, "11111111-1111-1111-1111-111111111111"),
 		Status:        "active",
+		Title:         textValue("Hello world"),
 		CreatedAt:     mustTime(now),
 		LastMessageAt: mustTime(now.Add(2 * time.Minute)),
 	}
@@ -25,8 +26,30 @@ func TestMapSession(t *testing.T) {
 	if session.ID != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("session.ID = %q", session.ID)
 	}
+	if session.Title != "Hello world" {
+		t.Fatalf("session.Title = %q", session.Title)
+	}
 	if session.LastMessageAt != now.Add(2*time.Minute) {
 		t.Fatalf("session.LastMessageAt = %v", session.LastMessageAt)
+	}
+}
+
+func TestMapSessionWithNullTitle(t *testing.T) {
+	now := time.Date(2026, 3, 31, 10, 0, 0, 0, time.UTC)
+	row := dbsqlc.ChatSession{
+		ID:            mustUUID(t, "11111111-1111-1111-1111-111111111111"),
+		Status:        "active",
+		CreatedAt:     mustTime(now),
+		LastMessageAt: mustTime(now.Add(2 * time.Minute)),
+	}
+
+	session, err := mapSession(row)
+	if err != nil {
+		t.Fatalf("mapSession() error = %v", err)
+	}
+
+	if session.Title != "" {
+		t.Fatalf("session.Title = %q, want empty", session.Title)
 	}
 }
 

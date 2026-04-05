@@ -30,6 +30,10 @@ export default function App() {
                 content={
                   <div className="session-info-tooltip-content">
                     <div className="session-info-row">
+                      <span>Title</span>
+                      <strong>{chat.sessionTitle ?? "Not set yet"}</strong>
+                    </div>
+                    <div className="session-info-row">
                       <span>Session ID</span>
                       <strong>{chat.sessionId || "Pending"}</strong>
                     </div>

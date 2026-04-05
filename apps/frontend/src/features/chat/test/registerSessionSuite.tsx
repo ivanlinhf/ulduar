@@ -16,8 +16,29 @@ export function registerSessionSuite(context: AppTestContext) {
     await userEvent.hover(sessionDetailsButton);
     const tooltip = getSessionDetailsTooltip();
     expect(within(tooltip).getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
+    expect(within(tooltip).getByText("Title")).toBeInTheDocument();
+    expect(within(tooltip).getByText("Not set yet")).toBeInTheDocument();
     expect(within(tooltip).getByText("Turn count")).toBeInTheDocument();
     expect(within(tooltip).getByText("0")).toBeInTheDocument();
+  });
+
+  it("shows session title in tooltip when title exists", async () => {
+    context.mockedCreateSession.mockResolvedValue({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      status: "active",
+      title: "Hello world",
+      createdAt: "2026-03-31T10:00:00Z",
+      lastMessageAt: "2026-03-31T10:00:00Z",
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
+    await userEvent.hover(sessionDetailsButton);
+    const tooltip = getSessionDetailsTooltip();
+    expect(within(tooltip).getByText("Hello world")).toBeInTheDocument();
+    expect(within(tooltip).queryByText("Not set yet")).not.toBeInTheDocument();
   });
 
   it("sends a message and renders streamed assistant output", async () => {
@@ -67,6 +88,44 @@ export function registerSessionSuite(context: AppTestContext) {
     const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
     await userEvent.hover(sessionDetailsButton);
     expect(getSessionDetailsTooltip()).toHaveTextContent("1");
+  });
+
+  it("updates session title after first message run completes", async () => {
+    context.mockSuccessfulCreateMessage();
+    context.mockedGetSession.mockResolvedValue({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      status: "active",
+      title: "Explain this",
+      createdAt: "2026-03-31T10:00:00Z",
+      lastMessageAt: "2026-03-31T10:01:00Z",
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Explain this");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.mockedCreateMessage).toHaveBeenCalled();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+      });
+    });
+
+    await waitFor(() => {
+      expect(context.mockedGetSession).toHaveBeenCalledWith("11111111-1111-1111-1111-111111111111");
+    });
+
+    const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
+    await userEvent.hover(sessionDetailsButton);
+    const tooltip = getSessionDetailsTooltip();
+    expect(within(tooltip).getByText("Explain this")).toBeInTheDocument();
   });
 }
 

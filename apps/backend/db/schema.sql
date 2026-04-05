@@ -3,6 +3,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE chat_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     status TEXT NOT NULL DEFAULT 'active',
+    title TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chat_sessions_status_check CHECK (status IN ('active'))

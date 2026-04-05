@@ -49,6 +49,7 @@ type healthResponse struct {
 type sessionResponse struct {
 	SessionID     string    `json:"sessionId"`
 	Status        string    `json:"status"`
+	Title         *string   `json:"title,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	LastMessageAt time.Time `json:"lastMessageAt,omitempty"`
 }
@@ -56,6 +57,7 @@ type sessionResponse struct {
 type sessionDetailResponse struct {
 	SessionID     string            `json:"sessionId"`
 	Status        string            `json:"status"`
+	Title         *string           `json:"title,omitempty"`
 	CreatedAt     time.Time         `json:"createdAt"`
 	LastMessageAt time.Time         `json:"lastMessageAt"`
 	Messages      []messageResponse `json:"messages"`
@@ -221,6 +223,7 @@ func (h *Handler) createSessionHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, sessionResponse{
 		SessionID:     session.ID,
 		Status:        session.Status,
+		Title:         optionalString(session.Title),
 		CreatedAt:     session.CreatedAt,
 		LastMessageAt: session.LastMessageAt,
 	})
@@ -265,6 +268,7 @@ func (h *Handler) getSessionHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessionDetailResponse{
 		SessionID:     view.Session.ID,
 		Status:        view.Session.Status,
+		Title:         optionalString(view.Session.Title),
 		CreatedAt:     view.Session.CreatedAt,
 		LastMessageAt: view.Session.LastMessageAt,
 		Messages:      messages,
@@ -435,6 +439,14 @@ func tokenUsageField[T any](value *T, getter func(*T) *int64) *int64 {
 	}
 
 	return getter(value)
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+
+	return &value
 }
 
 func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {

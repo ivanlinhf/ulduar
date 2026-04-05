@@ -11,7 +11,7 @@ import {
   type UIEvent,
 } from "react";
 
-import { createMessage, createSession, streamRun } from "../../lib/api";
+import { createMessage, createSession, getSession, streamRun } from "../../lib/api";
 import type { BootstrapState, ChatMessage, SubmissionState } from "./types";
 import {
   createLocalId,
@@ -27,6 +27,7 @@ export function useChatApp() {
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>("idle");
   const [submissionState, setSubmissionState] = useState<SubmissionState>("idle");
   const [sessionId, setSessionId] = useState("");
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isExpandedComposerOpen, setIsExpandedComposerOpen] = useState(false);
@@ -119,6 +120,7 @@ export function useChatApp() {
     setScreenError("");
     setMessages([]);
     setSessionId("");
+    setSessionTitle(null);
     setComposerText("");
     setIsExpandedComposerOpen(false);
     setSelectedFiles([]);
@@ -127,6 +129,7 @@ export function useChatApp() {
       const session = await createSession();
       startTransition(() => {
         setSessionId(session.sessionId);
+        setSessionTitle(session.title ?? null);
         setBootstrapState("ready");
       });
     } catch (error) {
@@ -247,6 +250,7 @@ export function useChatApp() {
                 : message,
             ),
           );
+          refreshSessionTitle();
         },
         onRunFailed: (payload) => {
           closeStream();
@@ -422,6 +426,21 @@ export function useChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
   }
 
+  async function refreshSessionTitle() {
+    if (sessionTitle !== null || sessionId === "") {
+      return;
+    }
+
+    try {
+      const session = await getSession(sessionId);
+      if (session.title) {
+        setSessionTitle(session.title);
+      }
+    } catch {
+      // Title refresh is best-effort; do not surface errors.
+    }
+  }
+
   return {
     appFrameRef,
     attachmentSummary,
@@ -450,6 +469,7 @@ export function useChatApp() {
     removeAttachment,
     screenError,
     sessionId,
+    sessionTitle,
     submissionState,
     submitButtonLabel,
     submitFromExpandedComposer: () => submitComposer({ closeExpandedComposer: true }),
