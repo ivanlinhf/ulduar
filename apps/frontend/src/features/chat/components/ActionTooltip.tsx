@@ -3,7 +3,6 @@ import {
   isValidElement,
   useId,
   useState,
-  type FocusEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -25,7 +24,9 @@ export function ActionTooltip({
   tooltipClassName = "",
   wrapperClassName = "",
 }: ActionTooltipProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const isOpen = isHovered || isFocused;
   const tooltipId = useId();
   const wrapperClassNames = ["action-tooltip-anchor", `action-tooltip-${align}`, `action-tooltip-${side}`, wrapperClassName]
     .filter(Boolean)
@@ -43,21 +44,19 @@ export function ActionTooltip({
         })
       : children;
 
-  function handleBlur(event: FocusEvent<HTMLDivElement>) {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      return;
-    }
-
-    setIsOpen(false);
-  }
-
   return (
     <div
       className={wrapperClassNames}
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
-      onFocusCapture={() => setIsOpen(true)}
-      onBlurCapture={handleBlur}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          return;
+        }
+
+        setIsFocused(false);
+      }}
     >
       {child}
       <div
