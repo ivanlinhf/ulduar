@@ -1,11 +1,22 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
 import { markdownAssistantReply } from "./fixtures";
 import type { AppTestContext } from "./testContext";
 
 export function registerRenderingSuite(context: AppTestContext) {
+  const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+
+  afterEach(() => {
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(window.navigator, "clipboard", originalClipboardDescriptor);
+      return;
+    }
+
+    Reflect.deleteProperty(window.navigator, "clipboard");
+  });
+
   it("renders common markdown and gfm content in assistant output", async () => {
     context.mockSuccessfulCreateMessage();
 
@@ -316,11 +327,8 @@ export function registerRenderingSuite(context: AppTestContext) {
 
   it("renders assistant-only copy controls and disables copy until text is available", async () => {
     context.mockSuccessfulCreateMessage();
-    Object.defineProperty(window.navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
+    setClipboard({
+      writeText: vi.fn().mockResolvedValue(undefined),
     });
 
     context.renderApp();
@@ -359,11 +367,8 @@ export function registerRenderingSuite(context: AppTestContext) {
     context.mockSuccessfulCreateMessage();
 
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(window.navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText,
-      },
+    setClipboard({
+      writeText,
     });
 
     context.renderApp();
@@ -400,11 +405,8 @@ export function registerRenderingSuite(context: AppTestContext) {
     context.mockSuccessfulCreateMessage();
 
     const writeText = vi.fn().mockRejectedValue(new Error("copy failed"));
-    Object.defineProperty(window.navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText,
-      },
+    setClipboard({
+      writeText,
     });
 
     context.renderApp();
@@ -436,5 +438,44 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(within(assistantMessage!).getByText("Still visible after failure")).toBeInTheDocument();
     expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
     expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeEnabled();
+  });
+
+  it("keeps assistant copy disabled when clipboard API is unavailable", async () => {
+    context.mockSuccessfulCreateMessage();
+    setClipboard(undefined);
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy unsupported");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(within(assistantMessage!).getByRole("toolbar", { name: "Assistant message actions" })).toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeDisabled();
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Assistant text",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeDisabled();
+  });
+}
+
+function setClipboard(clipboard: { writeText: ReturnType<typeof vi.fn> } | undefined) {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
   });
 }
