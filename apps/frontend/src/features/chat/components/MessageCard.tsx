@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
+import { useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,10 +10,8 @@ type MessageCardProps = {
 };
 
 type MarkdownLinkProps = { node?: unknown } & ComponentPropsWithoutRef<"a">;
-type CopyState = "idle" | "copied";
 
 export function MessageCard({ message }: MessageCardProps) {
-  const [copyState, setCopyState] = useState<CopyState>("idle");
   const tokenUsageLabel = formatTokenUsage(message);
   const tokenUsageTitle =
     message.inputTokens !== undefined || message.outputTokens !== undefined || message.totalTokens !== undefined
@@ -25,39 +23,6 @@ export function MessageCard({ message }: MessageCardProps) {
           .filter(Boolean)
           .join(" / ")
       : undefined;
-  const canCopyMessage = Boolean(message.text) && typeof navigator.clipboard?.writeText === "function";
-
-  useEffect(() => {
-    setCopyState("idle");
-  }, [message.id, message.text]);
-
-  useEffect(() => {
-    if (copyState !== "copied") {
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setCopyState("idle");
-    }, 2000);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [copyState]);
-
-  async function handleCopy() {
-    if (!canCopyMessage) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(message.text);
-      setCopyState("copied");
-    } catch {
-      setCopyState("idle");
-    }
-  }
-
   return (
     <article className={`message-card message-${message.role}`}>
       <div className="message-meta">
@@ -113,27 +78,74 @@ export function MessageCard({ message }: MessageCardProps) {
       </div>
 
       {message.role === "assistant" ? (
-        <div className="message-toolbar" role="toolbar" aria-label="Assistant message actions">
-          <button
-            type="button"
-            className="message-toolbar-button"
-            aria-label={copyState === "copied" ? "Copied assistant message" : "Copy assistant message"}
-            title={copyState === "copied" ? "Copied" : "Copy"}
-            onClick={() => {
-              void handleCopy();
-            }}
-            disabled={!canCopyMessage}
-          >
-            {copyState === "copied" ? <CheckIcon /> : <CopyIcon />}
-          </button>
-          {copyState === "copied" ? (
-            <span className="message-toolbar-feedback" role="status">
-              Copied
-            </span>
-          ) : null}
-        </div>
+        <AssistantMessageToolbar message={message} />
       ) : null}
     </article>
+  );
+}
+
+function AssistantMessageToolbar({ message }: { message: ChatMessage }) {
+  const [copied, setCopied] = useState(false);
+  const resetCopiedTimeoutRef = useRef<number | undefined>(undefined);
+  const canCopyMessage = Boolean(message.text) && typeof navigator.clipboard?.writeText === "function";
+
+  useEffect(() => {
+    setCopied(false);
+    if (resetCopiedTimeoutRef.current !== undefined) {
+      window.clearTimeout(resetCopiedTimeoutRef.current);
+      resetCopiedTimeoutRef.current = undefined;
+    }
+  }, [message.id, message.text]);
+
+  useEffect(
+    () => () => {
+      if (resetCopiedTimeoutRef.current !== undefined) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  async function handleCopy() {
+    if (!canCopyMessage) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopied(true);
+      if (resetCopiedTimeoutRef.current !== undefined) {
+        window.clearTimeout(resetCopiedTimeoutRef.current);
+      }
+      resetCopiedTimeoutRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetCopiedTimeoutRef.current = undefined;
+      }, 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="message-toolbar" role="toolbar" aria-label="Assistant message actions">
+      <button
+        type="button"
+        className="message-toolbar-button"
+        aria-label={copied ? "Copied assistant message" : "Copy assistant message"}
+        title={copied ? "Copied" : "Copy"}
+        onClick={() => {
+          void handleCopy();
+        }}
+        disabled={!canCopyMessage}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+      {copied ? (
+        <span className="message-toolbar-feedback" role="status">
+          Copied
+        </span>
+      ) : null}
+    </div>
   );
 }
 

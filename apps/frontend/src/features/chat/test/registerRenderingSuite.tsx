@@ -13,6 +13,8 @@ export function registerRenderingSuite(context: AppTestContext) {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+
     if (originalClipboardDescriptor) {
       Object.defineProperty(window.navigator, "clipboard", originalClipboardDescriptor);
     } else {
@@ -402,6 +404,77 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(writeText).toHaveBeenCalledWith("Copy this exact text");
     expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
     expect(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" })).toBeInTheDocument();
+  });
+
+  it("restarts copied feedback timing when the assistant message is copied again", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({
+      writeText,
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy twice");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Copy this twice",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+
+    vi.useFakeTimers();
+
+    const copyButton = within(assistantMessage!).getByRole("button", { name: "Copy assistant message" });
+    await act(async () => {
+      fireEvent.click(copyButton);
+    });
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    await act(async () => {
+      fireEvent.click(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" }));
+    });
+
+    expect(writeText).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+
+    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeInTheDocument();
   });
 
   it("keeps the assistant message usable when clipboard copy fails", async () => {
