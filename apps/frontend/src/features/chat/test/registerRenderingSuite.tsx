@@ -1,12 +1,16 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { markdownAssistantReply } from "./fixtures";
 import type { AppTestContext } from "./testContext";
 
 export function registerRenderingSuite(context: AppTestContext) {
-  const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  let originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+
+  beforeEach(() => {
+    originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  });
 
   afterEach(() => {
     if (originalClipboardDescriptor) {
