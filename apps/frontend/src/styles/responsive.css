@@ -8,6 +8,15 @@
     grid-template-columns: 1fr;
   }
 
+  .history-sidebar {
+    height: auto;
+    padding: 22px;
+  }
+
+  .history-sidebar-search {
+    grid-template-columns: 1fr;
+  }
+
   .chat-panel {
     height: var(--chat-panel-height);
   }
