@@ -86,21 +86,21 @@ export function MessageCard({ message }: MessageCardProps) {
 
 function AssistantMessageToolbar({ message }: { message: ChatMessage }) {
   const [copied, setCopied] = useState(false);
-  const resetCopiedTimeoutRef = useRef<number | undefined>(undefined);
+  const copiedTimeoutIdRef = useRef<number | undefined>(undefined);
   const canCopyMessage = Boolean(message.text) && typeof navigator.clipboard?.writeText === "function";
 
   useEffect(() => {
     setCopied(false);
-    if (resetCopiedTimeoutRef.current !== undefined) {
-      window.clearTimeout(resetCopiedTimeoutRef.current);
-      resetCopiedTimeoutRef.current = undefined;
+    if (copiedTimeoutIdRef.current !== undefined) {
+      window.clearTimeout(copiedTimeoutIdRef.current);
+      copiedTimeoutIdRef.current = undefined;
     }
   }, [message.id, message.text]);
 
   useEffect(
     () => () => {
-      if (resetCopiedTimeoutRef.current !== undefined) {
-        window.clearTimeout(resetCopiedTimeoutRef.current);
+      if (copiedTimeoutIdRef.current !== undefined) {
+        window.clearTimeout(copiedTimeoutIdRef.current);
       }
     },
     [],
@@ -114,12 +114,12 @@ function AssistantMessageToolbar({ message }: { message: ChatMessage }) {
     try {
       await navigator.clipboard.writeText(message.text);
       setCopied(true);
-      if (resetCopiedTimeoutRef.current !== undefined) {
-        window.clearTimeout(resetCopiedTimeoutRef.current);
+      if (copiedTimeoutIdRef.current !== undefined) {
+        window.clearTimeout(copiedTimeoutIdRef.current);
       }
-      resetCopiedTimeoutRef.current = window.setTimeout(() => {
+      copiedTimeoutIdRef.current = window.setTimeout(() => {
         setCopied(false);
-        resetCopiedTimeoutRef.current = undefined;
+        copiedTimeoutIdRef.current = undefined;
       }, 2000);
     } catch {
       setCopied(false);

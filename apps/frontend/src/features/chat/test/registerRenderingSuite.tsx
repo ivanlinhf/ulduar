@@ -13,8 +13,6 @@ export function registerRenderingSuite(context: AppTestContext) {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-
     if (originalClipboardDescriptor) {
       Object.defineProperty(window.navigator, "clipboard", originalClipboardDescriptor);
     } else {
@@ -438,43 +436,46 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(assistantMessage).not.toBeNull();
 
     vi.useFakeTimers();
+    try {
+      const copyButton = within(assistantMessage!).getByRole("button", { name: "Copy assistant message" });
+      await act(async () => {
+        fireEvent.click(copyButton);
+      });
 
-    const copyButton = within(assistantMessage!).getByRole("button", { name: "Copy assistant message" });
-    await act(async () => {
-      fireEvent.click(copyButton);
-    });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
 
-    expect(writeText).toHaveBeenCalledTimes(1);
-    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
 
-    act(() => {
-      vi.advanceTimersByTime(1500);
-    });
+      await act(async () => {
+        fireEvent.click(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" }));
+      });
 
-    await act(async () => {
-      fireEvent.click(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" }));
-    });
+      expect(writeText).toHaveBeenCalledTimes(2);
 
-    expect(writeText).toHaveBeenCalledTimes(2);
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
 
-    act(() => {
-      vi.advanceTimersByTime(1500);
-    });
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
 
-    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(499);
+      });
 
-    act(() => {
-      vi.advanceTimersByTime(499);
-    });
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
 
-    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
 
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
-    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeInTheDocument();
+      expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
+      expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the assistant message usable when clipboard copy fails", async () => {
