@@ -915,9 +915,11 @@ func deriveSessionTitle(text string) string {
 		return ""
 	}
 
-	// Use the first sentence boundary (period followed by a space or end) if present.
+	// Use the first sentence boundary (period followed by a space or end of string).
 	if idx := strings.Index(normalized, ". "); idx >= 0 {
 		normalized = normalized[:idx+1]
+	} else if strings.HasSuffix(normalized, ".") {
+		// Already a complete sentence; keep as-is before truncation.
 	}
 
 	if len(normalized) > sessionTitleMaxLength {

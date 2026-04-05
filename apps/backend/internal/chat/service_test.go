@@ -137,6 +137,7 @@ func TestDeriveSessionTitle(t *testing.T) {
 		{name: "normalizes whitespace", input: "  Hello   world  ", want: "Hello world"},
 		{name: "multiline takes first sentence", input: "First line.\nSecond line.", want: "First line."},
 		{name: "sentence boundary", input: "Ask about Go. Then ask about Rust.", want: "Ask about Go."},
+		{name: "sentence at end of string", input: "Ask about Go.", want: "Ask about Go."},
 		{name: "no sentence boundary", input: "Ask about Go and Rust", want: "Ask about Go and Rust"},
 		{name: "empty input from null bytes", input: "", want: ""},
 		{

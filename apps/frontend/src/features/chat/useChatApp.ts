@@ -427,7 +427,7 @@ export function useChatApp() {
   }
 
   async function refreshSessionTitle() {
-    if (sessionTitle !== null || sessionId === "") {
+    if ((sessionTitle !== null && sessionTitle !== "") || sessionId === "") {
       return;
     }
 
