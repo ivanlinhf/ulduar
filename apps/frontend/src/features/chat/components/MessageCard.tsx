@@ -25,11 +25,11 @@ export function MessageCard({ message }: MessageCardProps) {
           .filter(Boolean)
           .join(" / ")
       : undefined;
-  const hasCopyableText = Boolean(message.text);
+  const canCopyMessage = Boolean(message.text) && typeof navigator.clipboard?.writeText === "function";
 
   useEffect(() => {
     setCopyState("idle");
-  }, [message.id]);
+  }, [message.id, message.text]);
 
   useEffect(() => {
     if (copyState !== "copied") {
@@ -46,7 +46,7 @@ export function MessageCard({ message }: MessageCardProps) {
   }, [copyState]);
 
   async function handleCopy() {
-    if (!message.text || typeof navigator.clipboard?.writeText !== "function") {
+    if (!canCopyMessage) {
       return;
     }
 
@@ -122,7 +122,7 @@ export function MessageCard({ message }: MessageCardProps) {
             onClick={() => {
               void handleCopy();
             }}
-            disabled={!hasCopyableText}
+            disabled={!canCopyMessage}
           >
             {copyState === "copied" ? <CheckIcon /> : <CopyIcon />}
           </button>

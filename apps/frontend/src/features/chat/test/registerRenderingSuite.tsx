@@ -316,6 +316,12 @@ export function registerRenderingSuite(context: AppTestContext) {
 
   it("renders assistant-only copy controls and disables copy until text is available", async () => {
     context.mockSuccessfulCreateMessage();
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
 
     context.renderApp();
     await context.waitForReady();
