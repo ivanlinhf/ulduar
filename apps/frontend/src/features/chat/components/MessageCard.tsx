@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef } from "react";
+import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,8 +10,10 @@ type MessageCardProps = {
 };
 
 type MarkdownLinkProps = { node?: unknown } & ComponentPropsWithoutRef<"a">;
+type CopyState = "idle" | "copied";
 
 export function MessageCard({ message }: MessageCardProps) {
+  const [copyState, setCopyState] = useState<CopyState>("idle");
   const tokenUsageLabel = formatTokenUsage(message);
   const tokenUsageTitle =
     message.inputTokens !== undefined || message.outputTokens !== undefined || message.totalTokens !== undefined
@@ -23,6 +25,38 @@ export function MessageCard({ message }: MessageCardProps) {
           .filter(Boolean)
           .join(" / ")
       : undefined;
+  const hasCopyableText = Boolean(message.text);
+
+  useEffect(() => {
+    setCopyState("idle");
+  }, [message.id]);
+
+  useEffect(() => {
+    if (copyState !== "copied") {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyState("idle");
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copyState]);
+
+  async function handleCopy() {
+    if (!message.text || typeof navigator.clipboard?.writeText !== "function") {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopyState("copied");
+    } catch {
+      setCopyState("idle");
+    }
+  }
 
   return (
     <article className={`message-card message-${message.role}`}>
@@ -77,6 +111,28 @@ export function MessageCard({ message }: MessageCardProps) {
 
         {message.error ? <p className="message-error">{message.error}</p> : null}
       </div>
+
+      {message.role === "assistant" ? (
+        <div className="message-toolbar" role="toolbar" aria-label="Assistant message actions">
+          <button
+            type="button"
+            className="message-toolbar-button"
+            aria-label={copyState === "copied" ? "Copied assistant message" : "Copy assistant message"}
+            title={copyState === "copied" ? "Copied" : "Copy"}
+            onClick={() => {
+              void handleCopy();
+            }}
+            disabled={!hasCopyableText}
+          >
+            {copyState === "copied" ? <CheckIcon /> : <CopyIcon />}
+          </button>
+          {copyState === "copied" ? (
+            <span className="message-toolbar-feedback" role="status">
+              Copied
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -92,4 +148,42 @@ function formatTokenUsage(message: ChatMessage): string | null {
     return `in ${message.inputTokens} / out ${message.outputTokens}`;
   }
   return null;
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5A2.25 2.25 0 0 1 9 17.25z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M15 7.5V6.75A2.25 2.25 0 0 0 12.75 4.5h-7.5A2.25 2.25 0 0 0 3 6.75v7.5a2.25 2.25 0 0 0 2.25 2.25H6"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="m5.25 12.75 4.5 4.5 9-9"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
+    </svg>
+  );
 }

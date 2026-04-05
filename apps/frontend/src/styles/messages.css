@@ -175,6 +175,54 @@
   color: var(--danger);
 }
 
+.message-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.message-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.message-toolbar-button:hover:not(:disabled) {
+  background: rgba(32, 23, 15, 0.08);
+  color: var(--ink);
+}
+
+.message-toolbar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.message-toolbar-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.message-toolbar-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.message-toolbar-feedback {
+  font-size: 0.78rem;
+  color: var(--success);
+}
+
 .attachment-list {
   display: grid;
   gap: 10px;
