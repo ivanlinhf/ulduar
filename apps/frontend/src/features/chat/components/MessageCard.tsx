@@ -129,7 +129,10 @@ function AssistantMessageToolbar({ message }: { message: ChatMessage }) {
 
   return (
     <div className="message-toolbar" role="toolbar" aria-label="Assistant message actions">
-      <ActionTooltip content={<span className="action-tooltip-label">Copy message</span>}>
+      <ActionTooltip
+        tooltipClassName="message-action-tooltip"
+        content={<span className="action-tooltip-label message-action-tooltip-label">Copy message</span>}
+      >
         <button
           type="button"
           className="message-toolbar-button"
