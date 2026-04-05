@@ -34,7 +34,12 @@ export function ActionTooltip({
   const child =
     isValidElement(children) && typeof children.type !== "symbol"
       ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
-          "aria-describedby": isOpen ? tooltipId : undefined,
+          "aria-describedby": [
+            (children.props as { "aria-describedby"?: string })["aria-describedby"],
+            tooltipId,
+          ]
+            .filter(Boolean)
+            .join(" "),
         })
       : children;
 
@@ -55,11 +60,15 @@ export function ActionTooltip({
       onBlurCapture={handleBlur}
     >
       {child}
-      {isOpen ? (
-        <div className={tooltipClassNames} id={tooltipId} role="tooltip">
-          {content}
-        </div>
-      ) : null}
+      <div
+        aria-hidden={!isOpen}
+        className={tooltipClassNames}
+        hidden={!isOpen}
+        id={tooltipId}
+        role="tooltip"
+      >
+        {content}
+      </div>
     </div>
   );
 }

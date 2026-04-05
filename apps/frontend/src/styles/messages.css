@@ -223,7 +223,7 @@
   color: var(--success);
 }
 
-.message-action-tooltip {
+.action-tooltip-below .message-action-tooltip {
   top: calc(100% + 1px);
   padding: 8px 10px;
   border-radius: 12px;
