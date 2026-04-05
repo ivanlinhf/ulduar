@@ -1,7 +1,7 @@
 import { ActionTooltip } from "./features/chat/components/ActionTooltip";
 import { IconInfo, IconNewChat } from "./features/chat/components/icons";
 import { ChatComposer } from "./features/chat/components/ChatComposer";
-import { ChatHero } from "./features/chat/components/ChatHero";
+import { ChatHistorySidebar } from "./features/chat/components/ChatHistorySidebar";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
 import { MessageList } from "./features/chat/components/MessageList";
 import { useChatApp } from "./features/chat/useChatApp";
@@ -16,7 +16,7 @@ export default function App() {
       <div className="app-backdrop app-backdrop-right" />
 
       <main className="app-frame" ref={chat.appFrameRef} aria-hidden={chat.isExpandedComposerOpen ? "true" : undefined}>
-        <ChatHero />
+        <ChatHistorySidebar />
 
         <section className="chat-panel">
           <header className="chat-header">
