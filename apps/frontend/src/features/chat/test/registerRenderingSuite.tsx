@@ -1,11 +1,25 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { markdownAssistantReply } from "./fixtures";
 import type { AppTestContext } from "./testContext";
 
 export function registerRenderingSuite(context: AppTestContext) {
+  let originalClipboardDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalClipboardDescriptor = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  });
+
+  afterEach(() => {
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(window.navigator, "clipboard", originalClipboardDescriptor);
+    } else {
+      Reflect.deleteProperty(window.navigator, "clipboard");
+    }
+  });
+
   it("renders common markdown and gfm content in assistant output", async () => {
     context.mockSuccessfulCreateMessage();
 
@@ -312,5 +326,233 @@ export function registerRenderingSuite(context: AppTestContext) {
     });
 
     expect(screen.getByText("Streaming connection closed before completion")).toBeInTheDocument();
+  });
+
+  it("renders assistant-only copy controls and disables copy until text is available", async () => {
+    context.mockSuccessfulCreateMessage();
+    setClipboard({
+      writeText: vi.fn().mockResolvedValue(undefined),
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy later");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(within(assistantMessage!).getByRole("toolbar", { name: "Assistant message actions" })).toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeDisabled();
+
+    const userMessage = screen.getByText("You").closest("article");
+    expect(userMessage).not.toBeNull();
+    expect(within(userMessage!).queryByRole("toolbar")).not.toBeInTheDocument();
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Assistant text",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeEnabled();
+  });
+
+  it("copies the current assistant message text and shows success feedback", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({
+      writeText,
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy now");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Copy this exact text",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+
+    await userEvent.click(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" }));
+
+    expect(writeText).toHaveBeenCalledWith("Copy this exact text");
+    expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" })).toBeInTheDocument();
+  });
+
+  it("restarts copied feedback timing when the assistant message is copied again", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({
+      writeText,
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy twice");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Copy this twice",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+
+    vi.useFakeTimers();
+    try {
+      const copyButton = within(assistantMessage!).getByRole("button", { name: "Copy assistant message" });
+      await act(async () => {
+        fireEvent.click(copyButton);
+      });
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+
+      await act(async () => {
+        fireEvent.click(within(assistantMessage!).getByRole("button", { name: "Copied assistant message" }));
+      });
+
+      expect(writeText).toHaveBeenCalledTimes(2);
+
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(499);
+      });
+
+      expect(within(assistantMessage!).getByText("Copied")).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+
+      expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
+      expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the assistant message usable when clipboard copy fails", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const writeText = vi.fn().mockRejectedValue(new Error("copy failed"));
+    setClipboard({
+      writeText,
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy failure");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Still visible after failure",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+
+    await userEvent.click(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" }));
+
+    expect(writeText).toHaveBeenCalledWith("Still visible after failure");
+    expect(within(assistantMessage!).getByText("Still visible after failure")).toBeInTheDocument();
+    expect(within(assistantMessage!).queryByText("Copied")).not.toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeEnabled();
+  });
+
+  it("keeps assistant copy disabled when clipboard API is unavailable", async () => {
+    context.mockSuccessfulCreateMessage();
+    setClipboard(undefined);
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Copy unsupported");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    const assistantMessage = screen.getByText("Assistant").closest("article");
+    expect(assistantMessage).not.toBeNull();
+    expect(within(assistantMessage!).getByRole("toolbar", { name: "Assistant message actions" })).toBeInTheDocument();
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeDisabled();
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Assistant text",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        modelName: "gpt-5",
+      });
+    });
+
+    expect(within(assistantMessage!).getByRole("button", { name: "Copy assistant message" })).toBeDisabled();
+  });
+}
+
+function setClipboard(clipboard: Pick<Clipboard, "writeText"> | undefined) {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: clipboard,
   });
 }
