@@ -217,6 +217,7 @@
   border: 1px solid var(--line);
   background: var(--surface-strong);
   box-shadow: 0 20px 48px rgba(64, 41, 15, 0.16);
+  z-index: 10;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px);

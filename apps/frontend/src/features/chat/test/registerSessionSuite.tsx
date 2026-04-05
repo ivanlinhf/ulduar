@@ -11,12 +11,10 @@ export function registerSessionSuite(context: AppTestContext) {
     expect(context.mockedCreateSession).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Ready for the next turn.")).toBeInTheDocument();
     const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
-    const sessionDetailsTooltipAnchor = sessionDetailsButton.closest(".action-tooltip-anchor");
     expect(sessionDetailsButton).toBeInTheDocument();
-    expect(sessionDetailsTooltipAnchor).not.toBeNull();
     expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
     await userEvent.hover(sessionDetailsButton);
-    const tooltip = within(sessionDetailsTooltipAnchor as HTMLElement).getByRole("tooltip");
+    const tooltip = getSessionDetailsTooltip();
     expect(within(tooltip).getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
     expect(within(tooltip).getByText("Turn count")).toBeInTheDocument();
     expect(within(tooltip).getByText("0")).toBeInTheDocument();
@@ -67,9 +65,13 @@ export function registerSessionSuite(context: AppTestContext) {
     expect(screen.getByText("gpt-5")).toBeInTheDocument();
     expect(screen.getByText("123 tokens")).toBeInTheDocument();
     const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
-    const sessionDetailsTooltipAnchor = sessionDetailsButton.closest(".action-tooltip-anchor");
-    expect(sessionDetailsTooltipAnchor).not.toBeNull();
     await userEvent.hover(sessionDetailsButton);
-    expect(within(sessionDetailsTooltipAnchor as HTMLElement).getByRole("tooltip")).toHaveTextContent("1");
+    expect(getSessionDetailsTooltip()).toHaveTextContent("1");
   });
+}
+
+function getSessionDetailsTooltip() {
+  const tooltip = screen.getAllByRole("tooltip").find((candidate) => within(candidate).queryByText("Session ID"));
+  expect(tooltip).toBeTruthy();
+  return tooltip!;
 }
