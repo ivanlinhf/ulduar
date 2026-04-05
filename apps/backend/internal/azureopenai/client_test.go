@@ -64,13 +64,44 @@ func TestResponseDecodesUsage(t *testing.T) {
 	if response.Usage == nil {
 		t.Fatal("response.Usage is nil")
 	}
-	if response.Usage.InputTokens != 45 {
-		t.Fatalf("response.Usage.InputTokens = %d", response.Usage.InputTokens)
+	if response.Usage.InputTokens == nil || *response.Usage.InputTokens != 45 {
+		t.Fatalf("response.Usage.InputTokens = %v", response.Usage.InputTokens)
 	}
-	if response.Usage.OutputTokens != 78 {
-		t.Fatalf("response.Usage.OutputTokens = %d", response.Usage.OutputTokens)
+	if response.Usage.OutputTokens == nil || *response.Usage.OutputTokens != 78 {
+		t.Fatalf("response.Usage.OutputTokens = %v", response.Usage.OutputTokens)
 	}
-	if response.Usage.TotalTokens != 123 {
-		t.Fatalf("response.Usage.TotalTokens = %d", response.Usage.TotalTokens)
+	if response.Usage.TotalTokens == nil || *response.Usage.TotalTokens != 123 {
+		t.Fatalf("response.Usage.TotalTokens = %v", response.Usage.TotalTokens)
+	}
+}
+
+func TestResponseDecodesPartialUsageWithoutDefaultingMissingFieldsToZero(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"id": "resp_124",
+		"model": "gpt-5",
+		"status": "completed",
+		"usage": {
+			"total_tokens": 123
+		}
+	}`)
+
+	var response Response
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if response.Usage == nil {
+		t.Fatal("response.Usage is nil")
+	}
+	if response.Usage.InputTokens != nil {
+		t.Fatalf("response.Usage.InputTokens = %v, want nil", response.Usage.InputTokens)
+	}
+	if response.Usage.OutputTokens != nil {
+		t.Fatalf("response.Usage.OutputTokens = %v, want nil", response.Usage.OutputTokens)
+	}
+	if response.Usage.TotalTokens == nil || *response.Usage.TotalTokens != 123 {
+		t.Fatalf("response.Usage.TotalTokens = %v", response.Usage.TotalTokens)
 	}
 }

@@ -378,9 +378,9 @@ func (s *Service) ExecuteRun(ctx context.Context, runID string) error {
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
-		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
-		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
-		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -667,9 +667,9 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 		MessageID:    run.AssistantMessageID,
 		ResponseID:   responseMeta.ID,
 		ModelName:    responseMeta.Model,
-		InputTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
-		OutputTokens: usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
-		TotalTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
+		InputTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens: usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:  usageField(responseMeta.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 	})
 }
 
@@ -722,9 +722,9 @@ func (s *Service) completeRun(ctx context.Context, run repository.Run, response 
 		ID:                 run.ID,
 		AssistantMessageID: run.AssistantMessageID,
 		ProviderResponseID: response.ID,
-		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.InputTokens }),
-		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.OutputTokens }),
-		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) int64 { return usage.TotalTokens }),
+		InputTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.InputTokens }),
+		OutputTokens:       usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.OutputTokens }),
+		TotalTokens:        usageField(response.Usage, func(usage *azureopenai.ResponseUsage) *int64 { return usage.TotalTokens }),
 		Status:             runStatusCompleted,
 		CompletedAt:        &completedAt,
 	}); err != nil {
@@ -803,13 +803,12 @@ func tokenUsageFromRun(run repository.Run) *TokenUsage {
 	}
 }
 
-func usageField[T any](usage *T, getter func(*T) int64) *int64 {
+func usageField[T any](usage *T, getter func(*T) *int64) *int64 {
 	if usage == nil {
 		return nil
 	}
 
-	value := getter(usage)
-	return &value
+	return getter(usage)
 }
 
 func validateUUID(value, field string) error {
