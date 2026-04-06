@@ -353,7 +353,7 @@ export function useChatApp() {
       return;
     }
 
-    const nextFiles = [...selectedFiles, ...files.map((file) => ({ id: crypto.randomUUID(), file }))];
+    const nextFiles = [...selectedFiles, ...files.map((file) => ({ id: createLocalId("attachment"), file }))];
     const validationError = validateAttachments(nextFiles.map((a) => a.file));
     if (validationError) {
       setScreenError(validationError);
