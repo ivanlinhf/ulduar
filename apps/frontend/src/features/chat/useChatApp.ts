@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { createMessage, createSession, streamRun } from "../../lib/api";
-import type { BootstrapState, ChatMessage, SubmissionState } from "./types";
+import type { BootstrapState, ChatMessage, SelectedAttachment, SubmissionState } from "./types";
 import {
   createLocalId,
   fileToAttachment,
@@ -29,7 +29,7 @@ export function useChatApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [composerText, setComposerText] = useState("");
   const [isExpandedComposerOpen, setIsExpandedComposerOpen] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
   const [screenError, setScreenError] = useState("");
   const appFrameRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
@@ -131,7 +131,7 @@ export function useChatApp() {
       return;
     }
 
-    const validationError = validateAttachments(selectedFiles);
+    const validationError = validateAttachments(selectedFiles.map((a) => a.file));
     if (validationError) {
       setScreenError(validationError);
       return;
@@ -160,7 +160,7 @@ export function useChatApp() {
         status: "completed",
         createdAt: now,
         text: draftText.trim(),
-        attachments: draftFiles.map(fileToAttachment),
+        attachments: draftFiles.map((a) => fileToAttachment(a.file)),
       },
       {
         id: optimisticAssistantId,
@@ -176,7 +176,7 @@ export function useChatApp() {
       const created = await createMessage({
         sessionId,
         text: draftText,
-        attachments: draftFiles,
+        attachments: draftFiles.map((a) => a.file),
       });
 
       setMessages((current) =>
@@ -353,8 +353,8 @@ export function useChatApp() {
       return;
     }
 
-    const nextFiles = [...selectedFiles, ...files];
-    const validationError = validateAttachments(nextFiles);
+    const nextFiles = [...selectedFiles, ...files.map((file) => ({ id: crypto.randomUUID(), file }))];
+    const validationError = validateAttachments(nextFiles.map((a) => a.file));
     if (validationError) {
       setScreenError(validationError);
       return;
@@ -390,8 +390,8 @@ export function useChatApp() {
     fileInputRef.current?.click();
   }
 
-  function removeAttachment(filename: string) {
-    setSelectedFiles((current) => current.filter((file) => file.name !== filename));
+  function removeAttachment(id: string) {
+    setSelectedFiles((current) => current.filter((a) => a.id !== id));
   }
 
   function closeStream() {

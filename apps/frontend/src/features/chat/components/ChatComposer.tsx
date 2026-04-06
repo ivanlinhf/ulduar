@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
 
 import { attachmentInputAccept } from "../constants";
-import type { SubmissionState } from "../types";
+import type { SelectedAttachment, SubmissionState } from "../types";
 import { ActionTooltip } from "./ActionTooltip";
 import { IconAttachment, IconClose, IconExpand, IconSend, IconSpinner } from "./icons";
 
@@ -14,12 +14,12 @@ type ChatComposerProps = {
   onFileSelection: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenExpandedComposer: () => void;
   onOpenFilePicker: () => void;
-  onRemoveAttachment: (filename: string) => void;
+  onRemoveAttachment: (id: string) => void;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
   onTextChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onTextareaKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   screenError: string;
-  selectedFiles: File[];
+  selectedFiles: SelectedAttachment[];
   submissionState: SubmissionState;
   submitButtonLabel: string;
 };
@@ -42,15 +42,15 @@ export function ChatComposer({
   submissionState,
   submitButtonLabel,
 }: ChatComposerProps) {
-  const [previewUrls, setPreviewUrls] = useState<Map<number, string>>(new Map());
+  const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    const urls = new Map<number, string>();
-    selectedFiles.forEach((file, index) => {
+    const urls = new Map<string, string>();
+    for (const { id, file } of selectedFiles) {
       if (file.type.startsWith("image/")) {
-        urls.set(index, URL.createObjectURL(file));
+        urls.set(id, URL.createObjectURL(file));
       }
-    });
+    }
     setPreviewUrls(urls);
 
     return () => {
@@ -120,10 +120,10 @@ export function ChatComposer({
             tabIndex={-1}
           />
 
-          {selectedFiles.map((file, index) => {
-            const previewUrl = previewUrls.get(index);
+          {selectedFiles.map(({ id, file }) => {
+            const previewUrl = previewUrls.get(id);
             return previewUrl ? (
-              <div key={index} className="attachment-chip">
+              <div key={id} className="attachment-chip">
                 <img
                   className="attachment-chip-thumb"
                   src={previewUrl}
@@ -133,7 +133,7 @@ export function ChatComposer({
                 <button
                   className="attachment-remove-button"
                   aria-label={`Remove ${file.name}`}
-                  onClick={() => onRemoveAttachment(file.name)}
+                  onClick={() => onRemoveAttachment(id)}
                   type="button"
                   disabled={busy}
                 >
@@ -141,14 +141,14 @@ export function ChatComposer({
                 </button>
               </div>
             ) : (
-              <div key={index} className="attachment-chip attachment-chip-file">
+              <div key={id} className="attachment-chip attachment-chip-file">
                 <span className="attachment-chip-name" title={file.name}>
                   {file.name}
                 </span>
                 <button
                   className="attachment-remove-button"
                   aria-label={`Remove ${file.name}`}
-                  onClick={() => onRemoveAttachment(file.name)}
+                  onClick={() => onRemoveAttachment(id)}
                   type="button"
                   disabled={busy}
                 >
