@@ -12,6 +12,7 @@ import {
 
 import { createMessage, createSession, streamRun } from "../../lib/api";
 import type { BootstrapState, ChatMessage, SelectedAttachment, SubmissionState } from "./types";
+import { attachmentToastDurationMs } from "./constants";
 import {
   createLocalId,
   fileToAttachment,
@@ -31,6 +32,7 @@ export function useChatApp() {
   const [isExpandedComposerOpen, setIsExpandedComposerOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
   const [screenError, setScreenError] = useState("");
+  const [attachmentToast, setAttachmentToast] = useState("");
   const appFrameRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const inlineComposerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -40,6 +42,7 @@ export function useChatApp() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const streamAutoScrollEnabledRef = useRef(true);
+  const attachmentToastTimeoutRef = useRef<number | null>(null);
 
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit =
@@ -65,6 +68,7 @@ export function useChatApp() {
     void bootstrapSession();
 
     return () => {
+      clearAttachmentToastTimeout();
       closeStream();
     };
   }, []);
@@ -104,6 +108,7 @@ export function useChatApp() {
 
   async function bootstrapSession() {
     closeStream();
+    clearAttachmentToast();
     streamAutoScrollEnabledRef.current = true;
     setBootstrapState("loading");
     setSubmissionState("idle");
@@ -133,7 +138,7 @@ export function useChatApp() {
 
     const validationError = validateAttachments(selectedFiles.map((a) => a.file));
     if (validationError) {
-      setScreenError(validationError);
+      showAttachmentToast(validationError);
       return;
     }
 
@@ -356,10 +361,11 @@ export function useChatApp() {
     const nextFiles = [...selectedFiles, ...files.map((file) => ({ id: createLocalId("attachment"), file }))];
     const validationError = validateAttachments(nextFiles.map((a) => a.file));
     if (validationError) {
-      setScreenError(validationError);
+      showAttachmentToast(validationError);
       return;
     }
 
+    clearAttachmentToast();
     setScreenError("");
     setSelectedFiles(nextFiles);
   }
@@ -399,6 +405,29 @@ export function useChatApp() {
     streamCleanupRef.current = null;
   }
 
+  function clearAttachmentToastTimeout() {
+    if (attachmentToastTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(attachmentToastTimeoutRef.current);
+    attachmentToastTimeoutRef.current = null;
+  }
+
+  function clearAttachmentToast() {
+    clearAttachmentToastTimeout();
+    setAttachmentToast("");
+  }
+
+  function showAttachmentToast(message: string) {
+    clearAttachmentToastTimeout();
+    setAttachmentToast(message);
+    attachmentToastTimeoutRef.current = window.setTimeout(() => {
+      attachmentToastTimeoutRef.current = null;
+      setAttachmentToast("");
+    }, attachmentToastDurationMs);
+  }
+
   function handleMessageListScroll(event: UIEvent<HTMLDivElement>) {
     if (submissionState !== "streaming" || !streamAutoScrollEnabledRef.current) {
       return;
@@ -415,6 +444,7 @@ export function useChatApp() {
 
   return {
     appFrameRef,
+    attachmentToast,
     bootstrapState,
     busy,
     canSubmit,

@@ -101,6 +101,14 @@ export default function App() {
         submissionState={chat.submissionState}
         submitButtonLabel={chat.submitButtonLabel}
       />
+
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {chat.attachmentToast ? (
+          <div className="toast toast-error" role="status">
+            {chat.attachmentToast}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import type { AppTestContext } from "./testContext";
 
@@ -151,5 +151,34 @@ export function registerComposerSuite(context: AppTestContext) {
     await user.unhover(attachmentButton);
     await user.hover(attachmentButton);
     expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
+  });
+
+  it("shows an attachment limit toast without shifting the composer and dismisses it after 3 seconds", async () => {
+    const { container } = context.renderApp();
+    await context.waitForReady();
+
+    vi.useFakeTimers();
+    try {
+      const fileInput = container.querySelector('input[type="file"]');
+      expect(fileInput).toBeTruthy();
+
+      const files = Array.from({ length: 6 }, (_, index) => {
+        return new File(["x"], `image-${index + 1}.png`, { type: "image/png" });
+      });
+
+      fireEvent.change(fileInput as HTMLInputElement, { target: { files } });
+
+      expect(screen.getByText("You can attach at most 5 files at once.")).toBeInTheDocument();
+      expect(screen.queryByText("image-1.png")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(screen.queryByText("You can attach at most 5 files at once.")).not.toBeInTheDocument();
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 }
