@@ -104,7 +104,7 @@ export default function App() {
 
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
         {chat.attachmentToast ? (
-          <div className="toast toast-error" role="status">
+          <div className="toast toast-error">
             {chat.attachmentToast}
           </div>
         ) : null}

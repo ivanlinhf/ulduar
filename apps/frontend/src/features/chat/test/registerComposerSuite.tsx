@@ -153,7 +153,7 @@ export function registerComposerSuite(context: AppTestContext) {
     expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
   });
 
-  it("shows an attachment limit toast without shifting the composer and dismisses it after 3 seconds", async () => {
+  it("shows an attachment limit toast instead of an inline error and dismisses it after 3 seconds", async () => {
     const { container } = context.renderApp();
     await context.waitForReady();
 
@@ -170,6 +170,7 @@ export function registerComposerSuite(context: AppTestContext) {
 
       expect(screen.getByText("You can attach at most 5 files at once.")).toBeInTheDocument();
       expect(screen.queryByText("image-1.png")).not.toBeInTheDocument();
+      expect(container.querySelector(".screen-error")).toBeNull();
 
       act(() => {
         vi.advanceTimersByTime(3000);
@@ -177,7 +178,7 @@ export function registerComposerSuite(context: AppTestContext) {
 
       expect(screen.queryByText("You can attach at most 5 files at once.")).not.toBeInTheDocument();
     } finally {
-      vi.runOnlyPendingTimers();
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });
