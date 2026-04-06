@@ -1,6 +1,7 @@
 import {
   cloneElement,
   isValidElement,
+  useEffect,
   useId,
   useState,
   type ReactElement,
@@ -11,6 +12,8 @@ type ActionTooltipProps = {
   align?: "left" | "right";
   children: ReactNode;
   content: ReactNode;
+  dismissOnPress?: boolean;
+  openOnFocus?: boolean;
   side?: "above" | "below";
   tooltipClassName?: string;
   wrapperClassName?: string;
@@ -20,14 +23,33 @@ export function ActionTooltip({
   align = "left",
   children,
   content,
+  dismissOnPress = false,
+  openOnFocus = true,
   side = "below",
   tooltipClassName = "",
   wrapperClassName = "",
 }: ActionTooltipProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const isOpen = isHovered || isFocused;
+  const [isDismissed, setIsDismissed] = useState(false);
+  const isOpen = !isDismissed && (isHovered || isFocused);
   const tooltipId = useId();
+
+  useEffect(() => {
+    if (!dismissOnPress || !isDismissed) {
+      return;
+    }
+
+    function handleWindowFocus() {
+      setIsHovered(false);
+      setIsFocused(false);
+      setIsDismissed(false);
+    }
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => window.removeEventListener("focus", handleWindowFocus);
+  }, [dismissOnPress, isDismissed]);
+
   const wrapperClassNames = ["action-tooltip-anchor", `action-tooltip-${align}`, `action-tooltip-${side}`, wrapperClassName]
     .filter(Boolean)
     .join(" ");
@@ -47,9 +69,28 @@ export function ActionTooltip({
   return (
     <div
       className={wrapperClassNames}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onFocusCapture={() => setIsFocused(true)}
+      onClickCapture={() => {
+        if (dismissOnPress) {
+          setIsDismissed(true);
+        }
+      }}
+      onMouseEnter={() => {
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setIsDismissed(false);
+      }}
+      onPointerDownCapture={() => {
+        if (dismissOnPress) {
+          setIsDismissed(true);
+        }
+      }}
+      onFocusCapture={() => {
+        if (openOnFocus) {
+          setIsFocused(true);
+        }
+      }}
       onBlurCapture={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
           return;
