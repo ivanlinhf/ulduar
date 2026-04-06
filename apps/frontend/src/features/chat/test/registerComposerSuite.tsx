@@ -128,4 +128,28 @@ export function registerComposerSuite(context: AppTestContext) {
     expect(context.mockedCreateMessage).not.toHaveBeenCalled();
     expect(composer).toHaveValue("First line\nSecond line");
   });
+
+  it("keeps the attachment tooltip dismissed after clicking the button", async () => {
+    const user = userEvent.setup();
+    context.renderApp();
+    await context.waitForReady();
+
+    const attachmentButton = screen.getByRole("button", { name: "Add attachments" });
+
+    await user.hover(attachmentButton);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
+
+    await user.click(attachmentButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.focus(attachmentButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent(window, new Event("focus"));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.unhover(attachmentButton);
+    await user.hover(attachmentButton);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
+  });
 }

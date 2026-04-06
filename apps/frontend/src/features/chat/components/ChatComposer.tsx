@@ -77,7 +77,12 @@ export function ChatComposer({
       </div>
 
       <div className="composer-toolbar">
-        <ActionTooltip side="above" content={<span className="action-tooltip-label">Add attachments</span>}>
+        <ActionTooltip
+          side="above"
+          dismissOnPress
+          openOnFocus={false}
+          content={<span className="action-tooltip-label">Add attachments</span>}
+        >
           <button
             aria-label="Add attachments"
             className="attachment-button icon-only-button"
