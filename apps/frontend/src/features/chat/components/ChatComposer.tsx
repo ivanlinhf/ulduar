@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
 
 import { attachmentInputAccept } from "../constants";
 import type { SelectedAttachment, SubmissionState } from "../types";
@@ -42,21 +42,40 @@ export function ChatComposer({
   submissionState,
   submitButtonLabel,
 }: ChatComposerProps) {
+  const previewUrlMapRef = useRef<Map<string, string>>(new Map());
   const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
 
+  // Incrementally update blob URLs: create only for new ids, revoke only for removed ids.
   useEffect(() => {
-    const urls = new Map<string, string>();
-    for (const { id, file } of selectedFiles) {
-      if (file.type.startsWith("image/")) {
-        urls.set(id, URL.createObjectURL(file));
+    const map = previewUrlMapRef.current;
+    const nextIds = new Set(selectedFiles.map((a) => a.id));
+
+    for (const [id, url] of [...map]) {
+      if (!nextIds.has(id)) {
+        URL.revokeObjectURL(url);
+        map.delete(id);
       }
     }
-    setPreviewUrls(urls);
 
-    return () => {
-      urls.forEach((url) => URL.revokeObjectURL(url));
-    };
+    for (const { id, file } of selectedFiles) {
+      if (!map.has(id) && file.type.startsWith("image/")) {
+        map.set(id, URL.createObjectURL(file));
+      }
+    }
+
+    setPreviewUrls(new Map(map));
   }, [selectedFiles]);
+
+  // Revoke all remaining blob URLs on unmount.
+  useEffect(() => {
+    const map = previewUrlMapRef.current;
+    return () => {
+      for (const url of map.values()) {
+        URL.revokeObjectURL(url);
+      }
+      map.clear();
+    };
+  }, []);
 
   return (
     <form className="composer" onSubmit={onSubmit}>
