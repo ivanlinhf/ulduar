@@ -4,10 +4,6 @@
     --chat-panel-height: calc(100dvh - 36px);
   }
 
-  .app-frame {
-    grid-template-columns: 1fr;
-  }
-
   .chat-panel {
     height: var(--chat-panel-height);
   }

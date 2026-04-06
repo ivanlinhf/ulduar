@@ -32,14 +32,10 @@
 
 .app-frame {
   position: relative;
-  display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  gap: 24px;
-  max-width: 1440px;
+  width: min(100%, 1280px);
   margin: 0 auto;
 }
 
-.hero-panel,
 .chat-panel {
   position: relative;
   z-index: 1;
@@ -47,34 +43,6 @@
   backdrop-filter: blur(14px);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-}
-
-.hero-panel {
-  display: flex;
-  flex-direction: column;
-  border-radius: 32px;
-  padding: 28px;
-  --hero-intro-gap: 2.4rem;
-  justify-content: center;
-}
-
-.hero-intro {
-  display: grid;
-  gap: var(--hero-intro-gap);
-}
-
-.eyebrow {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.hero-copy {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
 }
 
 .secondary-button,
