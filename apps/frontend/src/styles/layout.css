@@ -258,7 +258,7 @@
   position: fixed;
   left: 50%;
   bottom: 24px;
-  z-index: 30;
+  z-index: 15;
   width: min(calc(100vw - 32px), 480px);
   transform: translateX(-50%);
   pointer-events: none;

@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
+import { attachmentToastDurationMs } from "../constants";
 import type { AppTestContext } from "./testContext";
 
 export function registerComposerSuite(context: AppTestContext) {
@@ -173,7 +174,7 @@ export function registerComposerSuite(context: AppTestContext) {
       expect(container.querySelector(".screen-error")).toBeNull();
 
       act(() => {
-        vi.advanceTimersByTime(3000);
+        vi.advanceTimersByTime(attachmentToastDurationMs);
       });
 
       expect(screen.queryByText("You can attach at most 5 files at once.")).not.toBeInTheDocument();
