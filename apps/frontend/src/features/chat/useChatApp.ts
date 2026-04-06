@@ -1,7 +1,6 @@
 import {
   startTransition,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -60,15 +59,7 @@ export function useChatApp() {
         ? "Creating session..."
         : "Ready for the next turn.";
 
-  const attachmentSummary = useMemo(
-    () =>
-      selectedFiles.map((file) => ({
-        filename: file.name,
-        mediaType: file.type,
-        sizeBytes: file.size,
-      })),
-    [selectedFiles],
-  );
+
 
   useEffect(() => {
     void bootstrapSession();
@@ -424,7 +415,6 @@ export function useChatApp() {
 
   return {
     appFrameRef,
-    attachmentSummary,
     bootstrapState,
     busy,
     canSubmit,
@@ -449,6 +439,7 @@ export function useChatApp() {
     openFilePicker,
     removeAttachment,
     screenError,
+    selectedFiles,
     sessionId,
     submissionState,
     submitButtonLabel,
