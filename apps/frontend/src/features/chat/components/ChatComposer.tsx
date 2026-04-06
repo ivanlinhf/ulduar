@@ -1,13 +1,11 @@
-import type { ChangeEvent, KeyboardEvent, RefObject, SubmitEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
 
 import { attachmentInputAccept } from "../constants";
-import { compactMediaType, formatBytes } from "../utils";
-import type { ChatAttachment, SubmissionState } from "../types";
+import type { SelectedAttachment, SubmissionState } from "../types";
 import { ActionTooltip } from "./ActionTooltip";
-import { IconAttachment, IconExpand, IconSend, IconSpinner } from "./icons";
+import { IconAttachment, IconClose, IconExpand, IconSend, IconSpinner } from "./icons";
 
 type ChatComposerProps = {
-  attachmentSummary: ChatAttachment[];
   busy: boolean;
   canSubmit: boolean;
   composerText: string;
@@ -16,17 +14,17 @@ type ChatComposerProps = {
   onFileSelection: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenExpandedComposer: () => void;
   onOpenFilePicker: () => void;
-  onRemoveAttachment: (filename: string) => void;
+  onRemoveAttachment: (id: string) => void;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
   onTextChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onTextareaKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   screenError: string;
+  selectedFiles: SelectedAttachment[];
   submissionState: SubmissionState;
   submitButtonLabel: string;
 };
 
 export function ChatComposer({
-  attachmentSummary,
   busy,
   canSubmit,
   composerText,
@@ -40,9 +38,45 @@ export function ChatComposer({
   onTextChange,
   onTextareaKeyDown,
   screenError,
+  selectedFiles,
   submissionState,
   submitButtonLabel,
 }: ChatComposerProps) {
+  const previewUrlMapRef = useRef<Map<string, string>>(new Map());
+  const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
+
+  // Incrementally update blob URLs: create only for new ids, revoke only for removed ids.
+  useEffect(() => {
+    const map = previewUrlMapRef.current;
+    const nextIds = new Set(selectedFiles.map((a) => a.id));
+
+    for (const [id, url] of [...map]) {
+      if (!nextIds.has(id)) {
+        URL.revokeObjectURL(url);
+        map.delete(id);
+      }
+    }
+
+    for (const { id, file } of selectedFiles) {
+      if (!map.has(id) && file.type.startsWith("image/")) {
+        map.set(id, URL.createObjectURL(file));
+      }
+    }
+
+    setPreviewUrls(new Map(map));
+  }, [selectedFiles]);
+
+  // Revoke all remaining blob URLs on unmount.
+  useEffect(() => {
+    const map = previewUrlMapRef.current;
+    return () => {
+      for (const url of map.values()) {
+        URL.revokeObjectURL(url);
+      }
+      map.clear();
+    };
+  }, []);
+
   return (
     <form className="composer" onSubmit={onSubmit}>
       <div className="composer-input-shell">
@@ -77,32 +111,72 @@ export function ChatComposer({
       </div>
 
       <div className="composer-toolbar">
-        <ActionTooltip
-          side="above"
-          dismissOnPress
-          openOnFocus={false}
-          content={<span className="action-tooltip-label">Add attachments</span>}
-        >
-          <button
-            aria-label="Add attachments"
-            className="attachment-button icon-only-button"
-            disabled={busy}
-            onClick={onOpenFilePicker}
-            type="button"
+        <div className="composer-toolbar-start">
+          <ActionTooltip
+            side="above"
+            dismissOnPress
+            openOnFocus={false}
+            content={<span className="action-tooltip-label">Add attachments</span>}
           >
-            <IconAttachment />
-          </button>
-        </ActionTooltip>
-        <input
-          ref={fileInputRef}
-          className="visually-hidden-file-input"
-          type="file"
-          accept={attachmentInputAccept}
-          multiple
-          onChange={onFileSelection}
-          disabled={busy}
-          tabIndex={-1}
-        />
+            <button
+              aria-label="Add attachments"
+              className="attachment-button icon-only-button"
+              disabled={busy}
+              onClick={onOpenFilePicker}
+              type="button"
+            >
+              <IconAttachment />
+            </button>
+          </ActionTooltip>
+          <input
+            ref={fileInputRef}
+            className="visually-hidden-file-input"
+            type="file"
+            accept={attachmentInputAccept}
+            multiple
+            onChange={onFileSelection}
+            disabled={busy}
+            tabIndex={-1}
+          />
+
+          {selectedFiles.map(({ id, file }) => {
+            const previewUrl = previewUrls.get(id);
+            return previewUrl ? (
+              <div key={id} className="attachment-chip">
+                <img
+                  className="attachment-chip-thumb"
+                  src={previewUrl}
+                  alt={file.name}
+                  title={file.name}
+                />
+                <button
+                  className="attachment-remove-button"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => onRemoveAttachment(id)}
+                  type="button"
+                  disabled={busy}
+                >
+                  <IconClose />
+                </button>
+              </div>
+            ) : (
+              <div key={id} className="attachment-chip attachment-chip-file">
+                <span className="attachment-chip-name" title={file.name}>
+                  {file.name}
+                </span>
+                <button
+                  className="attachment-remove-button"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => onRemoveAttachment(id)}
+                  type="button"
+                  disabled={busy}
+                >
+                  <IconClose />
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
         <div className="composer-submit">
           <span className="composer-hint">Shift + Enter to send</span>
@@ -122,21 +196,6 @@ export function ChatComposer({
           </ActionTooltip>
         </div>
       </div>
-
-      {attachmentSummary.length > 0 ? (
-        <ul className="composer-attachments">
-          {attachmentSummary.map((attachment) => (
-            <li key={attachment.filename}>
-              <span>{attachment.filename}</span>
-              <span>{compactMediaType(attachment.mediaType)}</span>
-              <span>{formatBytes(attachment.sizeBytes)}</span>
-              <button onClick={() => onRemoveAttachment(attachment.filename)} type="button">
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
 
       {screenError ? <p className="screen-error">{screenError}</p> : null}
     </form>

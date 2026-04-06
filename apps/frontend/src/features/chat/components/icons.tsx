@@ -54,3 +54,12 @@ export function IconSpinner() {
     </svg>
   );
 }
+
+export function IconClose() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M18 6 6 18" />
+      <path d="M6 6l12 12" />
+    </svg>
+  );
+}

@@ -66,7 +66,6 @@ export default function App() {
           />
 
           <ChatComposer
-            attachmentSummary={chat.attachmentSummary}
             busy={chat.busy}
             canSubmit={chat.canSubmit}
             composerText={chat.composerText}
@@ -80,6 +79,7 @@ export default function App() {
             onTextChange={chat.handleComposerTextChange}
             onTextareaKeyDown={chat.handleInlineComposerKeyDown}
             screenError={chat.screenError}
+            selectedFiles={chat.selectedFiles}
             submissionState={chat.submissionState}
             submitButtonLabel={chat.submitButtonLabel}
           />

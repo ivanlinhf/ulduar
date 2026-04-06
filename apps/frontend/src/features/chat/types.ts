@@ -9,6 +9,11 @@ export type ChatAttachment = {
   sizeBytes: number;
 };
 
+export type SelectedAttachment = {
+  id: string;
+  file: File;
+};
+
 export type ChatMessage = {
   id: string;
   role: MessageRole;
