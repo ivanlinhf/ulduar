@@ -192,19 +192,14 @@ function getUniqueSources(citations: ChatCitation[] | undefined): ChatCitation[]
 
   const byURL = new Map<string, ChatCitation>();
   for (const citation of citations) {
-    const url = citation.url.trim();
-    if (url === "") {
-      continue;
-    }
-
-    const existing = byURL.get(url);
+    const existing = byURL.get(citation.url);
     if (!existing) {
-      byURL.set(url, { ...citation, url });
+      byURL.set(citation.url, citation);
       continue;
     }
 
     if (!existing.title && citation.title) {
-      byURL.set(url, { ...existing, title: citation.title });
+      byURL.set(citation.url, { ...existing, title: citation.title });
     }
   }
 

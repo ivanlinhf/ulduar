@@ -270,7 +270,7 @@ export function useChatApp() {
                 : message,
             ),
           );
-          void syncAssistantMessageFromSession(sessionId, payload.messageId);
+          void syncMessageCitationsFromSession(sessionId, payload.messageId);
         },
         onRunFailed: (payload) => {
           closeStream();
@@ -436,14 +436,14 @@ export function useChatApp() {
     streamCleanupRef.current = null;
   }
 
-  async function syncAssistantMessageFromSession(currentSessionId: string, messageId: string) {
-    if (sessionIdRef.current !== currentSessionId) {
+  async function syncMessageCitationsFromSession(sessionId: string, messageId: string) {
+    if (sessionIdRef.current !== sessionId) {
       return;
     }
 
     try {
-      const session = await getSession(currentSessionId);
-      if (sessionIdRef.current !== currentSessionId) {
+      const session = await getSession(sessionId);
+      if (sessionIdRef.current !== sessionId) {
         return;
       }
       const persistedMessage = session.messages.find((message) => message.messageId === messageId && message.role === "assistant");
