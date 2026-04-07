@@ -93,7 +93,7 @@ func NewAssistantContentFromResponse(response azureopenai.Response) (json.RawMes
 	}
 
 	for _, item := range response.Output {
-		if item.Type != "message" {
+		if item.Role != "" && item.Role != messageRoleAssistant {
 			continue
 		}
 		for _, part := range item.Content {

@@ -217,3 +217,31 @@ func TestStreamRunReplaysWebSearchCompletionWhenCitationsExist(t *testing.T) {
 		t.Fatalf("events[0] = %+v", events[0])
 	}
 }
+
+func TestApplyStreamedTextFallbackSetsOutputTextWhenCompletedPayloadIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "streamed fallback" {
+		t.Fatalf("response.OutputText = %q, want streamed fallback", response.OutputText)
+	}
+}
+
+func TestApplyStreamedTextFallbackPreservesExplicitCompletedPayload(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Role: "assistant",
+		}},
+	}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "" {
+		t.Fatalf("response.OutputText = %q, want empty", response.OutputText)
+	}
+}

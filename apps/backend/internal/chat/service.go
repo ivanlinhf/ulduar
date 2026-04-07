@@ -718,6 +718,7 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 	if responseUsesWebSearch(responseMeta) {
 		webSearchUsed = true
 	}
+	applyStreamedTextFallback(&responseMeta, textBuilder.String())
 
 	content, err := NewAssistantContentFromResponse(responseMeta)
 	if err != nil {
@@ -830,6 +831,23 @@ func providerErrorCode(err error) string {
 	}
 
 	return "provider_request_failed"
+}
+
+func applyStreamedTextFallback(response *azureopenai.Response, text string) {
+	if response == nil {
+		return
+	}
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if strings.TrimSpace(response.OutputText) != "" {
+		return
+	}
+	if len(response.Output) > 0 {
+		return
+	}
+
+	response.OutputText = text
 }
 
 func (s *Service) newCreateResponseRequest(input []azureopenai.InputMessage) azureopenai.CreateResponseRequest {

@@ -70,3 +70,32 @@ func TestNewAssistantContentFromResponsePersistsCitations(t *testing.T) {
 		t.Fatalf("content.Parts[0].Citations[0].EndIndex = %v", content.Parts[0].Citations[0].EndIndex)
 	}
 }
+
+func TestNewAssistantContentFromResponseAllowsMissingItemTypeForAssistantText(t *testing.T) {
+	t.Parallel()
+
+	data, err := NewAssistantContentFromResponse(azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Role: "assistant",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "Streamed answer",
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantContentFromResponse() error = %v", err)
+	}
+
+	content, err := DecodeContent(data)
+	if err != nil {
+		t.Fatalf("DecodeContent() error = %v", err)
+	}
+
+	if len(content.Parts) != 1 {
+		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
+	}
+	if content.Parts[0].Text != "Streamed answer" {
+		t.Fatalf("content.Parts[0].Text = %q", content.Parts[0].Text)
+	}
+}
