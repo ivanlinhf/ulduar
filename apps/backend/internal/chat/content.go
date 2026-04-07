@@ -136,14 +136,14 @@ func citationsFromAnnotations(annotations []azureopenai.ResponseAnnotation) []Me
 		if annotation.Type != "url_citation" {
 			continue
 		}
-		url := normalizeCitationURL(annotation.URL)
-		if url == "" {
+		citationURL := normalizeCitationURL(annotation.URL)
+		if citationURL == "" {
 			continue
 		}
 
 		citations = append(citations, MessageCitation{
 			Title:      strings.TrimSpace(annotation.Title),
-			URL:        url,
+			URL:        citationURL,
 			StartIndex: annotation.StartIndex,
 			EndIndex:   annotation.EndIndex,
 		})
