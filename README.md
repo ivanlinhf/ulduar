@@ -137,6 +137,22 @@ npm run dev
 
 Frontend will be available at `http://localhost:3000`.
 
+### Optional Azure web search in dev/test
+
+Web search stays disabled by default. To validate it locally, set `AZURE_OPENAI_ENABLE_WEB_SEARCH=true` before starting the backend, then ask a prompt where fresh web results are helpful.
+
+When Azure web search is available and the model chooses to use it:
+
+- the frontend may briefly show `Searching the web...` while the run is in progress
+- completed assistant messages may render a `Sources` section from persisted citation URLs
+- only final citation metadata is persisted; raw Azure tool logs are not stored
+
+Operational notes:
+
+- the model decides when to search; users do not need a special command
+- production rollout is still a separate manual config change
+- rollback is simply setting `AZURE_OPENAI_ENABLE_WEB_SEARCH=false` and restarting the backend
+
 ### Option 2: Use `compose.yaml`
 
 The repository includes [compose.yaml](compose.yaml) for:
