@@ -20,7 +20,7 @@ As of March 30, 2026, the Azure OpenAI docs checked during planning list `gpt-5-
 - Persist all chat state so backend restarts do not lose ongoing sessions.
 - Stream assistant responses to the frontend.
 - Keep the backend stateless so it can serve multiple sessions concurrently.
-- Leave room for future features such as web search, tools, and agent workflows.
+- Leave room for future features such as broader tool use and agent workflows.
 
 ## Non-Goals
 
@@ -54,6 +54,7 @@ No rollout-notes document is required.
 - Stores the active `sessionId` only in a TypeScript runtime variable
 - Sends the `sessionId` with every chat request
 - Opens an SSE stream to receive incremental assistant output
+- When the backend emits Azure web-search progress, shows a transient status and a final `Sources` section for persisted citations
 
 ### Backend
 
@@ -62,6 +63,7 @@ No rollout-notes document is required.
 - Loads all session state from Postgres and Blob Storage as needed
 - Calls Azure OpenAI Responses API
 - Streams assistant output to the SPA via SSE
+- Can optionally attach Azure-native `web_search` behind backend configuration, disabled by default for manual rollout
 
 ### Storage
 
@@ -235,6 +237,7 @@ Environment variables should cover:
 - Azure model deployment name
 - System prompt or default assistant instruction
 - Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
+- Web-search runs must preserve the existing session model, API shape, and anonymous chat flow while persisting only final citation metadata
 
 ### SDK choice
 
@@ -373,8 +376,7 @@ Current constraint to keep in mind:
 
 This should make it easier to add:
 
-- Web search
-- Tool use
+- Broader tool use
 - Agent loops
 - Retrieval or knowledge integrations
 - Additional attachment types
