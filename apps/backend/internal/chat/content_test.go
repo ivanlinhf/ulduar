@@ -71,6 +71,47 @@ func TestNewAssistantContentFromResponsePersistsCitations(t *testing.T) {
 	}
 }
 
+func TestNewAssistantContentFromResponsePreservesAnnotatedTextWhitespace(t *testing.T) {
+	t.Parallel()
+
+	start := 2
+	end := 9
+	data, err := NewAssistantContentFromResponse(azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Type: "message",
+			Role: "assistant",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "\n Grounded answer ",
+				Annotations: []azureopenai.ResponseAnnotation{{
+					Type:       "url_citation",
+					URL:        "https://example.com/source",
+					StartIndex: &start,
+					EndIndex:   &end,
+				}},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantContentFromResponse() error = %v", err)
+	}
+
+	content, err := DecodeContent(data)
+	if err != nil {
+		t.Fatalf("DecodeContent() error = %v", err)
+	}
+
+	if got := content.Parts[0].Text; got != "\n Grounded answer " {
+		t.Fatalf("content.Parts[0].Text = %q", got)
+	}
+	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
+		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
+	}
+	if content.Parts[0].Citations[0].EndIndex == nil || *content.Parts[0].Citations[0].EndIndex != end {
+		t.Fatalf("content.Parts[0].Citations[0].EndIndex = %v", content.Parts[0].Citations[0].EndIndex)
+	}
+}
+
 func TestNewAssistantContentFromResponseAllowsMissingItemTypeForAssistantText(t *testing.T) {
 	t.Parallel()
 
@@ -127,5 +168,38 @@ func TestNewAssistantContentFromResponseIgnoresNonMessageOutputItems(t *testing.
 	}
 	if content.Parts[0].Text != "Final answer" {
 		t.Fatalf("content.Parts[0].Text = %q, want %q", content.Parts[0].Text, "Final answer")
+	}
+}
+
+func TestNewTextContentWithCitationsPreservesTextForOffsets(t *testing.T) {
+	t.Parallel()
+
+	start := 2
+	end := 7
+	data, err := NewTextContentWithCitations("\n cited text ", []MessageCitation{{
+		URL:        "https://example.com/source",
+		StartIndex: &start,
+		EndIndex:   &end,
+	}})
+	if err != nil {
+		t.Fatalf("NewTextContentWithCitations() error = %v", err)
+	}
+
+	content, err := DecodeContent(data)
+	if err != nil {
+		t.Fatalf("DecodeContent() error = %v", err)
+	}
+
+	if len(content.Parts) != 1 {
+		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
+	}
+	if got := content.Parts[0].Text; got != "\n cited text " {
+		t.Fatalf("content.Parts[0].Text = %q", got)
+	}
+	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
+		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
+	}
+	if content.Parts[0].Citations[0].EndIndex == nil || *content.Parts[0].Citations[0].EndIndex != end {
+		t.Fatalf("content.Parts[0].Citations[0].EndIndex = %v", content.Parts[0].Citations[0].EndIndex)
 	}
 }

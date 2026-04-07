@@ -37,9 +37,14 @@ func NewTextContentWithCitations(text string, citations []MessageCitation) (json
 	}
 
 	if trimmed := strings.TrimSpace(text); trimmed != "" {
+		storedText := trimmed
+		if len(citations) > 0 {
+			storedText = text
+		}
+
 		part := MessageContentPart{
 			Type: contentPartTypeText,
-			Text: trimmed,
+			Text: storedText,
 		}
 		if len(citations) > 0 {
 			part.Citations = citations
@@ -103,16 +108,17 @@ func NewAssistantContentFromResponse(response azureopenai.Response) (json.RawMes
 			if part.Type != "output_text" && part.Type != "text" {
 				continue
 			}
-			text := strings.TrimSpace(part.Text)
-			if text == "" {
+			trimmedText := strings.TrimSpace(part.Text)
+			if trimmedText == "" {
 				continue
 			}
 
 			contentPart := MessageContentPart{
 				Type: contentPartTypeText,
-				Text: text,
+				Text: trimmedText,
 			}
 			if citations := citationsFromAnnotations(part.Annotations); len(citations) > 0 {
+				contentPart.Text = part.Text
 				contentPart.Citations = citations
 			}
 			content.Parts = append(content.Parts, contentPart)
