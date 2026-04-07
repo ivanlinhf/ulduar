@@ -207,3 +207,40 @@ func TestNewTextContentWithCitationsPreservesTextForOffsets(t *testing.T) {
 		t.Fatalf("content.Parts[0].Citations[0].EndIndex = %v", content.Parts[0].Citations[0].EndIndex)
 	}
 }
+
+func TestNewAssistantContentFromResponseDropsUnsafeCitationURLs(t *testing.T) {
+	t.Parallel()
+
+	data, err := NewAssistantContentFromResponse(azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Type: "message",
+			Role: "assistant",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "Grounded answer",
+				Annotations: []azureopenai.ResponseAnnotation{
+					{Type: "url_citation", URL: "javascript:alert(1)"},
+					{Type: "url_citation", URL: "https://example.com/source"},
+				},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantContentFromResponse() error = %v", err)
+	}
+
+	content, err := DecodeContent(data)
+	if err != nil {
+		t.Fatalf("DecodeContent() error = %v", err)
+	}
+
+	if len(content.Parts) != 1 {
+		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
+	}
+	if len(content.Parts[0].Citations) != 1 {
+		t.Fatalf("len(content.Parts[0].Citations) = %d, want 1", len(content.Parts[0].Citations))
+	}
+	if got := content.Parts[0].Citations[0].URL; got != "https://example.com/source" {
+		t.Fatalf("content.Parts[0].Citations[0].URL = %q, want %q", got, "https://example.com/source")
+	}
+}

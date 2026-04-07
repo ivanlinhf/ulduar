@@ -843,8 +843,18 @@ func applyStreamedTextFallback(response *azureopenai.Response, text string) {
 	if strings.TrimSpace(response.OutputText) != "" {
 		return
 	}
-	if len(response.Output) > 0 {
-		return
+	for _, item := range response.Output {
+		if !isAssistantOutputItem(item) {
+			continue
+		}
+		for _, part := range item.Content {
+			if part.Type != "output_text" && part.Type != "text" {
+				continue
+			}
+			if strings.TrimSpace(part.Text) != "" {
+				return
+			}
+		}
 	}
 
 	response.OutputText = text

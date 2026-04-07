@@ -236,6 +236,10 @@ func TestApplyStreamedTextFallbackPreservesExplicitCompletedPayload(t *testing.T
 	response := azureopenai.Response{
 		Output: []azureopenai.ResponseItem{{
 			Role: "assistant",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "completed payload",
+			}},
 		}},
 	}
 
@@ -243,5 +247,22 @@ func TestApplyStreamedTextFallbackPreservesExplicitCompletedPayload(t *testing.T
 
 	if response.OutputText != "" {
 		t.Fatalf("response.OutputText = %q, want empty", response.OutputText)
+	}
+}
+
+func TestApplyStreamedTextFallbackUsesStreamedTextWhenCompletedPayloadHasNoAssistantText(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Type: "message",
+			Role: "assistant",
+		}},
+	}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "streamed fallback" {
+		t.Fatalf("response.OutputText = %q, want streamed fallback", response.OutputText)
 	}
 }

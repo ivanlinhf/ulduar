@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
@@ -98,10 +99,7 @@ func NewAssistantContentFromResponse(response azureopenai.Response) (json.RawMes
 	}
 
 	for _, item := range response.Output {
-		if item.Type != "" && item.Type != "message" {
-			continue
-		}
-		if item.Role != "" && item.Role != messageRoleAssistant {
+		if !isAssistantOutputItem(item) {
 			continue
 		}
 		for _, part := range item.Content {
@@ -138,7 +136,7 @@ func citationsFromAnnotations(annotations []azureopenai.ResponseAnnotation) []Me
 		if annotation.Type != "url_citation" {
 			continue
 		}
-		url := strings.TrimSpace(annotation.URL)
+		url := normalizeCitationURL(annotation.URL)
 		if url == "" {
 			continue
 		}
@@ -156,4 +154,32 @@ func citationsFromAnnotations(annotations []azureopenai.ResponseAnnotation) []Me
 	}
 
 	return citations
+}
+
+func isAssistantOutputItem(item azureopenai.ResponseItem) bool {
+	if item.Type != "" && item.Type != "message" {
+		return false
+	}
+	if item.Role != "" && item.Role != messageRoleAssistant {
+		return false
+	}
+
+	return true
+}
+
+func normalizeCitationURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil {
+		return ""
+	}
+	if parsed.Host == "" {
+		return ""
+	}
+
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return parsed.String()
+	default:
+		return ""
+	}
 }
