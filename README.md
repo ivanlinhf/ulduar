@@ -69,6 +69,8 @@ Container/entrypoint and frontend build settings:
   Optional container-only flag. Default `true`. Set it to `false` when database migrations are run separately before backend app rollout.
 - `VITE_API_BASE_URL`
   Frontend API base URL. Manual local example: `http://localhost:8080`
+- `VITE_APP_VERSION`
+  Optional frontend build version identifier used for update detection. Manual local dev defaults to a fresh dev-server version when unset. Container and CI builds should set this explicitly.
 
 Reference files:
 
@@ -131,6 +133,7 @@ go run ./cmd/server
 ```bash
 cd apps/frontend
 export VITE_API_BASE_URL=http://localhost:8080
+export VITE_APP_VERSION=local-dev
 npm install
 npm run dev
 ```
@@ -175,7 +178,7 @@ If you want an env file for compose-oriented values, start from:
 cp .env.compose.example .env.compose
 ```
 
-The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
+The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
 
 Then start the stack with that env file:
 
@@ -248,6 +251,12 @@ Each workflow supports:
 - manual deployment through `workflow_dispatch`
 
 Both workflows check out the triggering commit being deployed (`github.sha`): the pushed `main` commit for automatic runs, or the selected ref's commit for manual `workflow_dispatch` runs. They then authenticate to Azure with GitHub OIDC via `azure/login`, build a new image, push it to Azure Container Registry, and update the target Azure Container App. Each workflow also uses GitHub Actions concurrency control so overlapping deploys for the same app run serially.
+
+Frontend deployment additionally:
+
+- passes `github.sha` into the frontend build as `VITE_APP_VERSION`
+- emits a static `version.json` file so older tabs can detect that a newer frontend is deployed
+- serves both `index.html` and `version.json` with `Cache-Control: no-store` in the frontend container so update checks do not get stuck on stale shell metadata while hashed JS/CSS assets stay normally cacheable
 
 Backend deployment additionally:
 
