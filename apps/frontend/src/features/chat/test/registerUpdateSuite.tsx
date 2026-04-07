@@ -66,7 +66,7 @@ export function registerUpdateSuite(context: AppTestContext) {
       context.renderApp();
       await context.waitForReady();
 
-      expect(await screen.findByText("A newer version of Ulduar is available.")).toBeInTheDocument();
+      expect(await screen.findByText("A newer version is available.")).toBeInTheDocument();
       expect(screen.getByText("Reload when you're ready to use the latest version.")).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: "Reload" }));
