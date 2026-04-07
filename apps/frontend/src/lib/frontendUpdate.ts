@@ -5,6 +5,7 @@ import { reloadWindow } from "./browser";
 export const currentFrontendVersion = __APP_VERSION__;
 export const versionMetadataPath = "/version.json";
 export const versionCheckIntervalMs = 5 * 60 * 1000;
+export const reloadLosesSessionMessage = "Reloading will start a new chat and lose this session.";
 
 type FrontendVersionMetadata = {
   version?: string;
@@ -62,10 +63,7 @@ export function useFrontendUpdate(userTurnCount: number) {
   }, [checkForUpdate]);
 
   const reloadToUpdate = useCallback(() => {
-    if (
-      userTurnCount > 0 &&
-      !window.confirm("Reloading will start a new chat and lose this session. Reload now?")
-    ) {
+    if (userTurnCount > 0 && !window.confirm(`${reloadLosesSessionMessage} Reload now?`)) {
       return;
     }
 

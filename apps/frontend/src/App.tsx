@@ -5,7 +5,7 @@ import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
 import { MessageList } from "./features/chat/components/MessageList";
 import { useChatApp } from "./features/chat/useChatApp";
-import { useFrontendUpdate } from "./lib/frontendUpdate";
+import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 
 const appName = "Ulduar";
 
@@ -127,7 +127,7 @@ export default function App() {
               <strong>A newer version of {appName} is available.</strong>
               <span>
                 {turnCount > 0
-                  ? "Reloading will start a new chat and lose this session."
+                  ? reloadLosesSessionMessage
                   : "Reload when you're ready to use the latest version."}
               </span>
             </div>

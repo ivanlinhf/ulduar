@@ -25,7 +25,7 @@ function frontendVersionPlugin(version: string): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
-  const frontendVersion = (env.VITE_APP_VERSION?.trim() || `dev-${new Date().toISOString()}`).replace(/"/g, "");
+  const frontendVersion = env.VITE_APP_VERSION?.trim() || `dev-${new Date().toISOString()}`;
 
   return {
     plugins: [react(), frontendVersionPlugin(frontendVersion)],
