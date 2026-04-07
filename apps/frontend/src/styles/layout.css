@@ -259,8 +259,8 @@
   left: 50%;
   bottom: 24px;
   z-index: 15;
-   display: grid;
-   gap: 12px;
+  display: grid;
+  gap: 12px;
   width: min(calc(100vw - 32px), 480px);
   transform: translateX(-50%);
   pointer-events: none;

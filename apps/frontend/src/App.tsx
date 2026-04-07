@@ -7,6 +7,8 @@ import { MessageList } from "./features/chat/components/MessageList";
 import { useChatApp } from "./features/chat/useChatApp";
 import { useFrontendUpdate } from "./lib/frontendUpdate";
 
+const appName = "Ulduar";
+
 export default function App() {
   const chat = useChatApp();
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
@@ -122,7 +124,7 @@ export default function App() {
         {update.updateAvailable ? (
           <div className="toast toast-info toast-with-action">
             <div className="toast-copy">
-              <strong>A newer version of Ulduar is available.</strong>
+              <strong>A newer version of {appName} is available.</strong>
               <span>
                 {turnCount > 0
                   ? "Reloading will start a new chat and lose this session."
