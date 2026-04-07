@@ -159,6 +159,55 @@ func TestStreamEventDecodesWebSearchOutputItems(t *testing.T) {
 	}
 }
 
+func TestStreamEventDecodesStructuredWebSearchAction(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"type": "response.output_item.added",
+		"item": {
+			"id": "ws_123",
+			"type": "web_search_call",
+			"status": "in_progress",
+			"action": {
+				"type": "search",
+				"query": "weather in shanghai"
+			},
+			"queries": [{
+				"search_term": "weather in shanghai"
+			}]
+		}
+	}`)
+
+	var event StreamEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if event.Item == nil {
+		t.Fatal("event.Item is nil")
+	}
+	var action struct {
+		Type  string `json:"type"`
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(event.Item.Action, &action); err != nil {
+		t.Fatalf("json.Unmarshal(event.Item.Action) error = %v", err)
+	}
+	if action.Type != "search" || action.Query != "weather in shanghai" {
+		t.Fatalf("action = %+v", action)
+	}
+
+	var queries []struct {
+		SearchTerm string `json:"search_term"`
+	}
+	if err := json.Unmarshal(event.Item.Queries, &queries); err != nil {
+		t.Fatalf("json.Unmarshal(event.Item.Queries) error = %v", err)
+	}
+	if len(queries) != 1 || queries[0].SearchTerm != "weather in shanghai" {
+		t.Fatalf("queries = %+v", queries)
+	}
+}
+
 func TestResponseDecodesURLCitationAnnotations(t *testing.T) {
 	t.Parallel()
 
