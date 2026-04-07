@@ -84,8 +84,8 @@ type ResponseItem struct {
 	Type    string                `json:"type"`
 	Role    string                `json:"role"`
 	Status  string                `json:"status"`
-	Action  string                `json:"action,omitempty"`
-	Queries []string              `json:"queries,omitempty"`
+	Action  json.RawMessage       `json:"action,omitempty"`
+	Queries json.RawMessage       `json:"queries,omitempty"`
 	Content []ResponseContentItem `json:"content"`
 }
 
