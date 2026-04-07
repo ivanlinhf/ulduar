@@ -1,5 +1,6 @@
 import type { ChangeEvent, KeyboardEvent, RefObject, SubmitEvent } from "react";
 
+import { composerPlaceholder } from "../constants";
 import type { SelectedAttachment, SubmissionState } from "../types";
 import { ActionTooltip } from "./ActionTooltip";
 import { ComposerFooter } from "./ComposerFooter";
@@ -49,7 +50,7 @@ export function ChatComposer({
           value={composerText}
           onChange={onTextChange}
           onKeyDown={onTextareaKeyDown}
-          placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
+          placeholder={composerPlaceholder}
           rows={5}
           disabled={busy}
         />

@@ -1,5 +1,6 @@
 import type { ChangeEvent, KeyboardEvent, MouseEvent, RefObject } from "react";
 
+import { composerPlaceholder } from "../constants";
 import type { SelectedAttachment, SubmissionState } from "../types";
 import { ComposerFooter } from "./ComposerFooter";
 
@@ -62,7 +63,7 @@ export function ExpandedComposerDialog({
             value={composerText}
             onChange={onTextChange}
             onKeyDown={onTextareaKeyDown}
-            placeholder="Ask about a screenshot, summarize a PDF, or start a plain text chat."
+            placeholder={composerPlaceholder}
             disabled={busy}
           />
 

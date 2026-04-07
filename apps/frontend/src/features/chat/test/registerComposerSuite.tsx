@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
-import { attachmentToastDurationMs } from "../constants";
+import { attachmentToastDurationMs, composerPlaceholder } from "../constants";
 import type { AppTestContext } from "./testContext";
 
 export function registerComposerSuite(context: AppTestContext) {
@@ -12,9 +12,10 @@ export function registerComposerSuite(context: AppTestContext) {
     context.renderApp();
     await context.waitForReady();
 
-    expect(screen.getByText("Shift + Enter to send")).toBeInTheDocument();
+    const inlineComposer = screen.getByLabelText("Message");
+    expect(inlineComposer).toHaveAttribute("placeholder", composerPlaceholder);
 
-    await userEvent.type(screen.getByLabelText("Message"), "Shortcut send{Shift>}{Enter}{/Shift}");
+    await userEvent.type(inlineComposer, "Shortcut send{Shift>}{Enter}{/Shift}");
 
     await waitFor(() => {
       expect(context.mockedCreateMessage).toHaveBeenCalledWith({
@@ -175,6 +176,10 @@ export function registerComposerSuite(context: AppTestContext) {
     await user.click(screen.getByRole("button", { name: "Expand message editor" }));
     const dialog = screen.getByRole("dialog", { name: "Expanded message editor" });
 
+    expect(within(dialog).getByLabelText("Expanded message")).toHaveAttribute(
+      "placeholder",
+      composerPlaceholder,
+    );
     expect(within(dialog).getByRole("button", { name: "Add attachments" })).toBeInTheDocument();
     expect(within(dialog).getByText("design-notes.pdf")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Send" })).toBeInTheDocument();

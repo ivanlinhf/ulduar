@@ -125,7 +125,6 @@ export function ComposerFooter({
       </div>
 
       <div className="composer-footer-end">
-        <span className="composer-hint">Shift + Enter to send</span>
         <ActionTooltip
           align="right"
           side="above"
