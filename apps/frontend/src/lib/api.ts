@@ -22,6 +22,42 @@ export type CreateMessageResponse = {
   createdAt: string;
 };
 
+export type MessageCitationResponse = {
+  title?: string;
+  url?: string;
+  startIndex?: number;
+  endIndex?: number;
+};
+
+export type MessageContentPartResponse = {
+  type: string;
+  text?: string;
+  citations?: MessageCitationResponse[];
+};
+
+export type MessageResponse = {
+  messageId: string;
+  role: string;
+  status: string;
+  modelName?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  createdAt: string;
+  content: {
+    parts: MessageContentPartResponse[];
+  };
+  attachments: AttachmentResponse[];
+};
+
+export type SessionDetailResponse = {
+  sessionId: string;
+  status: string;
+  createdAt: string;
+  lastMessageAt: string;
+  messages: MessageResponse[];
+};
+
 export type StreamEventPayload = {
   runId: string;
   messageId: string;
@@ -33,10 +69,14 @@ export type StreamEventPayload = {
   delta?: string;
   error?: string;
   errorCode?: string;
+  toolName?: string;
+  toolPhase?: string;
+  citations?: MessageCitationResponse[];
 };
 
 type StreamHandlers = {
   onRunStarted?: (payload: StreamEventPayload) => void;
+  onToolStatus?: (payload: StreamEventPayload) => void;
   onMessageDelta?: (payload: StreamEventPayload) => void;
   onRunCompleted?: (payload: StreamEventPayload) => void;
   onRunFailed?: (payload: StreamEventPayload) => void;
@@ -48,6 +88,12 @@ const apiBaseURL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080"
 export async function createSession(): Promise<SessionResponse> {
   return requestJSON<SessionResponse>("/api/v1/sessions", {
     method: "POST",
+  });
+}
+
+export async function getSession(sessionId: string): Promise<SessionDetailResponse> {
+  return requestJSON<SessionDetailResponse>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "GET",
   });
 }
 
@@ -90,6 +136,10 @@ export function streamRun(sessionId: string, runId: string, handlers: StreamHand
 
   source.addEventListener("run.started", (event) => {
     handlers.onRunStarted?.(parsePayload(event));
+  });
+
+  source.addEventListener("tool.status", (event) => {
+    handlers.onToolStatus?.(parsePayload(event));
   });
 
   source.addEventListener("message.delta", (event) => {

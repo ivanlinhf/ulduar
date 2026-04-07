@@ -9,6 +9,13 @@ export type ChatAttachment = {
   sizeBytes: number;
 };
 
+export type ChatCitation = {
+  title?: string;
+  url: string;
+  startIndex?: number;
+  endIndex?: number;
+};
+
 export type SelectedAttachment = {
   id: string;
   file: File;
@@ -26,4 +33,5 @@ export type ChatMessage = {
   outputTokens?: number;
   totalTokens?: number;
   error?: string;
+  citations?: ChatCitation[];
 };

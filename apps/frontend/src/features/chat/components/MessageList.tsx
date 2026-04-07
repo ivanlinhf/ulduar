@@ -7,9 +7,10 @@ type MessageListProps = {
   messages: ChatMessage[];
   messagesEndRef: RefObject<HTMLDivElement | null>;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
+  transientStatus?: string;
 };
 
-export function MessageList({ messages, messagesEndRef, onScroll }: MessageListProps) {
+export function MessageList({ messages, messagesEndRef, onScroll, transientStatus }: MessageListProps) {
   const messageListClassName = messages.length === 0 ? "message-list message-list-empty" : "message-list";
 
   return (
@@ -24,6 +25,11 @@ export function MessageList({ messages, messagesEndRef, onScroll }: MessageListP
           <MessageCard key={message.id} message={message} />
         ))
       )}
+      {transientStatus ? (
+        <div className="message-transient-status" role="status">
+          {transientStatus}
+        </div>
+      ) : null}
       <div ref={messagesEndRef} />
     </div>
   );

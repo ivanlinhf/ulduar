@@ -10,8 +10,15 @@ import {
   type UIEvent,
 } from "react";
 
-import { createMessage, createSession, streamRun } from "../../lib/api";
-import type { BootstrapState, ChatMessage, SelectedAttachment, SubmissionState } from "./types";
+import {
+  createMessage,
+  createSession,
+  getSession,
+  streamRun,
+  type MessageCitationResponse,
+  type MessageResponse,
+} from "../../lib/api";
+import type { BootstrapState, ChatCitation, ChatMessage, SelectedAttachment, SubmissionState } from "./types";
 import { attachmentToastDurationMs } from "./constants";
 import {
   createLocalId,
@@ -33,6 +40,7 @@ export function useChatApp() {
   const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
   const [screenError, setScreenError] = useState("");
   const [attachmentToast, setAttachmentToast] = useState("");
+  const [transientStatus, setTransientStatus] = useState("");
   const appFrameRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const inlineComposerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -43,6 +51,7 @@ export function useChatApp() {
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const streamAutoScrollEnabledRef = useRef(true);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
+  const sessionIdRef = useRef("");
 
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit =
@@ -61,8 +70,6 @@ export function useChatApp() {
       : bootstrapState === "loading"
         ? "Creating session..."
         : "Ready for the next turn.";
-
-
 
   useEffect(() => {
     void bootstrapSession();
@@ -114,6 +121,8 @@ export function useChatApp() {
     setSubmissionState("idle");
     setScreenError("");
     setMessages([]);
+    setTransientStatus("");
+    sessionIdRef.current = "";
     setSessionId("");
     setComposerText("");
     setIsExpandedComposerOpen(false);
@@ -122,6 +131,7 @@ export function useChatApp() {
     try {
       const session = await createSession();
       startTransition(() => {
+        sessionIdRef.current = session.sessionId;
         setSessionId(session.sessionId);
         setBootstrapState("ready");
       });
@@ -154,6 +164,7 @@ export function useChatApp() {
 
     streamAutoScrollEnabledRef.current = true;
     setScreenError("");
+    setTransientStatus("");
     setSubmissionState("submitting");
     setComposerText("");
     setSelectedFiles([]);
@@ -215,6 +226,20 @@ export function useChatApp() {
             ),
           );
         },
+        onToolStatus: (payload) => {
+          if (payload.toolName !== "web_search") {
+            return;
+          }
+
+          if (payload.toolPhase === "searching") {
+            setTransientStatus("Searching the web...");
+            return;
+          }
+
+          if (payload.toolPhase === "complete") {
+            setTransientStatus("");
+          }
+        },
         onMessageDelta: (payload) => {
           startTransition(() => {
             setMessages((current) =>
@@ -229,6 +254,7 @@ export function useChatApp() {
         onRunCompleted: (payload) => {
           closeStream();
           setSubmissionState("idle");
+          setTransientStatus("");
           setMessages((current) =>
             current.map((message) =>
               message.id === payload.messageId
@@ -239,14 +265,17 @@ export function useChatApp() {
                     inputTokens: payload.inputTokens ?? message.inputTokens,
                     outputTokens: payload.outputTokens ?? message.outputTokens,
                     totalTokens: payload.totalTokens ?? message.totalTokens,
+                    citations: mapCitations(payload.citations) ?? message.citations,
                   }
                 : message,
             ),
           );
+          void syncAssistantMessageFromSession(sessionId, payload.messageId);
         },
         onRunFailed: (payload) => {
           closeStream();
           setSubmissionState("idle");
+          setTransientStatus("");
           setMessages((current) =>
             current.map((message) =>
               message.id === payload.messageId
@@ -262,6 +291,7 @@ export function useChatApp() {
         onTransportError: (message) => {
           closeStream();
           setSubmissionState("idle");
+          setTransientStatus("");
           setMessages((current) =>
             current.map((item) =>
               item.id === created.assistantMessageId
@@ -277,6 +307,7 @@ export function useChatApp() {
       });
     } catch (error) {
       setSubmissionState("idle");
+      setTransientStatus("");
       setComposerText(draftText);
       setSelectedFiles(draftFiles);
       setMessages((current) =>
@@ -405,6 +436,41 @@ export function useChatApp() {
     streamCleanupRef.current = null;
   }
 
+  async function syncAssistantMessageFromSession(currentSessionId: string, messageId: string) {
+    if (sessionIdRef.current !== currentSessionId) {
+      return;
+    }
+
+    try {
+      const session = await getSession(currentSessionId);
+      if (sessionIdRef.current !== currentSessionId) {
+        return;
+      }
+      const persistedMessage = session.messages.find((message) => message.messageId === messageId && message.role === "assistant");
+      if (!persistedMessage) {
+        return;
+      }
+
+      const persistedCitations = readMessageCitations(persistedMessage);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                citations: persistedCitations ?? message.citations,
+                modelName: persistedMessage.modelName ?? message.modelName,
+                inputTokens: persistedMessage.inputTokens ?? message.inputTokens,
+                outputTokens: persistedMessage.outputTokens ?? message.outputTokens,
+                totalTokens: persistedMessage.totalTokens ?? message.totalTokens,
+              }
+            : message,
+        ),
+      );
+    } catch {
+      // Preserve the current streamed message when session refresh is unavailable.
+    }
+  }
+
   function clearAttachmentToastTimeout() {
     if (attachmentToastTimeoutRef.current === null) {
       return;
@@ -473,7 +539,37 @@ export function useChatApp() {
     sessionId,
     submissionState,
     submitButtonLabel,
+    transientStatus,
     submitFromExpandedComposer: () => submitComposer({ closeExpandedComposer: true }),
     startNewChat: () => void bootstrapSession(),
   };
+}
+
+function readMessageCitations(message: MessageResponse): ChatCitation[] | undefined {
+  const citations = message.content.parts.flatMap((part) => mapCitations(part.citations) ?? []);
+  return citations.length > 0 ? citations : undefined;
+}
+
+function mapCitations(citations: MessageCitationResponse[] | undefined): ChatCitation[] | undefined {
+  if (!citations || citations.length === 0) {
+    return undefined;
+  }
+
+  const mapped = citations.flatMap((citation) => {
+    const url = citation.url?.trim();
+    if (!url) {
+      return [];
+    }
+
+    return [
+      {
+        title: citation.title?.trim() || undefined,
+        url,
+        startIndex: citation.startIndex,
+        endIndex: citation.endIndex,
+      },
+    ];
+  });
+
+  return mapped.length > 0 ? mapped : undefined;
 }
