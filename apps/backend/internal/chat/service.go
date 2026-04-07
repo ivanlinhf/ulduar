@@ -52,6 +52,7 @@ type Service struct {
 	blobs               BlobStore
 	responses           ResponseClient
 	instructions        string
+	webSearchEnabled    bool
 	responseTimeout     time.Duration
 	streamTimeout       time.Duration
 	finalizationTimeout time.Duration
@@ -64,6 +65,7 @@ type ServiceOptions struct {
 	ResponseTimeout     time.Duration
 	StreamTimeout       time.Duration
 	FinalizationTimeout time.Duration
+	EnableWebSearch     bool
 }
 
 type SessionView struct {
@@ -103,6 +105,8 @@ type RunStreamEvent struct {
 	MessageID    string
 	ResponseID   string
 	ModelName    string
+	ToolName     string
+	ToolPhase    string
 	Delta        string
 	Error        string
 	ErrorCode    string
@@ -117,6 +121,7 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, responses ResponseClient, opt
 		blobs:               blobs,
 		responses:           responses,
 		instructions:        strings.TrimSpace(options.Instructions),
+		webSearchEnabled:    options.EnableWebSearch,
 		responseTimeout:     options.ResponseTimeout,
 		streamTimeout:       options.StreamTimeout,
 		finalizationTimeout: options.FinalizationTimeout,
@@ -362,10 +367,7 @@ func (s *Service) ExecuteRun(ctx context.Context, runID string) error {
 	responseCtx, cancel := s.withOperationTimeout(ctx, s.responseTimeout)
 	defer cancel()
 
-	response, err := s.responses.CreateResponse(responseCtx, azureopenai.CreateResponseRequest{
-		Input:        input,
-		Instructions: s.instructions,
-	})
+	response, err := s.responses.CreateResponse(responseCtx, s.newCreateResponseRequest(input))
 	if err != nil {
 		code := providerErrorCode(err)
 		if failErr := s.failRun(ctx, run, code); failErr != nil {
@@ -374,8 +376,7 @@ func (s *Service) ExecuteRun(ctx context.Context, runID string) error {
 		return fmt.Errorf("create response: %w", err)
 	}
 
-	outputText := extractResponseText(response)
-	content, err := NewTextContent(outputText)
+	content, err := NewAssistantContentFromResponse(response)
 	if err != nil {
 		if failErr := s.failRun(ctx, run, "invalid_provider_output"); failErr != nil {
 			return fmt.Errorf("encode assistant content: %w (also failed to persist run failure: %v)", err, failErr)
@@ -512,6 +513,17 @@ func (s *Service) replayCompletedRun(ctx context.Context, run repository.Run, em
 	}
 
 	text := contentText(content)
+	if contentHasCitations(content) {
+		if err := emit(RunStreamEvent{
+			Type:      "tool.status",
+			RunID:     run.ID,
+			MessageID: run.AssistantMessageID,
+			ToolName:  "web_search",
+			ToolPhase: "complete",
+		}); err != nil {
+			return err
+		}
+	}
 	if text != "" {
 		if err := emit(RunStreamEvent{
 			Type:      "message.delta",
@@ -571,15 +583,43 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 		failureCode    string
 		failureMessage string
 		textBuilder    strings.Builder
+		webSearchUsed  bool
+		searchStarted  bool
+		searchComplete bool
 	)
 
 	streamCtx, cancel := s.withOperationTimeout(ctx, s.streamTimeout)
 	defer cancel()
 
-	err = s.responses.StreamResponse(streamCtx, azureopenai.CreateResponseRequest{
-		Input:        input,
-		Instructions: s.instructions,
-	}, func(event azureopenai.StreamEvent) error {
+	err = s.responses.StreamResponse(streamCtx, s.newCreateResponseRequest(input), func(event azureopenai.StreamEvent) error {
+		if phase := webSearchPhaseFromEvent(event); phase != "" {
+			webSearchUsed = true
+			if phase == "searching" && !searchStarted {
+				searchStarted = true
+				if err := emit(RunStreamEvent{
+					Type:      "tool.status",
+					RunID:     run.ID,
+					MessageID: run.AssistantMessageID,
+					ToolName:  "web_search",
+					ToolPhase: "searching",
+				}); err != nil {
+					return err
+				}
+			}
+			if phase == "complete" && !searchComplete {
+				searchComplete = true
+				if err := emit(RunStreamEvent{
+					Type:      "tool.status",
+					RunID:     run.ID,
+					MessageID: run.AssistantMessageID,
+					ToolName:  "web_search",
+					ToolPhase: "complete",
+				}); err != nil {
+					return err
+				}
+			}
+		}
+
 		switch event.Type {
 		case "response.created":
 			if event.Response != nil {
@@ -675,12 +715,11 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 		responseMeta.ID = run.ProviderResponseID
 	}
 
-	finalText := strings.TrimSpace(textBuilder.String())
-	if finalText == "" {
-		finalText = extractResponseText(responseMeta)
+	if responseUsesWebSearch(responseMeta) {
+		webSearchUsed = true
 	}
 
-	content, err := NewTextContent(finalText)
+	content, err := NewAssistantContentFromResponse(responseMeta)
 	if err != nil {
 		if failErr := s.failRun(ctx, run, "invalid_provider_output"); failErr != nil {
 			return fmt.Errorf("encode assistant content: %w (also failed to persist run failure: %v)", err, failErr)
@@ -693,6 +732,18 @@ func (s *Service) executeStreamRun(ctx context.Context, run repository.Run, emit
 			return fmt.Errorf("complete run: %w (also failed to persist run failure: %v)", err, failErr)
 		}
 		return fmt.Errorf("complete run: %w", err)
+	}
+
+	if webSearchUsed && !searchComplete {
+		if err := emit(RunStreamEvent{
+			Type:      "tool.status",
+			RunID:     run.ID,
+			MessageID: run.AssistantMessageID,
+			ToolName:  "web_search",
+			ToolPhase: "complete",
+		}); err != nil {
+			return err
+		}
 	}
 
 	return emit(RunStreamEvent{
@@ -781,6 +832,18 @@ func providerErrorCode(err error) string {
 	return "provider_request_failed"
 }
 
+func (s *Service) newCreateResponseRequest(input []azureopenai.InputMessage) azureopenai.CreateResponseRequest {
+	request := azureopenai.CreateResponseRequest{
+		Input:        input,
+		Instructions: s.instructions,
+	}
+	if s.webSearchEnabled {
+		request.Tools = []azureopenai.Tool{{Type: "web_search"}}
+	}
+
+	return request
+}
+
 func extractResponseText(response azureopenai.Response) string {
 	if trimmed := strings.TrimSpace(response.OutputText); trimmed != "" {
 		return trimmed
@@ -806,6 +869,54 @@ func extractResponseText(response azureopenai.Response) string {
 	return builder.String()
 }
 
+func responseUsesWebSearch(response azureopenai.Response) bool {
+	for _, item := range response.Output {
+		if item.Type == "web_search_call" {
+			return true
+		}
+		for _, part := range item.Content {
+			if len(citationsFromAnnotations(part.Annotations)) > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func webSearchPhaseFromEvent(event azureopenai.StreamEvent) string {
+	switch event.Type {
+	case "response.web_search_call.in_progress", "response.web_search_call.searching":
+		return "searching"
+	case "response.web_search_call.completed", "response.web_search_call.done":
+		return "complete"
+	case "response.output_item.added":
+		if event.Item != nil && event.Item.Type == "web_search_call" {
+			return "searching"
+		}
+	case "response.output_item.done":
+		if event.Item != nil && event.Item.Type == "web_search_call" {
+			switch strings.ToLower(strings.TrimSpace(event.Item.Status)) {
+			case "", "completed", "done", "succeeded":
+				return "complete"
+			case "in_progress", "searching":
+				return "searching"
+			}
+		}
+	}
+
+	if event.Item != nil && event.Item.Type == "web_search_call" {
+		switch strings.ToLower(strings.TrimSpace(event.Item.Status)) {
+		case "in_progress", "searching":
+			return "searching"
+		case "completed", "done", "succeeded":
+			return "complete"
+		}
+	}
+
+	return ""
+}
+
 func contentText(content MessageContent) string {
 	var builder strings.Builder
 	for _, part := range content.Parts {
@@ -823,6 +934,16 @@ func contentText(content MessageContent) string {
 	}
 
 	return builder.String()
+}
+
+func contentHasCitations(content MessageContent) bool {
+	for _, part := range content.Parts {
+		if len(part.Citations) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func tokenUsageFromRun(run repository.Run) *TokenUsage {

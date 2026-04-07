@@ -54,6 +54,8 @@ Backend app startup validates these:
   Azure OpenAI deployment name, for example `gpt-5-chat`
 - `AZURE_OPENAI_SYSTEM_PROMPT`
   Optional. If unset, defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
+- `AZURE_OPENAI_ENABLE_WEB_SEARCH`
+  Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests, persists final assistant URL citations, and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
   Optional duration for non-stream Responses API calls. Default `90s`.
 - `AZURE_OPENAI_STREAM_TIMEOUT`
@@ -116,6 +118,8 @@ export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
 # Leave AZURE_OPENAI_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
 # Set it to an empty string only if you want to disable the default prompt explicitly.
 # export AZURE_OPENAI_SYSTEM_PROMPT=
+# Disabled by default. Enable manually only in dev/test while rolling out Azure-native web_search.
+export AZURE_OPENAI_ENABLE_WEB_SEARCH=false
 export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s
@@ -259,6 +263,8 @@ Backend:
 cd apps/backend
 GOCACHE=/tmp/ulduar-go-build go test ./...
 ```
+
+When `AZURE_OPENAI_ENABLE_WEB_SEARCH=true`, the backend still keeps the existing request and response shapes stable, but assistant message content may include optional citation metadata on text parts and the SSE stream may include `tool.status` events for Azure `web_search` progress. With the flag unset or `false`, backend behavior remains effectively unchanged.
 
 Frontend:
 

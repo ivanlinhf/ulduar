@@ -63,6 +63,7 @@ func main() {
 		ResponseTimeout:     cfg.OpenAIRequestTimeout,
 		StreamTimeout:       cfg.OpenAIStreamTimeout,
 		FinalizationTimeout: cfg.RunFinalizationTimeout,
+		EnableWebSearch:     cfg.AzureOpenAIWebSearch,
 	})
 
 	server := &http.Server{
