@@ -24,7 +24,7 @@
 
   .composer-footer-end {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
 
   .composer-dialog-backdrop {
