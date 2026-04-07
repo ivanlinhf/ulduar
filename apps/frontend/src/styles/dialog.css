@@ -11,8 +11,6 @@
 
 .composer-dialog {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 18px;
   width: min(75vw, 1080px);
   height: min(75dvh, 760px);
   max-width: calc(100vw - 48px);
@@ -26,28 +24,13 @@
   box-shadow: 0 36px 120px rgba(32, 23, 15, 0.28);
 }
 
-.composer-dialog-input {
-  resize: none;
-  width: 100%;
-  min-height: 0;
-  border: 1px solid rgba(56, 44, 30, 0.12);
+.composer-input-shell-dialog {
+  height: 100%;
+  padding: 18px 18px 14px;
   border-radius: 28px;
-  padding: 22px 24px;
   background: rgba(255, 255, 255, 0.84);
-  color: var(--ink);
+}
+
+.composer-dialog-input {
   line-height: 1.65;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-}
-
-.composer-dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.composer-dialog-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
 }

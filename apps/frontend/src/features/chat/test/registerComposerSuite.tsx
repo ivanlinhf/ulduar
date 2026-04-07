@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -61,11 +61,15 @@ export function registerComposerSuite(context: AppTestContext) {
 
     const appFrame = container.querySelector(".app-frame");
     const expandedComposer = screen.getByLabelText("Expanded message");
+    const dialogAttachmentButton = screen.getByRole("button", { name: "Add attachments" });
     const dialogSendButton = screen.getByRole("button", { name: "Send" });
 
     expect(appFrame).toHaveAttribute("inert");
     expect(appFrame).toHaveAttribute("aria-hidden", "true");
     expect(expandedComposer).toHaveFocus();
+
+    await user.tab();
+    expect(dialogAttachmentButton).toHaveFocus();
 
     await user.tab();
     expect(dialogSendButton).toHaveFocus();
@@ -152,6 +156,28 @@ export function registerComposerSuite(context: AppTestContext) {
     await user.unhover(attachmentButton);
     await user.hover(attachmentButton);
     expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
+  });
+
+  it("shows attachment controls inside the expanded composer", async () => {
+    const user = userEvent.setup();
+    const { container } = context.renderApp();
+    await context.waitForReady();
+
+    const fileInput = container.querySelector('input[type="file"]');
+    expect(fileInput).toBeTruthy();
+
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: {
+        files: [new File(["x"], "design-notes.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Expand message editor" }));
+    const dialog = screen.getByRole("dialog", { name: "Expanded message editor" });
+
+    expect(within(dialog).getByRole("button", { name: "Add attachments" })).toBeInTheDocument();
+    expect(within(dialog).getByText("design-notes.pdf")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Send" })).toBeInTheDocument();
   });
 
   it("shows an attachment limit toast instead of an inline error and dismisses it after 3 seconds", async () => {

@@ -1,6 +1,6 @@
 .composer {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 20px 28px 28px;
   border-top: 1px solid var(--line);
   background: rgba(255, 252, 247, 0.82);
@@ -8,6 +8,24 @@
 
 .composer-input-shell {
   position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px 16px 14px;
+  border: 1px solid rgba(56, 44, 30, 0.12);
+  border-radius: 24px;
+  background: var(--surface-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.composer-input-shell-inline {
+  min-height: 140px;
+}
+
+.composer-input-shell:focus-within {
+  outline: 2px solid rgba(182, 71, 30, 0.18);
+  border-color: rgba(182, 71, 30, 0.28);
 }
 
 .composer-expand-tooltip {
@@ -16,30 +34,33 @@
   right: 16px;
 }
 
-.composer-input {
+.composer-input,
+.composer-dialog-input {
   resize: none;
-  min-height: 140px;
   width: 100%;
-  border: 1px solid rgba(56, 44, 30, 0.12);
-  border-radius: 24px;
-  padding: 18px 64px 20px 18px;
-  background: var(--surface-strong);
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--ink);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.composer-input {
+  min-height: 108px;
+  padding-right: 44px;
 }
 
 .composer-input:focus,
 .composer-dialog-input:focus {
-  outline: 2px solid rgba(182, 71, 30, 0.18);
-  border-color: rgba(182, 71, 30, 0.28);
+  outline: none;
 }
 
 .composer-expand-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: 0;
   padding: 0;
   background: transparent;
@@ -61,8 +82,8 @@
 }
 
 .composer-expand-button svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -70,25 +91,38 @@
   stroke-linejoin: round;
 }
 
-.composer-toolbar {
+.composer-footer {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 12px 16px;
+  padding-top: 2px;
 }
 
-.composer-toolbar-start {
+.composer-footer-start {
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  min-width: 0;
+  gap: 8px;
+}
+
+.composer-attachment-list {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.composer-submit {
+.composer-footer-end {
   display: inline-flex;
   align-items: center;
   gap: 12px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .composer-hint {
@@ -97,6 +131,7 @@
 }
 
 .attachment-button {
+  flex-shrink: 0;
   padding: 12px 16px;
   background: transparent;
   color: var(--ink);

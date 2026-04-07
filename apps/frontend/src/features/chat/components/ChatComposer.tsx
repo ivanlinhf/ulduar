@@ -1,17 +1,15 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
+import type { ChangeEvent, KeyboardEvent, RefObject, SubmitEvent } from "react";
 
-import { attachmentInputAccept } from "../constants";
 import type { SelectedAttachment, SubmissionState } from "../types";
 import { ActionTooltip } from "./ActionTooltip";
-import { IconAttachment, IconClose, IconExpand, IconSend, IconSpinner } from "./icons";
+import { ComposerFooter } from "./ComposerFooter";
+import { IconExpand } from "./icons";
 
 type ChatComposerProps = {
   busy: boolean;
   canSubmit: boolean;
   composerText: string;
-  fileInputRef: RefObject<HTMLInputElement | null>;
   inlineComposerRef: RefObject<HTMLTextAreaElement | null>;
-  onFileSelection: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenExpandedComposer: () => void;
   onOpenFilePicker: () => void;
   onRemoveAttachment: (id: string) => void;
@@ -28,9 +26,7 @@ export function ChatComposer({
   busy,
   canSubmit,
   composerText,
-  fileInputRef,
   inlineComposerRef,
-  onFileSelection,
   onOpenExpandedComposer,
   onOpenFilePicker,
   onRemoveAttachment,
@@ -42,44 +38,9 @@ export function ChatComposer({
   submissionState,
   submitButtonLabel,
 }: ChatComposerProps) {
-  const previewUrlMapRef = useRef<Map<string, string>>(new Map());
-  const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
-
-  // Incrementally update blob URLs: create only for new ids, revoke only for removed ids.
-  useEffect(() => {
-    const map = previewUrlMapRef.current;
-    const nextIds = new Set(selectedFiles.map((a) => a.id));
-
-    for (const [id, url] of [...map]) {
-      if (!nextIds.has(id)) {
-        URL.revokeObjectURL(url);
-        map.delete(id);
-      }
-    }
-
-    for (const { id, file } of selectedFiles) {
-      if (!map.has(id) && file.type.startsWith("image/")) {
-        map.set(id, URL.createObjectURL(file));
-      }
-    }
-
-    setPreviewUrls(new Map(map));
-  }, [selectedFiles]);
-
-  // Revoke all remaining blob URLs on unmount.
-  useEffect(() => {
-    const map = previewUrlMapRef.current;
-    return () => {
-      for (const url of map.values()) {
-        URL.revokeObjectURL(url);
-      }
-      map.clear();
-    };
-  }, []);
-
   return (
     <form className="composer" onSubmit={onSubmit}>
-      <div className="composer-input-shell">
+      <div className="composer-input-shell composer-input-shell-inline">
         <textarea
           id="prompt"
           ref={inlineComposerRef}
@@ -108,93 +69,16 @@ export function ChatComposer({
             <IconExpand />
           </button>
         </ActionTooltip>
-      </div>
-
-      <div className="composer-toolbar">
-        <div className="composer-toolbar-start">
-          <ActionTooltip
-            side="above"
-            dismissOnPress
-            openOnFocus={false}
-            content={<span className="action-tooltip-label">Add attachments</span>}
-          >
-            <button
-              aria-label="Add attachments"
-              className="attachment-button icon-only-button"
-              disabled={busy}
-              onClick={onOpenFilePicker}
-              type="button"
-            >
-              <IconAttachment />
-            </button>
-          </ActionTooltip>
-          <input
-            ref={fileInputRef}
-            className="visually-hidden-file-input"
-            type="file"
-            accept={attachmentInputAccept}
-            multiple
-            onChange={onFileSelection}
-            disabled={busy}
-            tabIndex={-1}
-          />
-
-          {selectedFiles.map(({ id, file }) => {
-            const previewUrl = previewUrls.get(id);
-            return previewUrl ? (
-              <div key={id} className="attachment-chip">
-                <img
-                  className="attachment-chip-thumb"
-                  src={previewUrl}
-                  alt={file.name}
-                  title={file.name}
-                />
-                <button
-                  className="attachment-remove-button"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => onRemoveAttachment(id)}
-                  type="button"
-                  disabled={busy}
-                >
-                  <IconClose />
-                </button>
-              </div>
-            ) : (
-              <div key={id} className="attachment-chip attachment-chip-file">
-                <span className="attachment-chip-name" title={file.name}>
-                  {file.name}
-                </span>
-                <button
-                  className="attachment-remove-button"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => onRemoveAttachment(id)}
-                  type="button"
-                  disabled={busy}
-                >
-                  <IconClose />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="composer-submit">
-          <span className="composer-hint">Shift + Enter to send</span>
-          <ActionTooltip
-            align="right"
-            side="above"
-            content={<span className="action-tooltip-label">{submitButtonLabel}</span>}
-          >
-            <button
-              aria-label={submitButtonLabel}
-              className="primary-button icon-only-button send-button"
-              disabled={!canSubmit}
-              type="submit"
-            >
-              {submissionState === "idle" ? <IconSend /> : <IconSpinner />}
-            </button>
-          </ActionTooltip>
-        </div>
+        <ComposerFooter
+          busy={busy}
+          canSubmit={canSubmit}
+          onOpenFilePicker={onOpenFilePicker}
+          onRemoveAttachment={onRemoveAttachment}
+          selectedFiles={selectedFiles}
+          sendButtonType="submit"
+          submissionState={submissionState}
+          submitButtonLabel={submitButtonLabel}
+        />
       </div>
 
       {screenError ? <p className="screen-error">{screenError}</p> : null}

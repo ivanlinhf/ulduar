@@ -1,4 +1,5 @@
 import { ActionTooltip } from "./features/chat/components/ActionTooltip";
+import { attachmentInputAccept } from "./features/chat/constants";
 import { IconInfo, IconNewChat } from "./features/chat/components/icons";
 import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
@@ -70,9 +71,7 @@ export default function App() {
             busy={chat.busy}
             canSubmit={chat.canSubmit}
             composerText={chat.composerText}
-            fileInputRef={chat.fileInputRef}
             inlineComposerRef={chat.inlineComposerRef}
-            onFileSelection={chat.handleFileSelection}
             onOpenExpandedComposer={chat.openExpandedComposer}
             onOpenFilePicker={chat.openFilePicker}
             onRemoveAttachment={chat.removeAttachment}
@@ -96,11 +95,25 @@ export default function App() {
         isOpen={chat.isExpandedComposerOpen}
         onBackdropMouseDown={chat.handleExpandedBackdropMouseDown}
         onDialogKeyDown={chat.handleExpandedDialogKeyDown}
+        onOpenFilePicker={chat.openFilePicker}
+        onRemoveAttachment={chat.removeAttachment}
         onSendClick={chat.submitFromExpandedComposer}
         onTextChange={chat.handleComposerTextChange}
         onTextareaKeyDown={chat.handleExpandedComposerKeyDown}
+        selectedFiles={chat.selectedFiles}
         submissionState={chat.submissionState}
         submitButtonLabel={chat.submitButtonLabel}
+      />
+
+      <input
+        ref={chat.fileInputRef}
+        className="visually-hidden-file-input"
+        type="file"
+        accept={attachmentInputAccept}
+        multiple
+        onChange={chat.handleFileSelection}
+        disabled={chat.busy}
+        tabIndex={-1}
       />
 
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
