@@ -402,7 +402,7 @@ func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
 		`"responseId":"resp_123"`,
 		"event: tool.status",
 		`"toolName":"web_search"`,
-		`"phase":"searching"`,
+		`"toolPhase":"searching"`,
 		"event: message.delta",
 		`"delta":"hello"`,
 		"event: run.completed",
