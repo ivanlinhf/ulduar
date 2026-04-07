@@ -52,6 +52,7 @@ export function useChatApp() {
   const streamAutoScrollEnabledRef = useRef(true);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
   const sessionIdRef = useRef("");
+  const shouldRefreshPersistedMessageRef = useRef(false);
 
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit =
@@ -123,6 +124,7 @@ export function useChatApp() {
     setMessages([]);
     setTransientStatus("");
     sessionIdRef.current = "";
+    shouldRefreshPersistedMessageRef.current = false;
     setSessionId("");
     setComposerText("");
     setIsExpandedComposerOpen(false);
@@ -165,6 +167,7 @@ export function useChatApp() {
     streamAutoScrollEnabledRef.current = true;
     setScreenError("");
     setTransientStatus("");
+    shouldRefreshPersistedMessageRef.current = false;
     setSubmissionState("submitting");
     setComposerText("");
     setSelectedFiles([]);
@@ -231,6 +234,8 @@ export function useChatApp() {
             return;
           }
 
+          shouldRefreshPersistedMessageRef.current = true;
+
           if (payload.toolPhase === "searching") {
             setTransientStatus("Searching the web...");
             return;
@@ -255,6 +260,7 @@ export function useChatApp() {
           closeStream();
           setSubmissionState("idle");
           setTransientStatus("");
+          const streamedCitations = mapCitations(payload.citations);
           setMessages((current) =>
             current.map((message) =>
               message.id === payload.messageId
@@ -265,17 +271,22 @@ export function useChatApp() {
                     inputTokens: payload.inputTokens ?? message.inputTokens,
                     outputTokens: payload.outputTokens ?? message.outputTokens,
                     totalTokens: payload.totalTokens ?? message.totalTokens,
-                    citations: mapCitations(payload.citations) ?? message.citations,
+                    citations: streamedCitations ?? message.citations,
                   }
                 : message,
             ),
           );
-          void syncMessageCitationsFromSession(sessionId, payload.messageId);
+          const shouldRefreshPersistedMessage = shouldRefreshPersistedMessageRef.current && streamedCitations === undefined;
+          shouldRefreshPersistedMessageRef.current = false;
+          if (shouldRefreshPersistedMessage) {
+            void syncMessageCitationsFromSession(sessionId, payload.messageId);
+          }
         },
         onRunFailed: (payload) => {
           closeStream();
           setSubmissionState("idle");
           setTransientStatus("");
+          shouldRefreshPersistedMessageRef.current = false;
           setMessages((current) =>
             current.map((message) =>
               message.id === payload.messageId
@@ -292,6 +303,7 @@ export function useChatApp() {
           closeStream();
           setSubmissionState("idle");
           setTransientStatus("");
+          shouldRefreshPersistedMessageRef.current = false;
           setMessages((current) =>
             current.map((item) =>
               item.id === created.assistantMessageId
@@ -308,6 +320,7 @@ export function useChatApp() {
     } catch (error) {
       setSubmissionState("idle");
       setTransientStatus("");
+      shouldRefreshPersistedMessageRef.current = false;
       setComposerText(draftText);
       setSelectedFiles(draftFiles);
       setMessages((current) =>

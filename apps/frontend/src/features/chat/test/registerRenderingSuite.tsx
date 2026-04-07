@@ -205,6 +205,7 @@ export function registerRenderingSuite(context: AppTestContext) {
     await waitFor(() => {
       expect(screen.queryByText("Searching the web...")).not.toBeInTheDocument();
     });
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
   });
 
   it("clears a transient web-search status when the run fails", async () => {
@@ -277,6 +278,12 @@ export function registerRenderingSuite(context: AppTestContext) {
 
     const streamHandlers = context.requireStreamHandlers();
     await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
       streamHandlers.onMessageDelta?.({
         runId: "44444444-4444-4444-4444-444444444444",
         messageId: "33333333-3333-3333-3333-333333333333",
@@ -299,6 +306,7 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(within(sources).getByRole("link", { name: /Example Docs/ })).toHaveAttribute("target", "_blank");
     expect(within(sources).getByRole("link", { name: /Example Docs/ })).toHaveAttribute("rel", "noreferrer noopener");
     expect(within(sources).getByRole("link", { name: /Second Source/ })).toHaveAttribute("href", "https://example.com/other");
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
   });
 
   it("does not apply an old session citation refresh after starting a new chat", async () => {
@@ -337,6 +345,12 @@ export function registerRenderingSuite(context: AppTestContext) {
 
     let streamHandlers = context.requireStreamHandlers();
     await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
       streamHandlers.onRunCompleted?.({
         runId: "44444444-4444-4444-4444-444444444444",
         messageId: "33333333-3333-3333-3333-333333333333",
@@ -386,6 +400,7 @@ export function registerRenderingSuite(context: AppTestContext) {
 
     expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Old Source/ })).not.toBeInTheDocument();
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       streamHandlers.onMessageDelta?.({
@@ -427,6 +442,7 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(screen.getByText("Plain assistant reply")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
     expect(screen.queryByText("Searching the web...")).not.toBeInTheDocument();
+    expect(context.mockedGetSession).not.toHaveBeenCalled();
   });
 
   it("renders assistant soft line breaks with normal markdown paragraph whitespace", async () => {
