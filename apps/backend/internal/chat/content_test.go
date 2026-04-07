@@ -74,6 +74,8 @@ func TestNewAssistantContentFromResponsePersistsCitations(t *testing.T) {
 func TestNewAssistantContentFromResponsePreservesAnnotatedTextWhitespace(t *testing.T) {
 	t.Parallel()
 
+	const expectedText = "\n Grounded answer "
+
 	start := 2
 	end := 9
 	data, err := NewAssistantContentFromResponse(azureopenai.Response{
@@ -82,7 +84,7 @@ func TestNewAssistantContentFromResponsePreservesAnnotatedTextWhitespace(t *test
 			Role: "assistant",
 			Content: []azureopenai.ResponseContentItem{{
 				Type: "output_text",
-				Text: "\n Grounded answer ",
+				Text: expectedText,
 				Annotations: []azureopenai.ResponseAnnotation{{
 					Type:       "url_citation",
 					URL:        "https://example.com/source",
@@ -101,8 +103,8 @@ func TestNewAssistantContentFromResponsePreservesAnnotatedTextWhitespace(t *test
 		t.Fatalf("DecodeContent() error = %v", err)
 	}
 
-	if got := content.Parts[0].Text; got != "\n Grounded answer " {
-		t.Fatalf("content.Parts[0].Text = %q, want %q", got, "\n Grounded answer ")
+	if got := content.Parts[0].Text; got != expectedText {
+		t.Fatalf("content.Parts[0].Text = %q, want %q", got, expectedText)
 	}
 	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
 		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
@@ -174,9 +176,11 @@ func TestNewAssistantContentFromResponseIgnoresNonMessageOutputItems(t *testing.
 func TestNewTextContentWithCitationsPreservesTextForOffsets(t *testing.T) {
 	t.Parallel()
 
+	const expectedText = "\n cited text "
+
 	start := 2
 	end := 7
-	data, err := NewTextContentWithCitations("\n cited text ", []MessageCitation{{
+	data, err := NewTextContentWithCitations(expectedText, []MessageCitation{{
 		URL:        "https://example.com/source",
 		StartIndex: &start,
 		EndIndex:   &end,
@@ -193,8 +197,8 @@ func TestNewTextContentWithCitationsPreservesTextForOffsets(t *testing.T) {
 	if len(content.Parts) != 1 {
 		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
 	}
-	if got := content.Parts[0].Text; got != "\n cited text " {
-		t.Fatalf("content.Parts[0].Text = %q, want %q", got, "\n cited text ")
+	if got := content.Parts[0].Text; got != expectedText {
+		t.Fatalf("content.Parts[0].Text = %q, want %q", got, expectedText)
 	}
 	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
 		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
