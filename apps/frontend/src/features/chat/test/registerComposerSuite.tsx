@@ -169,7 +169,12 @@ export function registerComposerSuite(context: AppTestContext) {
 
       fireEvent.change(fileInput as HTMLInputElement, { target: { files } });
 
-      expect(screen.getByText("You can attach at most 5 files at once.")).toBeInTheDocument();
+      const attachmentToast = screen.getByText("You can attach at most 5 files at once.");
+      const toastEl = attachmentToast.closest(".toast");
+      expect(attachmentToast).toBeInTheDocument();
+      expect(toastEl).not.toBeNull();
+      expect(toastEl).toHaveClass("toast", "toast-warning");
+      expect(toastEl).not.toHaveClass("toast-error");
       expect(screen.queryByText("image-1.png")).not.toBeInTheDocument();
       expect(container.querySelector(".screen-error")).toBeNull();
 
