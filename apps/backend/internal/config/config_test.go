@@ -40,6 +40,9 @@ func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
 	if cfg.AzureOpenAISystemPrompt != defaultOpenAISystemPrompt {
 		t.Fatalf("cfg.AzureOpenAISystemPrompt = %q", cfg.AzureOpenAISystemPrompt)
 	}
+	if cfg.AzureOpenAIWebSearch {
+		t.Fatal("cfg.AzureOpenAIWebSearch = true, want false by default")
+	}
 }
 
 func TestLoadRejectsInvalidValues(t *testing.T) {
@@ -70,6 +73,17 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		t.Fatal("Load() error = nil, want duration error")
 	}
 	if !strings.Contains(err.Error(), "azure openai stream timeout") {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	t.Setenv("AZURE_OPENAI_STREAM_TIMEOUT", "10m")
+	t.Setenv("AZURE_OPENAI_ENABLE_WEB_SEARCH", "maybe")
+
+	_, err = Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want boolean error")
+	}
+	if !strings.Contains(err.Error(), "azure openai enable web search") {
 		t.Fatalf("Load() error = %v", err)
 	}
 }
@@ -117,5 +131,28 @@ func TestLoadPreservesExplicitlyEmptySystemPrompt(t *testing.T) {
 
 	if cfg.AzureOpenAISystemPrompt != "" {
 		t.Fatalf("cfg.AzureOpenAISystemPrompt = %q", cfg.AzureOpenAISystemPrompt)
+	}
+}
+
+func TestLoadEnablesWebSearchWhenConfigured(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("BACKEND_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	t.Setenv("AZURE_OPENAI_ENABLE_WEB_SEARCH", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if !cfg.AzureOpenAIWebSearch {
+		t.Fatal("cfg.AzureOpenAIWebSearch = false, want true")
 	}
 }

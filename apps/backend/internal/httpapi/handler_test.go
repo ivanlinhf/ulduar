@@ -342,6 +342,15 @@ func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
 			}
 
 			if err := emit(chat.RunStreamEvent{
+				Type:      "tool.status",
+				RunID:     runID,
+				MessageID: "33333333-3333-3333-3333-333333333333",
+				ToolName:  "web_search",
+				ToolPhase: "searching",
+			}); err != nil {
+				return err
+			}
+			if err := emit(chat.RunStreamEvent{
 				Type:       "run.started",
 				RunID:      runID,
 				MessageID:  "33333333-3333-3333-3333-333333333333",
@@ -391,6 +400,9 @@ func TestStreamRunHandlerWritesSSEEvents(t *testing.T) {
 	for _, fragment := range []string{
 		"event: run.started",
 		`"responseId":"resp_123"`,
+		"event: tool.status",
+		`"toolName":"web_search"`,
+		`"toolPhase":"searching"`,
 		"event: message.delta",
 		`"delta":"hello"`,
 		"event: run.completed",

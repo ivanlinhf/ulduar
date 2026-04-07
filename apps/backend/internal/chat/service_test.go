@@ -122,3 +122,147 @@ func TestStreamRunReplaysCompletedRunWithPersistedTokenUsage(t *testing.T) {
 		t.Fatalf("events[1].TotalTokens = %v, want %d", events[1].TotalTokens, totalTokens)
 	}
 }
+
+func TestServiceCreateResponseRequestOmitsWebSearchWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(nil, nil, stubResponseClient{}, ServiceOptions{})
+
+	request := service.newCreateResponseRequest([]azureopenai.InputMessage{{Role: "user"}})
+
+	if len(request.Tools) != 0 {
+		t.Fatalf("len(request.Tools) = %d, want 0", len(request.Tools))
+	}
+}
+
+func TestServiceCreateResponseRequestIncludesWebSearchWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(nil, nil, stubResponseClient{}, ServiceOptions{EnableWebSearch: true})
+
+	request := service.newCreateResponseRequest([]azureopenai.InputMessage{{Role: "user"}})
+
+	if len(request.Tools) != 1 {
+		t.Fatalf("len(request.Tools) = %d, want 1", len(request.Tools))
+	}
+	if request.Tools[0].Type != "web_search" {
+		t.Fatalf("request.Tools[0].Type = %q", request.Tools[0].Type)
+	}
+}
+
+func TestWebSearchPhaseFromEvent(t *testing.T) {
+	t.Parallel()
+
+	if phase := webSearchPhaseFromEvent(azureopenai.StreamEvent{
+		Type: "response.output_item.added",
+		Item: &azureopenai.ResponseItem{Type: "web_search_call", Status: "in_progress"},
+	}); phase != "searching" {
+		t.Fatalf("phase = %q, want searching", phase)
+	}
+
+	if phase := webSearchPhaseFromEvent(azureopenai.StreamEvent{
+		Type: "response.output_item.done",
+		Item: &azureopenai.ResponseItem{Type: "web_search_call", Status: "completed"},
+	}); phase != "complete" {
+		t.Fatalf("phase = %q, want complete", phase)
+	}
+}
+
+func TestStreamRunReplaysWebSearchCompletionWhenCitationsExist(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sessionID          = "11111111-1111-1111-1111-111111111111"
+		runID              = "22222222-2222-2222-2222-222222222222"
+		assistantMessageID = "33333333-3333-3333-3333-333333333333"
+	)
+
+	content, err := NewTextContentWithCitations("Grounded answer", []MessageCitation{{
+		Title: "Example",
+		URL:   "https://example.com",
+	}})
+	if err != nil {
+		t.Fatalf("NewTextContentWithCitations() error = %v", err)
+	}
+
+	service := NewService(nil, nil, stubResponseClient{}, ServiceOptions{})
+	service.loadRunForSessionFn = func(context.Context, string, string) (repository.Run, error) {
+		return repository.Run{
+			ID:                 runID,
+			SessionID:          sessionID,
+			AssistantMessageID: assistantMessageID,
+			Status:             runStatusCompleted,
+		}, nil
+	}
+	service.getMessageByIDFn = func(context.Context, string) (repository.Message, error) {
+		return repository.Message{
+			ID:      assistantMessageID,
+			Content: content,
+		}, nil
+	}
+
+	var events []RunStreamEvent
+	err = service.StreamRun(context.Background(), sessionID, runID, func(event RunStreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("StreamRun() error = %v", err)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("len(events) = %d, want 3", len(events))
+	}
+	if events[0].Type != "tool.status" || events[0].ToolPhase != "complete" || events[0].ToolName != "web_search" {
+		t.Fatalf("events[0] = %+v", events[0])
+	}
+}
+
+func TestApplyStreamedTextFallbackSetsOutputTextWhenCompletedPayloadIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "streamed fallback" {
+		t.Fatalf("response.OutputText = %q, want streamed fallback", response.OutputText)
+	}
+}
+
+func TestApplyStreamedTextFallbackPreservesExplicitCompletedPayload(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Role: "assistant",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "completed payload",
+			}},
+		}},
+	}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "" {
+		t.Fatalf("response.OutputText = %q, want empty", response.OutputText)
+	}
+}
+
+func TestApplyStreamedTextFallbackUsesStreamedTextWhenCompletedPayloadHasNoAssistantText(t *testing.T) {
+	t.Parallel()
+
+	response := azureopenai.Response{
+		Output: []azureopenai.ResponseItem{{
+			Type: "message",
+			Role: "assistant",
+		}},
+	}
+
+	applyStreamedTextFallback(&response, "streamed fallback")
+
+	if response.OutputText != "streamed fallback" {
+		t.Fatalf("response.OutputText = %q, want streamed fallback", response.OutputText)
+	}
+}

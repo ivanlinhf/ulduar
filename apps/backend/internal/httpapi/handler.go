@@ -322,6 +322,12 @@ func (h *Handler) streamRunHandler(w http.ResponseWriter, r *http.Request) {
 			if event.ModelName != "" {
 				payload["modelName"] = event.ModelName
 			}
+			if event.ToolName != "" {
+				payload["toolName"] = event.ToolName
+			}
+			if event.ToolPhase != "" {
+				payload["toolPhase"] = event.ToolPhase
+			}
 			if event.Delta != "" {
 				payload["delta"] = event.Delta
 			}

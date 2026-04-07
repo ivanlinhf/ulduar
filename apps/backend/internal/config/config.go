@@ -47,9 +47,15 @@ type Config struct {
 	AzureOpenAIAPIVersion   string
 	AzureOpenAIDeployment   string
 	AzureOpenAISystemPrompt string
+	AzureOpenAIWebSearch    bool
 }
 
 func Load() (Config, error) {
+	webSearchEnabled, err := boolEnvOrDefault("AZURE_OPENAI_ENABLE_WEB_SEARCH", false)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{
 		AppEnv:                  envOrDefault("APP_ENV", defaultAppEnv),
 		Port:                    strings.TrimSpace(os.Getenv("BACKEND_PORT")),
@@ -72,6 +78,7 @@ func Load() (Config, error) {
 		AzureOpenAIAPIVersion:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_API_VERSION")),
 		AzureOpenAIDeployment:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_DEPLOYMENT")),
 		AzureOpenAISystemPrompt: envOrDefaultUnlessSet("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
+		AzureOpenAIWebSearch:    webSearchEnabled,
 	}
 
 	if cfg.Port == "" {
@@ -200,6 +207,20 @@ func durationEnvOrDefault(key string, fallback time.Duration) time.Duration {
 	}
 
 	return duration
+}
+
+func boolEnvOrDefault(key string, fallback bool) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %w", strings.ToLower(strings.ReplaceAll(key, "_", " ")), err)
+	}
+
+	return parsed, nil
 }
 
 func validatePositiveDuration(value time.Duration, name string) error {

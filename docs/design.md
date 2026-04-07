@@ -234,6 +234,7 @@ Environment variables should cover:
 - Azure OpenAI API version if needed by the implementation
 - Azure model deployment name
 - System prompt or default assistant instruction
+- Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
 
 ### SDK choice
 

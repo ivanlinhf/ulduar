@@ -39,6 +39,11 @@ type CreateResponseRequest struct {
 	PreviousResponseID string `json:"previous_response_id,omitempty"`
 	Store              *bool  `json:"store,omitempty"`
 	Stream             bool   `json:"stream,omitempty"`
+	Tools              []Tool `json:"tools,omitempty"`
+}
+
+type Tool struct {
+	Type string `json:"type"`
 }
 
 type InputMessage struct {
@@ -79,12 +84,66 @@ type ResponseItem struct {
 	Type    string                `json:"type"`
 	Role    string                `json:"role"`
 	Status  string                `json:"status"`
+	Action  string                `json:"action,omitempty"`
+	Queries []string              `json:"queries,omitempty"`
 	Content []ResponseContentItem `json:"content"`
 }
 
 type ResponseContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type        string               `json:"type"`
+	Text        string               `json:"text"`
+	Annotations []ResponseAnnotation `json:"annotations,omitempty"`
+}
+
+type ResponseAnnotation struct {
+	Type       string `json:"type"`
+	URL        string `json:"url,omitempty"`
+	Title      string `json:"title,omitempty"`
+	StartIndex *int   `json:"start_index,omitempty"`
+	EndIndex   *int   `json:"end_index,omitempty"`
+}
+
+type responseAnnotationAlias struct {
+	Type       string `json:"type"`
+	URL        string `json:"url,omitempty"`
+	Title      string `json:"title,omitempty"`
+	StartIndex *int   `json:"start_index,omitempty"`
+	EndIndex   *int   `json:"end_index,omitempty"`
+	Location   *struct {
+		StartIndex *int `json:"start_index,omitempty"`
+		EndIndex   *int `json:"end_index,omitempty"`
+		Start      *int `json:"start,omitempty"`
+		End        *int `json:"end,omitempty"`
+	} `json:"location,omitempty"`
+}
+
+func (a *ResponseAnnotation) UnmarshalJSON(data []byte) error {
+	var raw responseAnnotationAlias
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*a = ResponseAnnotation{
+		Type:       raw.Type,
+		URL:        raw.URL,
+		Title:      raw.Title,
+		StartIndex: raw.StartIndex,
+		EndIndex:   raw.EndIndex,
+	}
+	if a.StartIndex == nil && raw.Location != nil {
+		a.StartIndex = raw.Location.StartIndex
+		if a.StartIndex == nil {
+			a.StartIndex = raw.Location.Start
+		}
+	}
+	if a.EndIndex == nil && raw.Location != nil {
+		a.EndIndex = raw.Location.EndIndex
+		if a.EndIndex == nil {
+			a.EndIndex = raw.Location.End
+		}
+	}
+
+	return nil
 }
 
 type ResponseError struct {
@@ -95,6 +154,7 @@ type ResponseError struct {
 type StreamEvent struct {
 	Type     string         `json:"type"`
 	Delta    string         `json:"delta,omitempty"`
+	Item     *ResponseItem  `json:"item,omitempty"`
 	Response *Response      `json:"response,omitempty"`
 	Error    *ResponseError `json:"error,omitempty"`
 }
