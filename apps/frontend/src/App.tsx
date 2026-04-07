@@ -1,14 +1,16 @@
 import { ActionTooltip } from "./features/chat/components/ActionTooltip";
 import { attachmentInputAccept } from "./features/chat/constants";
-import { IconInfo, IconNewChat } from "./features/chat/components/icons";
+import { IconInfo, IconNewChat, IconReload } from "./features/chat/components/icons";
 import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
 import { MessageList } from "./features/chat/components/MessageList";
 import { useChatApp } from "./features/chat/useChatApp";
+import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 
 export default function App() {
   const chat = useChatApp();
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
+  const update = useFrontendUpdate(turnCount);
 
   return (
     <div className="app-shell">
@@ -117,6 +119,24 @@ export default function App() {
       />
 
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {update.updateAvailable ? (
+          <div className="toast toast-info toast-with-action">
+            <div className="toast-copy">
+              <strong>A newer version is available.</strong>
+              <span>
+                {turnCount > 0
+                  ? reloadLosesSessionMessage
+                  : "Reload when you're ready to use the latest version."}
+              </span>
+            </div>
+
+            <button className="secondary-button toast-action-button" onClick={update.reloadToUpdate} type="button">
+              <IconReload />
+              <span>Reload</span>
+            </button>
+          </div>
+        ) : null}
+
         {chat.attachmentToast ? (
           <div className="toast toast-warning">
             {chat.attachmentToast}

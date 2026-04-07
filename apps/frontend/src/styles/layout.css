@@ -259,6 +259,8 @@
   left: 50%;
   bottom: 24px;
   z-index: 15;
+  display: grid;
+  gap: 12px;
   width: min(calc(100vw - 32px), 480px);
   transform: translateX(-50%);
   pointer-events: none;
@@ -270,6 +272,7 @@
   border: 1px solid transparent;
   box-shadow: 0 18px 48px rgba(32, 23, 15, 0.18);
   text-align: center;
+  pointer-events: auto;
 }
 
 .toast-warning {
@@ -279,11 +282,47 @@
   box-shadow: 0 18px 48px rgba(182, 71, 30, 0.16);
 }
 
+.toast-info {
+  border-color: rgba(182, 71, 30, 0.18);
+  background: rgba(255, 248, 240, 0.98);
+  color: var(--ink);
+}
+
 .toast-error {
   border-color: rgba(180, 35, 24, 0.28);
   background: rgba(255, 232, 227, 0.98);
   color: var(--danger);
   box-shadow: 0 18px 48px rgba(180, 35, 24, 0.18);
+}
+
+.toast-with-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+}
+
+.toast-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toast-copy strong,
+.toast-copy span {
+  overflow-wrap: anywhere;
+}
+
+.toast-copy span {
+  color: var(--muted);
+}
+
+.toast-action-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 10px 16px;
+  background: rgba(182, 71, 30, 0.1);
+  color: var(--accent);
 }
 
 @keyframes button-spinner-rotate {

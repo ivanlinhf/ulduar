@@ -18,6 +18,15 @@ export function IconInfo() {
   );
 }
 
+export function IconReload() {
+  return (
+    <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">
+      <path d="M20 11a8 8 0 1 0 2 5.29" />
+      <path d="M20 4v7h-7" />
+    </svg>
+  );
+}
+
 export function IconAttachment() {
   return (
     <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">

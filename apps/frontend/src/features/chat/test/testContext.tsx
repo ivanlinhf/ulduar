@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, expect, vi } from "vitest";
 
 import App from "../../../App";
+import { currentFrontendVersion } from "../../../lib/frontendUpdate";
 import * as api from "../../../lib/api";
 
 export function setupAppTestContext() {
@@ -9,12 +10,16 @@ export function setupAppTestContext() {
   const mockedGetSession = vi.mocked(api.getSession);
   const mockedCreateMessage = vi.mocked(api.createMessage);
   const mockedStreamRun = vi.mocked(api.streamRun);
+  const mockedFetch = vi.fn<typeof fetch>();
 
   let streamHandlers: Parameters<typeof api.streamRun>[2] | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mockedFetch);
     streamHandlers = undefined;
+    mockedFetch.mockReset();
+    mockedFetch.mockResolvedValue(createVersionResponse(currentFrontendVersion));
 
     mockedCreateSession.mockResolvedValue({
       sessionId: "11111111-1111-1111-1111-111111111111",
@@ -74,15 +79,31 @@ export function setupAppTestContext() {
   }
 
   return {
+    mockFrontendVersion,
     mockSuccessfulCreateMessage,
     mockSessionMessages,
     mockedCreateMessage,
     mockedCreateSession,
+    mockedFetch,
     mockedGetSession,
     renderApp,
     requireStreamHandlers,
     waitForReady,
   };
+
+  function mockFrontendVersion(version: string, init: { ok?: boolean } = {}) {
+    mockedFetch.mockResolvedValue(createVersionResponse(version, init));
+  }
 }
 
 export type AppTestContext = ReturnType<typeof setupAppTestContext>;
+
+function createVersionResponse(version: string, init: { ok?: boolean } = {}) {
+  const status = init.ok === false ? 503 : 200;
+  return new Response(JSON.stringify({ version }), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+}

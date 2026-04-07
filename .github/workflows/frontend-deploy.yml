@@ -52,6 +52,7 @@ jobs:
           docker build \
             -f apps/frontend/Dockerfile \
             --build-arg VITE_API_BASE_URL="$FRONTEND_VITE_API_BASE_URL" \
+            --build-arg VITE_APP_VERSION="$GITHUB_SHA" \
             -t "$FRONTEND_IMAGE" \
             apps/frontend
 
