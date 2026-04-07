@@ -102,7 +102,7 @@ func TestNewAssistantContentFromResponsePreservesAnnotatedTextWhitespace(t *test
 	}
 
 	if got := content.Parts[0].Text; got != "\n Grounded answer " {
-		t.Fatalf("content.Parts[0].Text = %q", got)
+		t.Fatalf("content.Parts[0].Text = %q, want %q", got, "\n Grounded answer ")
 	}
 	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
 		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
@@ -194,7 +194,7 @@ func TestNewTextContentWithCitationsPreservesTextForOffsets(t *testing.T) {
 		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
 	}
 	if got := content.Parts[0].Text; got != "\n cited text " {
-		t.Fatalf("content.Parts[0].Text = %q", got)
+		t.Fatalf("content.Parts[0].Text = %q, want %q", got, "\n cited text ")
 	}
 	if content.Parts[0].Citations[0].StartIndex == nil || *content.Parts[0].Citations[0].StartIndex != start {
 		t.Fatalf("content.Parts[0].Citations[0].StartIndex = %v", content.Parts[0].Citations[0].StartIndex)
