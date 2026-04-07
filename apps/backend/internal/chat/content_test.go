@@ -99,3 +99,33 @@ func TestNewAssistantContentFromResponseAllowsMissingItemTypeForAssistantText(t 
 		t.Fatalf("content.Parts[0].Text = %q", content.Parts[0].Text)
 	}
 }
+
+func TestNewAssistantContentFromResponseIgnoresNonMessageOutputItems(t *testing.T) {
+	t.Parallel()
+
+	data, err := NewAssistantContentFromResponse(azureopenai.Response{
+		OutputText: "Final answer",
+		Output: []azureopenai.ResponseItem{{
+			Type: "web_search_call",
+			Content: []azureopenai.ResponseContentItem{{
+				Type: "output_text",
+				Text: "raw tool trace",
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantContentFromResponse() error = %v", err)
+	}
+
+	content, err := DecodeContent(data)
+	if err != nil {
+		t.Fatalf("DecodeContent() error = %v", err)
+	}
+
+	if len(content.Parts) != 1 {
+		t.Fatalf("len(content.Parts) = %d, want 1", len(content.Parts))
+	}
+	if content.Parts[0].Text != "Final answer" {
+		t.Fatalf("content.Parts[0].Text = %q, want %q", content.Parts[0].Text, "Final answer")
+	}
+}
