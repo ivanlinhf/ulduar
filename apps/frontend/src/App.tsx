@@ -63,6 +63,7 @@ export default function App() {
             messages={chat.messages}
             messagesEndRef={chat.messagesEndRef}
             onScroll={chat.handleMessageListScroll}
+            transientStatus={chat.transientStatus}
           />
 
           <ChatComposer

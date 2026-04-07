@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { compactMediaType, formatBytes } from "../utils";
-import type { ChatMessage } from "../types";
+import type { ChatCitation, ChatMessage } from "../types";
 import { ActionTooltip } from "./ActionTooltip";
 
 type MessageCardProps = {
@@ -24,6 +24,8 @@ export function MessageCard({ message }: MessageCardProps) {
           .filter(Boolean)
           .join(" / ")
       : undefined;
+  const uniqueSources = getUniqueSources(message.citations);
+
   return (
     <article className={`message-card message-${message.role}`}>
       <div className="message-meta">
@@ -76,6 +78,22 @@ export function MessageCard({ message }: MessageCardProps) {
         ) : null}
 
         {message.error ? <p className="message-error">{message.error}</p> : null}
+
+        {message.role === "assistant" && uniqueSources.length > 0 ? (
+          <section className="message-sources" aria-label="Sources">
+            <h2>Sources</h2>
+            <ul className="message-sources-list">
+              {uniqueSources.map((source) => (
+                <li key={source.url}>
+                  <a href={source.url} target="_blank" rel="noreferrer noopener">
+                    <span className="message-source-title">{source.title || source.url}</span>
+                    {source.title ? <span className="message-source-url">{source.url}</span> : null}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
 
       {message.role === "assistant" ? (
@@ -165,6 +183,27 @@ function formatTokenUsage(message: ChatMessage): string | null {
     return `in ${message.inputTokens} / out ${message.outputTokens}`;
   }
   return null;
+}
+
+function getUniqueSources(citations: ChatCitation[] | undefined): ChatCitation[] {
+  if (!citations || citations.length === 0) {
+    return [];
+  }
+
+  const byURL = new Map<string, ChatCitation>();
+  for (const citation of citations) {
+    const existing = byURL.get(citation.url);
+    if (!existing) {
+      byURL.set(citation.url, citation);
+      continue;
+    }
+
+    if (!existing.title && citation.title) {
+      byURL.set(citation.url, { ...existing, title: citation.title });
+    }
+  }
+
+  return [...byURL.values()];
 }
 
 function CopyIcon() {

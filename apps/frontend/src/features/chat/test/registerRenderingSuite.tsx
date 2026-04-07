@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
+import type { SessionDetailResponse } from "../../../lib/api";
 import { markdownAssistantReply } from "./fixtures";
 import type { AppTestContext } from "./testContext";
 
@@ -167,6 +168,281 @@ export function registerRenderingSuite(context: AppTestContext) {
     expect(assistantMessage).not.toBeNull();
     expect(assistantMessage).toHaveTextContent("<div>Hello</div>");
     expect(assistantMessage).toHaveTextContent('<svg viewBox="0 0 10 10" />');
+  });
+
+  it("shows a transient web-search status while the stream is searching and clears it on completion", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Search the web");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
+    });
+
+    expect(screen.getByText("Searching the web...")).toBeInTheDocument();
+
+    await act(async () => {
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Searching the web...")).not.toBeInTheDocument();
+    });
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a transient web-search status when the run fails", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Search the web");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
+      streamHandlers.onRunFailed?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        error: "Run failed",
+      });
+    });
+
+    expect(screen.queryByText("Searching the web...")).not.toBeInTheDocument();
+  });
+
+  it("renders a deduplicated Sources section from persisted assistant citations", async () => {
+    context.mockSuccessfulCreateMessage();
+    context.mockSessionMessages([
+      {
+        messageId: "33333333-3333-3333-3333-333333333333",
+        role: "assistant",
+        status: "completed",
+        modelName: "gpt-5",
+        createdAt: "2026-03-31T10:01:00Z",
+        content: {
+          parts: [
+            {
+              type: "text",
+              text: "Answer with citations",
+              citations: [
+                { url: " https://example.com/docs " },
+                { title: "Example Docs", url: "https://example.com/docs" },
+                { title: "Ignored Empty URL", url: "   " },
+                { title: "Second Source", url: "https://example.com/other" },
+              ],
+            },
+          ],
+        },
+        attachments: [],
+      },
+    ]);
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Show sources");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Answer with citations",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+      });
+    });
+
+    const sources = await screen.findByRole("region", { name: "Sources" });
+    const links = within(sources).getAllByRole("link");
+    expect(links).toHaveLength(2);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "https://example.com/docs",
+      "https://example.com/other",
+    ]);
+    expect(within(sources).getByRole("link", { name: /Example Docs/ })).toHaveAttribute("href", "https://example.com/docs");
+    expect(within(sources).getByRole("link", { name: /Example Docs/ })).toHaveAttribute("target", "_blank");
+    expect(within(sources).getByRole("link", { name: /Example Docs/ })).toHaveAttribute("rel", "noreferrer noopener");
+    expect(within(sources).getByRole("link", { name: /Second Source/ })).toHaveAttribute("href", "https://example.com/other");
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply an old session citation refresh after starting a new chat", async () => {
+    let resolveFirstSession: ((value: SessionDetailResponse) => void) | undefined;
+
+    context.mockedCreateSession
+      .mockResolvedValueOnce({
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        status: "active",
+        createdAt: "2026-03-31T10:00:00Z",
+        lastMessageAt: "2026-03-31T10:00:00Z",
+      })
+      .mockResolvedValueOnce({
+        sessionId: "99999999-9999-9999-9999-999999999999",
+        status: "active",
+        createdAt: "2026-03-31T10:02:00Z",
+        lastMessageAt: "2026-03-31T10:02:00Z",
+      });
+    context.mockSuccessfulCreateMessage();
+    context.mockedGetSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstSession = resolve;
+        }),
+    );
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "First run");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    let streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onToolStatus?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        toolName: "web_search",
+        toolPhase: "searching",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+      });
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByText("Ready for the next turn.");
+
+    await userEvent.type(screen.getByLabelText("Message"), "Second run");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    streamHandlers = context.requireStreamHandlers();
+    expect(screen.getByText("Second run")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstSession?.({
+        sessionId: "11111111-1111-1111-1111-111111111111",
+        status: "active",
+        createdAt: "2026-03-31T10:00:00Z",
+        lastMessageAt: "2026-03-31T10:01:00Z",
+        messages: [
+          {
+            messageId: "33333333-3333-3333-3333-333333333333",
+            role: "assistant",
+            status: "completed",
+            createdAt: "2026-03-31T10:01:00Z",
+            content: {
+              parts: [
+                {
+                  type: "text",
+                  text: "Old session answer",
+                  citations: [{ title: "Old Source", url: "https://example.com/old" }],
+                },
+              ],
+            },
+            attachments: [],
+          },
+        ],
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Old Source/ })).not.toBeInTheDocument();
+    expect(context.mockedGetSession).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Fresh assistant reply",
+      });
+    });
+
+    expect(screen.getByText("Fresh assistant reply")).toBeInTheDocument();
+  });
+
+  it("does not render a Sources section during standard non-search chat rendering", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Normal reply");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(context.requireStreamHandlers()).toBeTruthy();
+    });
+
+    const streamHandlers = context.requireStreamHandlers();
+    await act(async () => {
+      streamHandlers.onMessageDelta?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+        delta: "Plain assistant reply",
+      });
+      streamHandlers.onRunCompleted?.({
+        runId: "44444444-4444-4444-4444-444444444444",
+        messageId: "33333333-3333-3333-3333-333333333333",
+      });
+    });
+
+    expect(screen.getByText("Plain assistant reply")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Searching the web...")).not.toBeInTheDocument();
+    expect(context.mockedGetSession).not.toHaveBeenCalled();
   });
 
   it("renders assistant soft line breaks with normal markdown paragraph whitespace", async () => {
