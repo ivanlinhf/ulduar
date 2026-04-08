@@ -4,6 +4,7 @@ import { IconInfo, IconNewChat, IconReload } from "./features/chat/components/ic
 import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
 import { MessageList } from "./features/chat/components/MessageList";
+import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfirmationDialog";
 import { useChatApp } from "./features/chat/useChatApp";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 
@@ -11,13 +12,14 @@ export default function App() {
   const chat = useChatApp();
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
   const update = useFrontendUpdate(turnCount);
+  const isAnyDialogOpen = chat.isExpandedComposerOpen || update.isReloadConfirmationOpen;
 
   return (
     <div className="app-shell">
       <div className="app-backdrop app-backdrop-left" />
       <div className="app-backdrop app-backdrop-right" />
 
-      <main className="app-frame" ref={chat.appFrameRef} aria-hidden={chat.isExpandedComposerOpen ? "true" : undefined}>
+      <main className="app-frame" ref={chat.appFrameRef} aria-hidden={isAnyDialogOpen ? "true" : undefined}>
         <section className="chat-panel">
           <header className="chat-header">
             <p className="chat-subtitle">{chat.chatSubtitle}</p>
@@ -107,6 +109,12 @@ export default function App() {
         submitButtonLabel={chat.submitButtonLabel}
       />
 
+      <ReloadConfirmationDialog
+        isOpen={update.isReloadConfirmationOpen}
+        onCancel={update.cancelReloadConfirmation}
+        onConfirm={update.confirmReloadToUpdate}
+      />
+
       <input
         ref={chat.fileInputRef}
         className="visually-hidden-file-input"
@@ -118,7 +126,12 @@ export default function App() {
         tabIndex={-1}
       />
 
-      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+      <div
+        className="toast-stack"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-hidden={isAnyDialogOpen ? "true" : undefined}
+      >
         {update.updateAvailable ? (
           <div className="toast toast-info toast-with-action">
             <div className="toast-copy">
@@ -130,7 +143,7 @@ export default function App() {
               </span>
             </div>
 
-            <button className="secondary-button toast-action-button" onClick={update.reloadToUpdate} type="button">
+            <button className="secondary-button toast-action-button" onClick={update.requestReloadToUpdate} type="button">
               <IconReload />
               <span>Reload</span>
             </button>

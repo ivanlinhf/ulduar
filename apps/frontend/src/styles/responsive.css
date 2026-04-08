@@ -33,6 +33,26 @@
     border-radius: 24px;
   }
 
+  .confirmation-dialog-backdrop {
+    padding: 18px;
+  }
+
+  .confirmation-dialog {
+    gap: 20px;
+    padding: 24px 20px;
+    border-radius: 24px;
+  }
+
+  .confirmation-dialog-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .confirmation-dialog-actions .secondary-button,
+  .confirmation-dialog-actions .primary-button {
+    width: 100%;
+  }
+
   .chat-header {
     padding-inline: 20px;
   }

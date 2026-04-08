@@ -13,7 +13,10 @@ type FrontendVersionMetadata = {
 
 export function useFrontendUpdate(userTurnCount: number) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isReloadConfirmationOpen, setIsReloadConfirmationOpen] = useState(false);
   const updateAvailableRef = useRef(false);
+  const reloadTriggerRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreTriggerFocusRef = useRef(false);
 
   useEffect(() => {
     updateAvailableRef.current = updateAvailable;
@@ -62,16 +65,58 @@ export function useFrontendUpdate(userTurnCount: number) {
     };
   }, [checkForUpdate]);
 
-  const reloadToUpdate = useCallback(() => {
-    if (userTurnCount > 0 && !window.confirm(`${reloadLosesSessionMessage} Reload now?`)) {
+  const requestReloadToUpdate = useCallback(() => {
+    if (userTurnCount > 0) {
+      const reloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      reloadTriggerRef.current = reloadTrigger;
+      shouldRestoreTriggerFocusRef.current = reloadTrigger !== null;
+      setIsReloadConfirmationOpen(true);
       return;
     }
 
     reloadWindow();
   }, [userTurnCount]);
 
+  const cancelReloadConfirmation = useCallback(() => {
+    setIsReloadConfirmationOpen(false);
+    const reloadTrigger = reloadTriggerRef.current;
+
+    if (!shouldRestoreTriggerFocusRef.current) {
+      reloadTriggerRef.current = null;
+      return;
+    }
+
+    const restoreFocus = () => {
+      reloadTrigger?.focus();
+      reloadTriggerRef.current = null;
+      shouldRestoreTriggerFocusRef.current = false;
+    };
+
+    // Wait until the dialog unmounts before moving focus back to the toast action.
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        restoreFocus();
+      });
+      return;
+    }
+
+    window.setTimeout(() => {
+      restoreFocus();
+    }, 0);
+  }, []);
+
+  const confirmReloadToUpdate = useCallback(() => {
+    shouldRestoreTriggerFocusRef.current = false;
+    reloadTriggerRef.current = null;
+    setIsReloadConfirmationOpen(false);
+    reloadWindow();
+  }, []);
+
   return {
-    reloadToUpdate,
+    cancelReloadConfirmation,
+    confirmReloadToUpdate,
+    isReloadConfirmationOpen,
+    requestReloadToUpdate,
     updateAvailable,
   };
 }
