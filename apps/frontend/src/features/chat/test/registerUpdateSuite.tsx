@@ -60,7 +60,6 @@ export function registerUpdateSuite(context: AppTestContext) {
     context.mockFrontendVersion("new-frontend-version");
 
     const reloadSpy = vi.spyOn(browser, "reloadWindow").mockImplementation(() => undefined);
-    const confirmSpy = vi.spyOn(window, "confirm");
 
     try {
       context.renderApp();
@@ -71,26 +70,25 @@ export function registerUpdateSuite(context: AppTestContext) {
 
       await userEvent.click(screen.getByRole("button", { name: "Reload" }));
 
-      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alertdialog", { name: "Reload to update?" })).not.toBeInTheDocument();
       expect(reloadSpy).toHaveBeenCalledTimes(1);
     } finally {
       reloadSpy.mockRestore();
-      confirmSpy.mockRestore();
     }
   });
 
-  it("warns before reloading when the current session already has user turns", async () => {
+  it("opens a styled confirmation dialog and cancels without reloading when the current session already has user turns", async () => {
     context.mockSuccessfulCreateMessage();
 
     const reloadSpy = vi.spyOn(browser, "reloadWindow").mockImplementation(() => undefined);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const user = userEvent.setup();
 
     try {
       context.renderApp();
       await context.waitForReady();
 
-      await userEvent.type(screen.getByLabelText("Message"), "Keep this chat");
-      await userEvent.click(screen.getByRole("button", { name: "Send" }));
+      await user.type(screen.getByLabelText("Message"), "Keep this chat");
+      await user.click(screen.getByRole("button", { name: "Send" }));
 
       await waitFor(() => {
         expect(context.mockedCreateMessage).toHaveBeenCalledTimes(1);
@@ -102,15 +100,92 @@ export function registerUpdateSuite(context: AppTestContext) {
       expect(await screen.findByText("Reloading will start a new chat and lose this session.")).toBeInTheDocument();
 
       const reloadButton = screen.getByRole("button", { name: "Reload" });
-      await userEvent.click(reloadButton);
-      expect(confirmSpy).toHaveBeenCalledWith("Reloading will start a new chat and lose this session. Reload now?");
+      await user.click(reloadButton);
+
+      const dialog = screen.getByRole("alertdialog", { name: "Reload to update?" });
+      expect(dialog).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+      });
       expect(reloadSpy).not.toHaveBeenCalled();
 
-      await userEvent.click(reloadButton);
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog", { name: "Reload to update?" })).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(reloadButton).toHaveFocus();
+      });
+      expect(reloadSpy).not.toHaveBeenCalled();
+    } finally {
+      reloadSpy.mockRestore();
+    }
+  });
+
+  it("confirms the styled reload dialog and reloads the page", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const reloadSpy = vi.spyOn(browser, "reloadWindow").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    try {
+      context.renderApp();
+      await context.waitForReady();
+
+      await user.type(screen.getByLabelText("Message"), "Reload after confirm");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(context.mockedCreateMessage).toHaveBeenCalledTimes(1);
+      });
+
+      context.mockFrontendVersion("new-frontend-version");
+      fireEvent(window, new Event("online"));
+
+      await user.click(await screen.findByRole("button", { name: "Reload" }));
+      await user.click(screen.getByRole("button", { name: "Reload" }));
+
       expect(reloadSpy).toHaveBeenCalledTimes(1);
     } finally {
       reloadSpy.mockRestore();
-      confirmSpy.mockRestore();
+    }
+  });
+
+  it("dismisses the styled reload dialog on Escape", async () => {
+    context.mockSuccessfulCreateMessage();
+
+    const reloadSpy = vi.spyOn(browser, "reloadWindow").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    try {
+      context.renderApp();
+      await context.waitForReady();
+
+      await user.type(screen.getByLabelText("Message"), "Stay on this page");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(context.mockedCreateMessage).toHaveBeenCalledTimes(1);
+      });
+
+      context.mockFrontendVersion("new-frontend-version");
+      fireEvent(window, new Event("online"));
+
+      const reloadButton = await screen.findByRole("button", { name: "Reload" });
+      await user.click(reloadButton);
+
+      expect(screen.getByRole("alertdialog", { name: "Reload to update?" })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+      });
+
+      await user.keyboard("{Escape}");
+
+      expect(screen.queryByRole("alertdialog", { name: "Reload to update?" })).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(reloadButton).toHaveFocus();
+      });
+      expect(reloadSpy).not.toHaveBeenCalled();
+    } finally {
+      reloadSpy.mockRestore();
     }
   });
 }

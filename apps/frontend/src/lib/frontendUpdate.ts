@@ -13,7 +13,10 @@ type FrontendVersionMetadata = {
 
 export function useFrontendUpdate(userTurnCount: number) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isReloadConfirmationOpen, setIsReloadConfirmationOpen] = useState(false);
   const updateAvailableRef = useRef(false);
+  const reloadTriggerRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreTriggerFocusRef = useRef(false);
 
   useEffect(() => {
     updateAvailableRef.current = updateAvailable;
@@ -62,16 +65,45 @@ export function useFrontendUpdate(userTurnCount: number) {
     };
   }, [checkForUpdate]);
 
-  const reloadToUpdate = useCallback(() => {
-    if (userTurnCount > 0 && !window.confirm(`${reloadLosesSessionMessage} Reload now?`)) {
+  const requestReloadToUpdate = useCallback(() => {
+    if (userTurnCount > 0) {
+      shouldRestoreTriggerFocusRef.current = true;
+      reloadTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setIsReloadConfirmationOpen(true);
       return;
     }
 
     reloadWindow();
   }, [userTurnCount]);
 
+  const cancelReloadConfirmation = useCallback(() => {
+    setIsReloadConfirmationOpen(false);
+    const reloadTrigger = reloadTriggerRef.current;
+
+    if (!shouldRestoreTriggerFocusRef.current) {
+      reloadTriggerRef.current = null;
+      return;
+    }
+
+    window.setTimeout(() => {
+      reloadTrigger?.focus();
+      reloadTriggerRef.current = null;
+      shouldRestoreTriggerFocusRef.current = false;
+    }, 0);
+  }, []);
+
+  const confirmReloadToUpdate = useCallback(() => {
+    shouldRestoreTriggerFocusRef.current = false;
+    reloadTriggerRef.current = null;
+    setIsReloadConfirmationOpen(false);
+    reloadWindow();
+  }, []);
+
   return {
-    reloadToUpdate,
+    cancelReloadConfirmation,
+    confirmReloadToUpdate,
+    isReloadConfirmationOpen,
+    requestReloadToUpdate,
     updateAvailable,
   };
 }
