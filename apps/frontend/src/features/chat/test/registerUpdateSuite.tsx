@@ -60,6 +60,7 @@ export function registerUpdateSuite(context: AppTestContext) {
     context.mockFrontendVersion("new-frontend-version");
 
     const reloadSpy = vi.spyOn(browser, "reloadWindow").mockImplementation(() => undefined);
+    const user = userEvent.setup();
 
     try {
       context.renderApp();
@@ -68,7 +69,11 @@ export function registerUpdateSuite(context: AppTestContext) {
       expect(await screen.findByText("A newer version is available.")).toBeInTheDocument();
       expect(screen.getByText("Reload when you're ready to use the latest version.")).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+      const reloadButton = screen.getByRole("button", { name: "Reload" });
+      await user.hover(reloadButton);
+      expect(screen.getByRole("tooltip")).toHaveTextContent("Reload");
+
+      await user.click(reloadButton);
 
       expect(screen.queryByRole("alertdialog", { name: "Reload to update?" })).not.toBeInTheDocument();
       expect(reloadSpy).toHaveBeenCalledTimes(1);
