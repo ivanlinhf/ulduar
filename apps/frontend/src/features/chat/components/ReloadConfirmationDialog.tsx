@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 
 import { reloadLosesSessionMessage } from "../../../lib/frontendUpdate";
 import { getFocusableElements } from "../utils";
@@ -40,50 +40,47 @@ export function ReloadConfirmationDialog({ isOpen, onCancel, onConfirm }: Reload
     };
   }, [isOpen]);
 
+  const handleDialogKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key === "Escape" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+
+      if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+    },
+    [onCancel],
+  );
+
   if (!isOpen) {
     return null;
   }
 
-  function handleBackdropMouseDown(event: MouseEvent<HTMLDivElement>) {
-    if (event.target === event.currentTarget) {
-      onCancel();
-    }
-  }
-
-  function handleDialogKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Escape" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-      event.preventDefault();
-      onCancel();
-      return;
-    }
-
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-
-    const focusableElements = getFocusableElements(dialogRef.current);
-    if (focusableElements.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-    const activeElement = document.activeElement;
-
-    if (!event.shiftKey && activeElement === lastElement) {
-      event.preventDefault();
-      firstElement.focus();
-    }
-
-    if (event.shiftKey && activeElement === firstElement) {
-      event.preventDefault();
-      lastElement.focus();
-    }
-  }
-
   return (
-    <div className="confirmation-dialog-backdrop" onMouseDown={handleBackdropMouseDown}>
+    <div className="confirmation-dialog-backdrop">
       <section
         className="confirmation-dialog"
         ref={dialogRef}
@@ -104,7 +101,7 @@ export function ReloadConfirmationDialog({ isOpen, onCancel, onConfirm }: Reload
         </div>
 
         <div className="confirmation-dialog-actions">
-          <button ref={cancelButtonRef} autoFocus className="secondary-button" onClick={onCancel} type="button">
+          <button ref={cancelButtonRef} className="secondary-button" onClick={onCancel} type="button">
             Cancel
           </button>
           <button className="primary-button" onClick={onConfirm} type="button">

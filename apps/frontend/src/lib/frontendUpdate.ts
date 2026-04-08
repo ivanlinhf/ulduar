@@ -67,8 +67,9 @@ export function useFrontendUpdate(userTurnCount: number) {
 
   const requestReloadToUpdate = useCallback(() => {
     if (userTurnCount > 0) {
-      shouldRestoreTriggerFocusRef.current = true;
-      reloadTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const reloadTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      reloadTriggerRef.current = reloadTrigger;
+      shouldRestoreTriggerFocusRef.current = reloadTrigger !== null;
       setIsReloadConfirmationOpen(true);
       return;
     }
@@ -85,10 +86,22 @@ export function useFrontendUpdate(userTurnCount: number) {
       return;
     }
 
-    window.setTimeout(() => {
+    const restoreFocus = () => {
       reloadTrigger?.focus();
       reloadTriggerRef.current = null;
       shouldRestoreTriggerFocusRef.current = false;
+    };
+
+    // Wait until the dialog unmounts before moving focus back to the toast action.
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        restoreFocus();
+      });
+      return;
+    }
+
+    window.setTimeout(() => {
+      restoreFocus();
     }, 0);
   }, []);
 
