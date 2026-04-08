@@ -67,10 +67,9 @@
     text-align: center;
   }
 
-  .toast-action-button {
-    width: 100%;
-    justify-content: center;
+  .reload-toast-action {
     margin-left: 0;
+    align-self: center;
   }
 }
 

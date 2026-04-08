@@ -143,10 +143,21 @@ export default function App() {
               </span>
             </div>
 
-            <button className="secondary-button toast-action-button" onClick={update.requestReloadToUpdate} type="button">
-              <IconReload />
-              <span>Reload</span>
-            </button>
+            <ActionTooltip
+              align="right"
+              side="above"
+              wrapperClassName="reload-toast-action"
+              content={<span className="action-tooltip-label">Reload</span>}
+            >
+              <button
+                aria-label="Reload"
+                className="secondary-button icon-only-button reload-toast-button"
+                onClick={update.requestReloadToUpdate}
+                type="button"
+              >
+                <IconReload />
+              </button>
+            </ActionTooltip>
           </div>
         ) : null}
 

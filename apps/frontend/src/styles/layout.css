@@ -133,6 +133,7 @@
   width: 1.25rem;
   height: 1.25rem;
   flex: 0 0 auto;
+  display: block;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.9;
@@ -317,12 +318,24 @@
   color: var(--muted);
 }
 
-.toast-action-button {
+.reload-toast-action {
   flex: 0 0 auto;
   margin-left: auto;
-  padding: 10px 16px;
+}
+
+.reload-toast-button {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
   background: rgba(182, 71, 30, 0.1);
   color: var(--accent);
+}
+
+.reload-toast-button .button-icon {
+  width: 1.08rem;
+  height: 1.08rem;
+  stroke-width: 1.75;
 }
 
 @keyframes button-spinner-rotate {
