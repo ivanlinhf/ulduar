@@ -146,6 +146,80 @@ func TestMapRun(t *testing.T) {
 	}
 }
 
+func TestMapImageGeneration(t *testing.T) {
+	createdAt := time.Date(2026, 3, 31, 10, 20, 0, 0, time.UTC)
+	completedAt := createdAt.Add(3 * time.Minute)
+	row := dbsqlc.ImageGeneration{
+		ID:                  mustUUID(t, "66666666-6666-6666-6666-666666666666"),
+		SessionID:           mustUUID(t, "11111111-1111-1111-1111-111111111111"),
+		Mode:                "text_to_image",
+		Prompt:              "a castle at sunset",
+		ResolutionKey:       "1024x1024",
+		Width:               1024,
+		Height:              1024,
+		RequestedImageCount: 1,
+		ProviderName:        "example-provider",
+		ProviderModel:       "example-model",
+		ProviderJobID:       textValue("job-123"),
+		Status:              "completed",
+		ErrorCode:           textValue(""),
+		ErrorMessage:        textValue(""),
+		CreatedAt:           mustTime(createdAt),
+		CompletedAt:         mustTime(completedAt),
+	}
+
+	generation, err := mapImageGeneration(row)
+	if err != nil {
+		t.Fatalf("mapImageGeneration() error = %v", err)
+	}
+
+	if generation.ID != "66666666-6666-6666-6666-666666666666" {
+		t.Fatalf("generation.ID = %q", generation.ID)
+	}
+	if generation.RequestedImageCount != 1 {
+		t.Fatalf("generation.RequestedImageCount = %d", generation.RequestedImageCount)
+	}
+	if generation.ProviderJobID != "job-123" {
+		t.Fatalf("generation.ProviderJobID = %q", generation.ProviderJobID)
+	}
+	if generation.CompletedAt == nil || !generation.CompletedAt.Equal(completedAt) {
+		t.Fatalf("generation.CompletedAt = %v", generation.CompletedAt)
+	}
+}
+
+func TestMapImageGenerationAsset(t *testing.T) {
+	createdAt := time.Date(2026, 3, 31, 10, 25, 0, 0, time.UTC)
+	row := dbsqlc.ImageGenerationAsset{
+		ID:           mustUUID(t, "77777777-7777-7777-7777-777777777777"),
+		GenerationID: mustUUID(t, "66666666-6666-6666-6666-666666666666"),
+		Role:         "output",
+		SortOrder:    0,
+		BlobPath:     "sessions/s1/image-generations/g1/output-0.png",
+		MediaType:    "image/png",
+		Filename:     "output-0.png",
+		SizeBytes:    2048,
+		Sha256:       "def",
+		Width:        mustInt8(1024),
+		Height:       mustInt8(1024),
+		CreatedAt:    mustTime(createdAt),
+	}
+
+	asset, err := mapImageGenerationAsset(row)
+	if err != nil {
+		t.Fatalf("mapImageGenerationAsset() error = %v", err)
+	}
+
+	if asset.ID != "77777777-7777-7777-7777-777777777777" {
+		t.Fatalf("asset.ID = %q", asset.ID)
+	}
+	if asset.Width == nil || *asset.Width != 1024 {
+		t.Fatalf("asset.Width = %v", asset.Width)
+	}
+	if asset.Height == nil || *asset.Height != 1024 {
+		t.Fatalf("asset.Height = %v", asset.Height)
+	}
+}
+
 func TestParseOptionalUUIDAllowsEmpty(t *testing.T) {
 	value, err := parseOptionalUUID("")
 	if err != nil {
