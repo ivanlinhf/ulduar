@@ -23,6 +23,11 @@ const (
 	defaultOpenAIStreamTimeout   = 10 * time.Minute
 	defaultFinalizationTimeout   = 15 * time.Second
 	defaultOpenAISystemPrompt    = "Format responses in Markdown when it improves readability. Use plain paragraphs for simple replies. Use lists, tables, and fenced code blocks only when helpful. Do not use raw HTML. If the user asks for plain text or a machine-readable format such as JSON, follow that request instead."
+
+	defaultFluxAPIVersion     = "preview"
+	defaultFluxModel          = "FLUX.2-pro"
+	defaultFluxModelPath      = "flux-2-pro"
+	defaultFluxRequestTimeout = 60 * time.Second
 )
 
 type Config struct {
@@ -48,6 +53,25 @@ type Config struct {
 	AzureOpenAIDeployment   string
 	AzureOpenAISystemPrompt string
 	AzureOpenAIWebSearch    bool
+	Image                   ImageConfig
+}
+
+// ImageConfig groups all image-generation provider settings.
+// Each nested struct corresponds to one concrete provider adapter.
+type ImageConfig struct {
+	AzureFoundry FluxConfig
+}
+
+// FluxConfig holds settings for the Azure Foundry FLUX adapter.
+// Validation only runs when Endpoint is non-empty, so image generation is fully
+// optional; callers that do not set AZURE_FOUNDRY_ENDPOINT are unaffected.
+type FluxConfig struct {
+	Endpoint       string
+	APIKey         string
+	APIVersion     string
+	Model          string
+	ModelPath      string
+	RequestTimeout time.Duration
 }
 
 func Load() (Config, error) {
@@ -79,6 +103,16 @@ func Load() (Config, error) {
 		AzureOpenAIDeployment:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_DEPLOYMENT")),
 		AzureOpenAISystemPrompt: envOrDefaultUnlessSet("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
 		AzureOpenAIWebSearch:    webSearchEnabled,
+		Image: ImageConfig{
+			AzureFoundry: FluxConfig{
+				Endpoint:       strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_ENDPOINT")),
+				APIKey:         strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_API_KEY")),
+				APIVersion:     envOrDefault("AZURE_FOUNDRY_FLUX_API_VERSION", defaultFluxAPIVersion),
+				Model:          envOrDefault("AZURE_FOUNDRY_FLUX_MODEL", defaultFluxModel),
+				ModelPath:      envOrDefault("AZURE_FOUNDRY_FLUX_MODEL_PATH", defaultFluxModelPath),
+				RequestTimeout: durationEnvOrDefault("AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT", defaultFluxRequestTimeout),
+			},
+		},
 	}
 
 	if cfg.Port == "" {
@@ -168,6 +202,18 @@ func (c Config) Validate() error {
 
 	if c.AzureOpenAIDeployment == "" {
 		return errors.New("azure openai deployment must not be empty")
+	}
+
+	if c.Image.AzureFoundry.Endpoint != "" {
+		if err := validateAbsoluteURL(c.Image.AzureFoundry.Endpoint, "azure foundry endpoint", "http", "https"); err != nil {
+			return err
+		}
+		if c.Image.AzureFoundry.APIKey == "" {
+			return errors.New("azure foundry api key must not be empty when endpoint is configured")
+		}
+		if err := validatePositiveDuration(c.Image.AzureFoundry.RequestTimeout, "azure foundry flux request timeout"); err != nil {
+			return err
+		}
 	}
 
 	return nil

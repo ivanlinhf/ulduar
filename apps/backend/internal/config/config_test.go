@@ -156,3 +156,115 @@ func TestLoadEnablesWebSearchWhenConfigured(t *testing.T) {
 		t.Fatal("cfg.AzureOpenAIWebSearch = false, want true")
 	}
 }
+
+func TestLoadAppliesFluxDefaults(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("BACKEND_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	// No AZURE_FOUNDRY_* vars — image provider should be unconfigured with defaults intact.
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	flux := cfg.Image.AzureFoundry
+	if flux.Endpoint != "" {
+		t.Fatalf("flux.Endpoint = %q, want empty", flux.Endpoint)
+	}
+	if flux.APIVersion != defaultFluxAPIVersion {
+		t.Fatalf("flux.APIVersion = %q, want %q", flux.APIVersion, defaultFluxAPIVersion)
+	}
+	if flux.Model != defaultFluxModel {
+		t.Fatalf("flux.Model = %q, want %q", flux.Model, defaultFluxModel)
+	}
+	if flux.ModelPath != defaultFluxModelPath {
+		t.Fatalf("flux.ModelPath = %q, want %q", flux.ModelPath, defaultFluxModelPath)
+	}
+	if flux.RequestTimeout != defaultFluxRequestTimeout {
+		t.Fatalf("flux.RequestTimeout = %v, want %v", flux.RequestTimeout, defaultFluxRequestTimeout)
+	}
+}
+
+func TestLoadValidatesFluxConfigWhenEndpointIsSet(t *testing.T) {
+	base := func(tb testing.TB) {
+		tb.Helper()
+		tb.Setenv("APP_ENV", "development")
+		tb.Setenv("BACKEND_PORT", "8080")
+		tb.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+		tb.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+		tb.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+		tb.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+		tb.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+		tb.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+		tb.Setenv("AZURE_OPENAI_API_KEY", "secret")
+		tb.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_FOUNDRY_ENDPOINT", "https://foundry.example.com")
+		t.Setenv("AZURE_FOUNDRY_API_KEY", "foundry-secret")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Image.AzureFoundry.Endpoint != "https://foundry.example.com" {
+			t.Fatalf("flux.Endpoint = %q", cfg.Image.AzureFoundry.Endpoint)
+		}
+		if cfg.Image.AzureFoundry.APIKey != "foundry-secret" {
+			t.Fatalf("flux.APIKey = %q", cfg.Image.AzureFoundry.APIKey)
+		}
+	})
+
+	t.Run("missing api key", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_FOUNDRY_ENDPOINT", "https://foundry.example.com")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for missing api key")
+		}
+		if !strings.Contains(err.Error(), "azure foundry api key") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("invalid endpoint url", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_FOUNDRY_ENDPOINT", "not-a-url")
+		t.Setenv("AZURE_FOUNDRY_API_KEY", "key")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for invalid endpoint")
+		}
+		if !strings.Contains(err.Error(), "azure foundry endpoint") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("bad request timeout", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_FOUNDRY_ENDPOINT", "https://foundry.example.com")
+		t.Setenv("AZURE_FOUNDRY_API_KEY", "key")
+		t.Setenv("AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT", "notaduration")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for bad timeout")
+		}
+		if !strings.Contains(err.Error(), "azure foundry flux request timeout") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+}
+

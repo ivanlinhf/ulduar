@@ -7,11 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/config"
 	"github.com/ivanlin/ulduar/apps/backend/internal/httpapi"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	applogging "github.com/ivanlin/ulduar/apps/backend/internal/logging"
 	"github.com/ivanlin/ulduar/apps/backend/internal/postgres"
 )
@@ -65,6 +67,31 @@ func main() {
 		FinalizationTimeout: cfg.RunFinalizationTimeout,
 		EnableWebSearch:     cfg.AzureOpenAIWebSearch,
 	})
+
+	var imageProvider imageprovider.ImageProvider
+	if cfg.Image.AzureFoundry.Endpoint != "" {
+		fluxClient, err := azurefoundry.NewClient(
+			cfg.Image.AzureFoundry.Endpoint,
+			cfg.Image.AzureFoundry.APIKey,
+			azurefoundry.ClientOptions{
+				APIVersion:     cfg.Image.AzureFoundry.APIVersion,
+				Model:          cfg.Image.AzureFoundry.Model,
+				ModelPath:      cfg.Image.AzureFoundry.ModelPath,
+				RequestTimeout: cfg.Image.AzureFoundry.RequestTimeout,
+			},
+		)
+		if err != nil {
+			slog.Error("connect azure foundry flux", "error", err)
+			return
+		}
+		imageProvider = fluxClient
+		slog.Info("image provider ready",
+			"provider", "flux",
+			"model", cfg.Image.AzureFoundry.Model,
+			"endpoint", fluxClient.Endpoint(),
+		)
+	}
+	_ = imageProvider // reserved for future image generation handlers
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
