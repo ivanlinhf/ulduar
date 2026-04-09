@@ -34,6 +34,27 @@ func TestNewClientRejectsEmptyAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewClientRejectsInvalidEndpointScheme(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewClient("ftp://foundry.example.com", "key")
+	if err == nil {
+		t.Fatal("NewClient() error = nil, want error for non-http/https scheme")
+	}
+	if !strings.Contains(err.Error(), "http or https") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestNewClientRejectsRelativeEndpoint(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewClient("foundry.example.com", "key")
+	if err == nil {
+		t.Fatal("NewClient() error = nil, want error for relative URL")
+	}
+}
+
 func TestNewClientAppliesDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -584,6 +605,55 @@ func TestDecodeImageFieldHandlesPlainURL(t *testing.T) {
 	}
 	if out.Data != nil {
 		t.Errorf("Data should be nil for URL image")
+	}
+}
+
+func TestDecodeImageFieldRejectsNonBase64DataURL(t *testing.T) {
+	t.Parallel()
+
+	_, err := decodeImageField("data:image/png,rawdata")
+	if err == nil {
+		t.Fatal("decodeImageField() error = nil, want error for non-base64 data URL")
+	}
+	if !strings.Contains(err.Error(), "base64") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestDecodeImageFieldRejectsUnsafeURL(t *testing.T) {
+	t.Parallel()
+
+	for _, unsafe := range []string{"", "javascript:alert(1)", "ftp://example.com/img.jpg"} {
+		_, err := decodeImageField(unsafe)
+		if err == nil {
+			t.Errorf("decodeImageField(%q) error = nil, want error", unsafe)
+		}
+	}
+}
+
+func TestBuildTextToImagePayloadDefaultsNumImagesToOne(t *testing.T) {
+	t.Parallel()
+
+	c, _ := NewClient("https://foundry.example.com", "key")
+	p := c.buildTextToImagePayload(imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeTextToImage,
+		Prompt: "test",
+	})
+	if p.NumImages != 1 {
+		t.Errorf("NumImages = %d, want 1 when not specified", p.NumImages)
+	}
+}
+
+func TestBuildImageEditPayloadDefaultsNumImagesToOne(t *testing.T) {
+	t.Parallel()
+
+	c, _ := NewClient("https://foundry.example.com", "key")
+	p := c.buildImageEditPayload(imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeImageEdit,
+		Prompt: "test",
+	})
+	if p.NumImages != 1 {
+		t.Errorf("NumImages = %d, want 1 when not specified", p.NumImages)
 	}
 }
 

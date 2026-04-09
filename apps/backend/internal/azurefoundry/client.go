@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -67,12 +68,16 @@ func NewClient(endpoint, apiKey string, opts ...ClientOptions) (*Client, error) 
 	if endpoint == "" {
 		return nil, fmt.Errorf("azure foundry endpoint must not be empty")
 	}
+	normalized, err := normalizeEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("azure foundry api key must not be empty")
 	}
 
 	c := &Client{
-		endpoint:   strings.TrimSuffix(endpoint, "/"),
+		endpoint:   normalized,
 		apiKey:     apiKey,
 		apiVersion: defaultAPIVersion,
 		model:      defaultModel,
@@ -110,8 +115,8 @@ func (c *Client) Model() string { return c.model }
 
 // generateURL returns the full generation URL.
 func (c *Client) generateURL() string {
-	return fmt.Sprintf("%s%s/%s?api-version=%s",
-		c.endpoint, providerPathPrefix, c.modelPath, c.apiVersion)
+	u, _ := url.JoinPath(c.endpoint, providerPathPrefix, c.modelPath)
+	return u + "?api-version=" + url.QueryEscape(c.apiVersion)
 }
 
 // jobURL returns the polling URL for an async job.
@@ -120,8 +125,8 @@ func (c *Client) jobURL(job imageprovider.ProviderJob) string {
 	if job.PollingURL != "" {
 		return job.PollingURL
 	}
-	return fmt.Sprintf("%s%s/%s/%s?api-version=%s",
-		c.endpoint, providerPathPrefix, c.modelPath, job.JobID, c.apiVersion)
+	u, _ := url.JoinPath(c.endpoint, providerPathPrefix, c.modelPath, job.JobID)
+	return u + "?api-version=" + url.QueryEscape(c.apiVersion)
 }
 
 // ---- provider-side JSON types ----
@@ -298,23 +303,31 @@ func (c *Client) setHeaders(req *http.Request) {
 }
 
 func (c *Client) buildTextToImagePayload(req imageprovider.GenerateRequest) textToImageRequest {
+	n := req.NumImages
+	if n == 0 {
+		n = 1
+	}
 	return textToImageRequest{
 		Prompt:       req.Prompt,
 		Width:        req.Width,
 		Height:       req.Height,
 		OutputFormat: req.OutputFormat,
-		NumImages:    req.NumImages,
+		NumImages:    n,
 		Model:        c.model,
 	}
 }
 
 func (c *Client) buildImageEditPayload(req imageprovider.GenerateRequest) imageEditRequest {
+	n := req.NumImages
+	if n == 0 {
+		n = 1
+	}
 	r := imageEditRequest{
 		Prompt:       req.Prompt,
 		Width:        req.Width,
 		Height:       req.Height,
 		OutputFormat: req.OutputFormat,
-		NumImages:    req.NumImages,
+		NumImages:    n,
 		Model:        c.model,
 	}
 	switch len(req.InputImages) {
@@ -367,22 +380,50 @@ func (c *Client) normalizeAsyncResponse(rawBody []byte) (imageprovider.GenerateR
 }
 
 // decodeImageField normalizes a single image field that may be a data: URL (inline base64)
-// or a plain HTTPS URL.
+// or a plain http/https URL.
 func decodeImageField(value string) (imageprovider.OutputImage, error) {
 	if strings.HasPrefix(value, "data:") {
 		// data:<mediaType>;base64,<encoded>
 		withoutScheme := strings.TrimPrefix(value, "data:")
 		meta, encoded, ok := strings.Cut(withoutScheme, ",")
 		if !ok {
-			return imageprovider.OutputImage{}, fmt.Errorf("malformed data URL")
+			return imageprovider.OutputImage{}, fmt.Errorf("malformed data URL: missing comma separator")
+		}
+		if !strings.HasSuffix(meta, ";base64") {
+			return imageprovider.OutputImage{}, fmt.Errorf("unsupported data URL encoding: expected ;base64")
 		}
 		mediaType := strings.TrimSuffix(meta, ";base64")
+		if mediaType == "" {
+			return imageprovider.OutputImage{}, fmt.Errorf("malformed data URL: missing media type")
+		}
 		decoded, err := base64.StdEncoding.DecodeString(encoded)
 		if err != nil {
 			return imageprovider.OutputImage{}, fmt.Errorf("decode base64 image data: %w", err)
 		}
 		return imageprovider.OutputImage{Data: decoded, MediaType: mediaType}, nil
 	}
-	// Plain URL — return as reference.
+	// Plain URL — validate scheme and return as reference.
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return imageprovider.OutputImage{}, fmt.Errorf("image URL must be an absolute http/https URL: %q", value)
+	}
 	return imageprovider.OutputImage{URL: value}, nil
+}
+
+// normalizeEndpoint parses and validates the endpoint, stripping trailing slashes.
+// Only http and https schemes are accepted.
+func normalizeEndpoint(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse azure foundry endpoint: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("azure foundry endpoint must use http or https scheme")
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("azure foundry endpoint must be an absolute URL")
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimSuffix(parsed.String(), "/"), nil
 }

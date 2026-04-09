@@ -13,7 +13,6 @@ import (
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/config"
 	"github.com/ivanlin/ulduar/apps/backend/internal/httpapi"
-	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	applogging "github.com/ivanlin/ulduar/apps/backend/internal/logging"
 	"github.com/ivanlin/ulduar/apps/backend/internal/postgres"
 )
@@ -68,7 +67,6 @@ func main() {
 		EnableWebSearch:     cfg.AzureOpenAIWebSearch,
 	})
 
-	var imageProvider imageprovider.ImageProvider
 	if cfg.Image.AzureFoundry.Endpoint != "" {
 		fluxClient, err := azurefoundry.NewClient(
 			cfg.Image.AzureFoundry.Endpoint,
@@ -84,14 +82,13 @@ func main() {
 			slog.Error("connect azure foundry flux", "error", err)
 			return
 		}
-		imageProvider = fluxClient
 		slog.Info("image provider ready",
 			"provider", "flux",
 			"model", cfg.Image.AzureFoundry.Model,
 			"endpoint", fluxClient.Endpoint(),
 		)
+		_ = fluxClient // reserved for future image generation handlers
 	}
-	_ = imageProvider // reserved for future image generation handlers
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
