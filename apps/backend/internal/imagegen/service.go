@@ -87,10 +87,15 @@ type httpDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+type hostnameResolver interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
 type Service struct {
 	blobs                  BlobStore
 	provider               imageprovider.ImageProvider
 	outputHTTPClient       httpDoer
+	outputResolver         hostnameResolver
 	maxReferenceImageBytes int64
 	beginWriteTxFn         func(ctx context.Context) (writeTx, error)
 	generationRead         generationReader
@@ -127,7 +132,8 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *S
 	if outputDownloadTimeout <= 0 {
 		outputDownloadTimeout = defaultOutputDownloadTimeout
 	}
-	service.outputHTTPClient = newOutputHTTPClient(outputDownloadTimeout)
+	service.outputResolver = net.DefaultResolver
+	service.outputHTTPClient = newOutputHTTPClient(outputDownloadTimeout, service.outputResolver)
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
 			tx, err := db.BeginTx(ctx, pgx.TxOptions{})
@@ -420,10 +426,11 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 	}
 
 	completedAt := time.Now().UTC()
+	providerName, providerModel := s.resolvedProviderMetadata(generation)
 	if err := tx.UpdateGenerationState(ctx, repository.UpdateImageGenerationStateParams{
 		ID:            generation.ID,
-		ProviderName:  s.providerName(),
-		ProviderModel: s.providerModel(),
+		ProviderName:  providerName,
+		ProviderModel: providerModel,
 		ProviderJobID: generation.ProviderJobID,
 		Status:        string(StatusCompleted),
 		CompletedAt:   &completedAt,
@@ -460,6 +467,9 @@ func (s *Service) loadInputImages(ctx context.Context, assets []repository.Image
 		data, err := s.blobs.Download(ctx, asset.BlobPath)
 		if err != nil {
 			return nil, fmt.Errorf("download input asset %q: %w", asset.Filename, err)
+		}
+		if s.maxReferenceImageBytes > 0 && int64(len(data)) > s.maxReferenceImageBytes {
+			return nil, fmt.Errorf("input asset %q exceeds %d bytes", asset.Filename, s.maxReferenceImageBytes)
 		}
 		images = append(images, data)
 	}
@@ -520,8 +530,11 @@ func (s *Service) resolveOutputImageData(ctx context.Context, image imageprovide
 	if err != nil {
 		return nil, "", err
 	}
+	if err := validateOutputImageHost(ctx, s.outputResolver, outputURL.Hostname()); err != nil {
+		return nil, "", err
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, outputURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, outputURL.String(), nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("create output download request: %w", err)
 	}
@@ -562,10 +575,11 @@ func (s *Service) failGenerationWithMessage(ctx context.Context, generation repo
 
 func (s *Service) persistGenerationFailure(ctx context.Context, generation repository.ImageGeneration, code string, message string) error {
 	completedAt := time.Now().UTC()
+	providerName, providerModel := s.resolvedProviderMetadata(generation)
 	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
 		ID:            generation.ID,
-		ProviderName:  s.providerName(),
-		ProviderModel: s.providerModel(),
+		ProviderName:  providerName,
+		ProviderModel: providerModel,
 		ProviderJobID: generation.ProviderJobID,
 		Status:        string(StatusFailed),
 		ErrorCode:     strings.TrimSpace(code),
@@ -592,6 +606,20 @@ func (s *Service) providerModel() string {
 	return ""
 }
 
+func (s *Service) resolvedProviderMetadata(generation repository.ImageGeneration) (string, string) {
+	providerName := s.providerName()
+	if providerName == "" {
+		providerName = strings.TrimSpace(generation.ProviderName)
+	}
+
+	providerModel := s.providerModel()
+	if providerModel == "" {
+		providerModel = strings.TrimSpace(generation.ProviderModel)
+	}
+
+	return providerName, providerModel
+}
+
 func providerErrorCode(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "provider_timeout"
@@ -600,6 +628,10 @@ func providerErrorCode(err error) string {
 	var apiErr imageprovider.APIError
 	if errors.As(err, &apiErr) {
 		return fmt.Sprintf("provider_http_%d", apiErr.StatusCode)
+	}
+	var apiErrPtr *imageprovider.APIError
+	if errors.As(err, &apiErrPtr) && apiErrPtr != nil {
+		return fmt.Sprintf("provider_http_%d", apiErrPtr.StatusCode)
 	}
 
 	return "provider_request_failed"
@@ -617,41 +649,97 @@ func readBytesWithinLimit(r io.Reader, maxBytes int64) ([]byte, error) {
 	return data, nil
 }
 
-func newOutputHTTPClient(timeout time.Duration) *http.Client {
+func newOutputHTTPClient(timeout time.Duration, resolver hostnameResolver) *http.Client {
+	dialer := &net.Dialer{Timeout: timeout}
+
 	return &http.Client{
 		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					return nil, err
+				}
+				if err := validateOutputImageHost(ctx, resolver, host); err != nil {
+					return nil, err
+				}
+				return dialer.DialContext(ctx, network, address)
+			},
+		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 }
 
-func validateOutputImageURL(raw string) (string, error) {
+func validateOutputImageURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed == nil {
-		return "", fmt.Errorf("provider output URL is invalid")
+		return nil, fmt.Errorf("provider output URL is invalid")
 	}
 	if !parsed.IsAbs() || parsed.Host == "" {
-		return "", fmt.Errorf("provider output URL must be an absolute HTTPS URL")
+		return nil, fmt.Errorf("provider output URL must be an absolute HTTPS URL")
 	}
 	if !strings.EqualFold(parsed.Scheme, "https") {
-		return "", fmt.Errorf("provider output URL must use HTTPS")
+		return nil, fmt.Errorf("provider output URL must use HTTPS")
 	}
 
 	hostname := parsed.Hostname()
 	if hostname == "" {
-		return "", fmt.Errorf("provider output URL must include a host")
+		return nil, fmt.Errorf("provider output URL must include a host")
 	}
 	if strings.EqualFold(hostname, "localhost") {
-		return "", fmt.Errorf("provider output URL host is not allowed")
+		return nil, fmt.Errorf("provider output URL host is not allowed")
 	}
 	if ip := net.ParseIP(hostname); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
-			return "", fmt.Errorf("provider output URL host is not allowed")
+		if err := validateOutputIP(ip); err != nil {
+			return nil, err
 		}
 	}
 
-	return parsed.String(), nil
+	return parsed, nil
+}
+
+func validateOutputImageHost(ctx context.Context, resolver hostnameResolver, host string) error {
+	if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
+		return validateOutputIP(ip)
+	}
+
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return fmt.Errorf("provider output URL host is not allowed")
+	}
+
+	resolver = effectiveOutputResolver(resolver)
+	ips, err := resolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("resolve output image host: %w", err)
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("provider output URL host did not resolve")
+	}
+	for _, ip := range ips {
+		if err := validateOutputIP(ip.IP); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func effectiveOutputResolver(resolver hostnameResolver) hostnameResolver {
+	if resolver != nil {
+		return resolver
+	}
+	return net.DefaultResolver
+}
+
+func validateOutputIP(ip net.IP) error {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("provider output URL host is not allowed")
+	}
+
+	return nil
 }
 
 type preparedAsset struct {
