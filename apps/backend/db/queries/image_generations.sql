@@ -135,3 +135,25 @@ SET provider_name = $2,
     completed_at = NULL
 WHERE id = $1
   AND status = 'pending';
+
+-- name: LockImageGenerationForUpdate :one
+SELECT
+    id,
+    session_id,
+    mode,
+    prompt,
+    resolution_key,
+    width,
+    height,
+    requested_image_count,
+    provider_name,
+    provider_model,
+    provider_job_id,
+    status,
+    error_code,
+    error_message,
+    created_at,
+    completed_at
+FROM image_generations
+WHERE id = $1
+FOR UPDATE;

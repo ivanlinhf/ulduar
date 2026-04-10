@@ -200,6 +200,28 @@ func (r *ImageGenerationRepository) ClaimPending(ctx context.Context, params Cla
 	return rowsAffected > 0, nil
 }
 
+func (r *ImageGenerationRepository) LockForUpdate(ctx context.Context, generationID string) (ImageGeneration, error) {
+	id, err := parseUUID(generationID)
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("parse image generation id: %w", err)
+	}
+
+	row, err := r.queries.LockImageGenerationForUpdate(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ImageGeneration{}, ErrNotFound
+	}
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("lock image generation %s: %w", generationID, err)
+	}
+
+	generation, err := mapImageGeneration(row)
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("map locked image generation %s: %w", generationID, err)
+	}
+
+	return generation, nil
+}
+
 func (r *ImageGenerationRepository) UpdateState(ctx context.Context, params UpdateImageGenerationStateParams) error {
 	id, err := parseUUID(params.ID)
 	if err != nil {

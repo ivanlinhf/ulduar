@@ -67,6 +67,7 @@ type writeTx interface {
 	GetSession(ctx context.Context, sessionID string) (repository.Session, error)
 	CreateGeneration(ctx context.Context, params repository.CreateImageGenerationParams) (repository.ImageGeneration, error)
 	CreateGenerationAsset(ctx context.Context, params repository.CreateImageGenerationAssetParams) (repository.ImageGenerationAsset, error)
+	LockGenerationForUpdate(ctx context.Context, generationID string) (repository.ImageGeneration, error)
 	UpdateGenerationState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
@@ -305,16 +306,6 @@ func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) er
 }
 
 func (s *Service) executePendingGeneration(ctx context.Context, generation repository.ImageGeneration) error {
-	inputAssets, err := s.assetRead.ListByGeneration(ctx, generation.ID)
-	if err != nil {
-		return fmt.Errorf("list image generation assets: %w", err)
-	}
-
-	inputImages, err := s.loadInputImages(ctx, inputAssets)
-	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "load input images", "input_asset_read_failed", err)
-	}
-
 	providerName, providerModel := s.resolvedProviderMetadata(generation)
 	claimed, err := s.generationRead.ClaimPending(ctx, repository.ClaimPendingImageGenerationParams{
 		ID:            generation.ID,
@@ -330,6 +321,16 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 	generation.ProviderName = providerName
 	generation.ProviderModel = providerModel
 	generation.Status = string(StatusRunning)
+
+	inputAssets, err := s.assetRead.ListByGeneration(ctx, generation.ID)
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "list image generation assets", "input_asset_read_failed", err)
+	}
+
+	inputImages, err := s.loadInputImages(ctx, inputAssets)
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "load input images", "input_asset_read_failed", err)
+	}
 
 	result, err := s.provider.Generate(ctx, buildGenerateRequest(generation, inputImages))
 	if err != nil {
@@ -365,7 +366,7 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 func (s *Service) executeRunningGeneration(ctx context.Context, generation repository.ImageGeneration) error {
 	jobID := strings.TrimSpace(generation.ProviderJobID)
 	if jobID == "" {
-		return s.failGenerationWithMessage(ctx, generation, "invalid_generation_state", "running image generation is missing provider job id")
+		return nil
 	}
 
 	pollResult, err := s.provider.Poll(ctx, imageprovider.ProviderJob{JobID: jobID})
@@ -399,15 +400,25 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return s.failGenerationWithCause(ctx, generation, "prepare output image", "invalid_provider_output", err)
 	}
 
-	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
-	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
-		return s.failGenerationWithCause(ctx, generation, "store output image", "store_output_failed", err)
-	}
-
 	tx, err := s.beginWriteTxFn(ctx)
 	if err != nil {
-		s.cleanupBlobs([]string{blobPath})
 		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
+	}
+	lockedGeneration, err := tx.LockGenerationForUpdate(ctx, generation.ID)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "lock image generation for output persistence", "persist_output_failed", err)
+	}
+	if Status(lockedGeneration.Status) != StatusRunning || lockedGeneration.CompletedAt != nil {
+		_ = tx.Rollback(ctx)
+		return nil
+	}
+	generation = lockedGeneration
+
+	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
+	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "store output image", "store_output_failed", err)
 	}
 	rollbackAndCleanup := func() {
 		_ = tx.Rollback(ctx)
@@ -668,6 +679,7 @@ func newOutputHTTPClient(timeout time.Duration, resolver hostnameResolver) *http
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return nil, nil },
 			DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
 				dialAddress, err := validatedOutputDialAddress(ctx, resolver, address)
 				if err != nil {
@@ -1071,6 +1083,10 @@ func (t repositoryWriteTx) CreateGeneration(ctx context.Context, params reposito
 
 func (t repositoryWriteTx) CreateGenerationAsset(ctx context.Context, params repository.CreateImageGenerationAssetParams) (repository.ImageGenerationAsset, error) {
 	return repository.NewImageGenerationAssetRepository(t.tx).Create(ctx, params)
+}
+
+func (t repositoryWriteTx) LockGenerationForUpdate(ctx context.Context, generationID string) (repository.ImageGeneration, error) {
+	return repository.NewImageGenerationRepository(t.tx).LockForUpdate(ctx, generationID)
 }
 
 func (t repositoryWriteTx) UpdateGenerationState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error {
