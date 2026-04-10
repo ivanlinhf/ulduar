@@ -1175,11 +1175,14 @@ func TestCompleteGenerationSkipsOutputWhenAlreadyTerminal(t *testing.T) {
 	}
 	blobStore := &stubBlobStore{}
 	service := &Service{
-		blobs:            blobStore,
-		outputHTTPClient: &http.Client{Timeout: time.Second},
-		beginWriteTxFn:   func(context.Context) (writeTx, error) { return tx, nil },
-		generationRead:   &stubGenerationReader{},
-		assetRead:        stubAssetReader{},
+		blobs: blobStore,
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			t.Fatal("output URL should not be downloaded after terminal state is observed")
+			return nil, nil
+		}},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: &stubGenerationReader{},
+		assetRead:      stubAssetReader{},
 	}
 
 	err := service.completeGeneration(context.Background(), repository.ImageGeneration{
@@ -1187,8 +1190,7 @@ func TestCompleteGenerationSkipsOutputWhenAlreadyTerminal(t *testing.T) {
 		SessionID: "11111111-1111-1111-1111-111111111111",
 		Status:    "running",
 	}, []imageprovider.OutputImage{{
-		Data:      slices.Clone(testPNGData()),
-		MediaType: "image/png",
+		URL: "https://cdn.example.com/output.png",
 	}})
 	if err != nil {
 		t.Fatalf("completeGeneration() error = %v", err)

@@ -424,11 +424,6 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", fmt.Sprintf("provider returned %d output images; expected exactly 1", len(images)))
 	}
 
-	outputAsset, err := s.prepareOutputAsset(ctx, images[0])
-	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "prepare output image", "invalid_provider_output", err)
-	}
-
 	tx, err := s.beginWriteTxFn(ctx)
 	if err != nil {
 		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
@@ -443,6 +438,12 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return nil
 	}
 	generation = lockedGeneration
+
+	outputAsset, err := s.prepareOutputAsset(ctx, images[0])
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "prepare output image", "invalid_provider_output", err)
+	}
 
 	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
 	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
