@@ -1067,7 +1067,12 @@ func TestGetImageGenerationImageContentHandlerInvalidImageID(t *testing.T) {
 		nil,
 	)
 
-	service := &fakeImageGenerationService{providerConfigured: true}
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		getImageContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
+			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusBadRequest, Message: "imageId must be a valid UUID"}
+		},
+	}
 	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusBadRequest {

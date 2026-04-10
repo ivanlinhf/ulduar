@@ -691,6 +691,164 @@ func TestGetAssetContentReturnsScopedOutputAssetBytes(t *testing.T) {
 	}
 }
 
+func TestGetImageContentReturnsScopedOutputAssetBytes(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			downloads: map[string][]byte{
+				"sessions/s/image-generations/g/outputs/output.png": slices.Clone(testPNGData()),
+			},
+		},
+		assetRead: stubAssetReader{
+			asset: repository.ImageGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         "output",
+				BlobPath:     "sessions/s/image-generations/g/outputs/output.png",
+				MediaType:    "image/png",
+				Filename:     "output.png",
+				SizeBytes:    int64(len(testPNGData())),
+			},
+		},
+	}
+
+	content, err := service.GetImageContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	)
+	if err != nil {
+		t.Fatalf("GetImageContent() error = %v", err)
+	}
+	if content.Filename != "output.png" {
+		t.Fatalf("content.Filename = %q", content.Filename)
+	}
+	if content.MediaType != "image/png" {
+		t.Fatalf("content.MediaType = %q", content.MediaType)
+	}
+	if !bytes.Equal(content.Data, testPNGData()) {
+		t.Fatal("content.Data mismatch")
+	}
+}
+
+func TestGetImageContentReturnsImageNotFoundForMissingAsset(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs:     &stubBlobStore{},
+		assetRead: stubAssetReader{err: repository.ErrNotFound},
+	}
+
+	_, err := service.GetImageContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	)
+	var ve ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if ve.StatusCode != http.StatusNotFound {
+		t.Fatalf("StatusCode = %d, want 404", ve.StatusCode)
+	}
+	if ve.Message != "image not found" {
+		t.Fatalf("Message = %q, want \"image not found\"", ve.Message)
+	}
+}
+
+func TestGetImageContentReturnsImageNotFoundForMismatchedGeneration(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{},
+		assetRead: stubAssetReader{
+			asset: repository.ImageGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "99999999-9999-9999-9999-999999999999", // different generation
+				Role:         "output",
+			},
+		},
+	}
+
+	_, err := service.GetImageContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	)
+	var ve ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if ve.StatusCode != http.StatusNotFound {
+		t.Fatalf("StatusCode = %d, want 404", ve.StatusCode)
+	}
+	if ve.Message != "image not found" {
+		t.Fatalf("Message = %q, want \"image not found\"", ve.Message)
+	}
+}
+
+func TestGetImageContentReturnsImageNotFoundForNonOutputRole(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{},
+		assetRead: stubAssetReader{
+			asset: repository.ImageGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         "reference", // not output
+			},
+		},
+	}
+
+	_, err := service.GetImageContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	)
+	var ve ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if ve.StatusCode != http.StatusNotFound {
+		t.Fatalf("StatusCode = %d, want 404", ve.StatusCode)
+	}
+	if ve.Message != "image not found" {
+		t.Fatalf("Message = %q, want \"image not found\"", ve.Message)
+	}
+}
+
+func TestGetImageContentReturnsValidationErrorForInvalidImageID(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs:     &stubBlobStore{},
+		assetRead: stubAssetReader{},
+	}
+
+	_, err := service.GetImageContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"not-a-uuid",
+	)
+	var ve ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if ve.StatusCode != http.StatusBadRequest {
+		t.Fatalf("StatusCode = %d, want 400", ve.StatusCode)
+	}
+	if !strings.Contains(ve.Message, "imageId") {
+		t.Fatalf("Message = %q, want \"imageId\" field name", ve.Message)
+	}
+}
+
 func TestExecuteGenerationCompletesTextToImageAndPersistsOutput(t *testing.T) {
 	t.Parallel()
 

@@ -490,11 +490,6 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if err := imagegen.ValidateImageID(r.PathValue("imageId")); err != nil {
-		writeServiceError(r.Context(), w, err)
-		return
-	}
-
 	content, err := h.imageGenerationService.GetImageContent(
 		r.Context(),
 		r.PathValue("sessionId"),

@@ -1181,12 +1181,6 @@ func validateUUID(value, field string) error {
 	return nil
 }
 
-// ValidateImageID validates that imageID is a well-formed UUID, returning a
-// ValidationError with the "imageId" field name if it is not.
-func ValidateImageID(imageID string) error {
-	return validateUUID(imageID, "imageId")
-}
-
 func mapRepositoryError(err error, notFoundMessage string) error {
 	if errors.Is(err, repository.ErrNotFound) {
 		return ValidationError{
