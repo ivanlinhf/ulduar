@@ -62,6 +62,18 @@ Backend app startup validates these:
   Optional duration for streamed Responses API calls. Default `10m`.
 - `CHAT_RUN_FINALIZATION_TIMEOUT`
   Optional duration for persisting final run/message state after provider completion or failure. Default `15s`.
+- `AZURE_FOUNDRY_ENDPOINT`
+  Optional Azure AI Foundry base URL for the experimental FLUX adapter config. No backend routes use this yet.
+- `AZURE_FOUNDRY_API_KEY`
+  Optional Azure AI Foundry API key. Required only when `AZURE_FOUNDRY_ENDPOINT` is set.
+- `AZURE_FOUNDRY_FLUX_API_VERSION`
+  Optional. Default `preview`.
+- `AZURE_FOUNDRY_FLUX_MODEL`
+  Optional. Default `FLUX.2-pro`.
+- `AZURE_FOUNDRY_FLUX_MODEL_PATH`
+  Optional. Default `flux-2-pro`.
+- `AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT`
+  Optional duration. Default `60s`.
 
 Container/entrypoint and frontend build settings:
 
@@ -125,6 +137,13 @@ export AZURE_OPENAI_ENABLE_WEB_SEARCH=false
 export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s
+# Optional Azure Foundry FLUX config for future image-generation wiring.
+# export AZURE_FOUNDRY_ENDPOINT=https://your-foundry-resource.services.ai.azure.com
+# export AZURE_FOUNDRY_API_KEY=replace-me
+# export AZURE_FOUNDRY_FLUX_API_VERSION=preview
+# export AZURE_FOUNDRY_FLUX_MODEL=FLUX.2-pro
+# export AZURE_FOUNDRY_FLUX_MODEL_PATH=flux-2-pro
+# export AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT=60s
 go run ./cmd/server
 ```
 
