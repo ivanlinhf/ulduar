@@ -59,6 +59,7 @@ RETURNING
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 `
 
@@ -113,9 +114,38 @@ func (q *Queries) CreateImageGeneration(ctx context.Context, arg CreateImageGene
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
+}
+
+const claimPendingImageGeneration = `-- name: ClaimPendingImageGeneration :execrows
+UPDATE image_generations
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = NULL,
+    status = 'running',
+    error_code = NULL,
+    error_message = NULL,
+    started_at = NOW(),
+    completed_at = NULL
+WHERE id = $1
+  AND status = 'pending'
+`
+
+type ClaimPendingImageGenerationParams struct {
+	ID            pgtype.UUID `json:"id"`
+	ProviderName  string      `json:"provider_name"`
+	ProviderModel string      `json:"provider_model"`
+}
+
+func (q *Queries) ClaimPendingImageGeneration(ctx context.Context, arg ClaimPendingImageGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimPendingImageGeneration, arg.ID, arg.ProviderName, arg.ProviderModel)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getImageGeneration = `-- name: GetImageGeneration :one
@@ -135,6 +165,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -159,6 +190,7 @@ func (q *Queries) GetImageGeneration(ctx context.Context, id pgtype.UUID) (Image
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
@@ -181,6 +213,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -211,6 +244,7 @@ func (q *Queries) GetImageGenerationBySession(ctx context.Context, arg GetImageG
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
@@ -233,6 +267,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE session_id = $1
@@ -264,6 +299,7 @@ func (q *Queries) ListImageGenerationsBySession(ctx context.Context, sessionID p
 			&i.ErrorCode,
 			&i.ErrorMessage,
 			&i.CreatedAt,
+			&i.StartedAt,
 			&i.CompletedAt,
 		); err != nil {
 			return nil, err
@@ -276,18 +312,71 @@ func (q *Queries) ListImageGenerationsBySession(ctx context.Context, sessionID p
 	return items, nil
 }
 
+const lockImageGenerationForUpdate = `-- name: LockImageGenerationForUpdate :one
+SELECT
+    id,
+    session_id,
+    mode,
+    prompt,
+    resolution_key,
+    width,
+    height,
+    requested_image_count,
+    provider_name,
+    provider_model,
+    provider_job_id,
+    status,
+    error_code,
+    error_message,
+    created_at,
+    started_at,
+    completed_at
+FROM image_generations
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockImageGenerationForUpdate(ctx context.Context, id pgtype.UUID) (ImageGeneration, error) {
+	row := q.db.QueryRow(ctx, lockImageGenerationForUpdate, id)
+	var i ImageGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Mode,
+		&i.Prompt,
+		&i.ResolutionKey,
+		&i.Width,
+		&i.Height,
+		&i.RequestedImageCount,
+		&i.ProviderName,
+		&i.ProviderModel,
+		&i.ProviderJobID,
+		&i.Status,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const updateImageGenerationState = `-- name: UpdateImageGenerationState :execrows
 UPDATE image_generations
-SET provider_job_id = $2,
-    status = $3,
-    error_code = $4,
-    error_message = $5,
-    completed_at = $6
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = $4,
+    status = $5,
+    error_code = $6,
+    error_message = $7,
+    completed_at = $8
 WHERE id = $1
 `
 
 type UpdateImageGenerationStateParams struct {
 	ID            pgtype.UUID        `json:"id"`
+	ProviderName  string             `json:"provider_name"`
+	ProviderModel string             `json:"provider_model"`
 	ProviderJobID pgtype.Text        `json:"provider_job_id"`
 	Status        string             `json:"status"`
 	ErrorCode     pgtype.Text        `json:"error_code"`
@@ -298,6 +387,8 @@ type UpdateImageGenerationStateParams struct {
 func (q *Queries) UpdateImageGenerationState(ctx context.Context, arg UpdateImageGenerationStateParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateImageGenerationState,
 		arg.ID,
+		arg.ProviderName,
+		arg.ProviderModel,
 		arg.ProviderJobID,
 		arg.Status,
 		arg.ErrorCode,

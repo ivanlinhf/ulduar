@@ -66,6 +66,7 @@ CREATE TABLE image_generations (
     error_code TEXT,
     error_message TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     CONSTRAINT image_generations_mode_check CHECK (mode IN ('text_to_image', 'image_edit')),
     CONSTRAINT image_generations_status_check CHECK (status IN ('pending', 'running', 'completed', 'failed')),

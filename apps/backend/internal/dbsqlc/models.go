@@ -69,6 +69,7 @@ type ImageGeneration struct {
 	ErrorCode           pgtype.Text        `json:"error_code"`
 	ErrorMessage        pgtype.Text        `json:"error_message"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	StartedAt           pgtype.Timestamptz `json:"started_at"`
 	CompletedAt         pgtype.Timestamptz `json:"completed_at"`
 }
 

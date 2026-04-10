@@ -148,6 +148,7 @@ func TestMapRun(t *testing.T) {
 
 func TestMapImageGeneration(t *testing.T) {
 	createdAt := time.Date(2026, 3, 31, 10, 20, 0, 0, time.UTC)
+	startedAt := createdAt.Add(time.Minute)
 	completedAt := createdAt.Add(3 * time.Minute)
 	row := dbsqlc.ImageGeneration{
 		ID:                  mustUUID(t, "66666666-6666-6666-6666-666666666666"),
@@ -165,6 +166,7 @@ func TestMapImageGeneration(t *testing.T) {
 		ErrorCode:           textValue(""),
 		ErrorMessage:        textValue(""),
 		CreatedAt:           mustTime(createdAt),
+		StartedAt:           mustTime(startedAt),
 		CompletedAt:         mustTime(completedAt),
 	}
 
@@ -181,6 +183,9 @@ func TestMapImageGeneration(t *testing.T) {
 	}
 	if generation.ProviderJobID != "job-123" {
 		t.Fatalf("generation.ProviderJobID = %q", generation.ProviderJobID)
+	}
+	if generation.StartedAt == nil || !generation.StartedAt.Equal(startedAt) {
+		t.Fatalf("generation.StartedAt = %v", generation.StartedAt)
 	}
 	if generation.CompletedAt == nil || !generation.CompletedAt.Equal(completedAt) {
 		t.Fatalf("generation.CompletedAt = %v", generation.CompletedAt)

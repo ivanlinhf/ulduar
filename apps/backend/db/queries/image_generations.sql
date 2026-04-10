@@ -46,6 +46,7 @@ RETURNING
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at;
 
 -- name: GetImageGeneration :one
@@ -65,6 +66,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1;
@@ -86,6 +88,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -108,6 +111,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE session_id = $1
@@ -115,9 +119,47 @@ ORDER BY created_at ASC, id ASC;
 
 -- name: UpdateImageGenerationState :execrows
 UPDATE image_generations
-SET provider_job_id = $2,
-    status = $3,
-    error_code = $4,
-    error_message = $5,
-    completed_at = $6
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = $4,
+    status = $5,
+    error_code = $6,
+    error_message = $7,
+    completed_at = $8
 WHERE id = $1;
+
+-- name: ClaimPendingImageGeneration :execrows
+UPDATE image_generations
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = NULL,
+    status = 'running',
+    error_code = NULL,
+    error_message = NULL,
+    started_at = NOW(),
+    completed_at = NULL
+WHERE id = $1
+  AND status = 'pending';
+
+-- name: LockImageGenerationForUpdate :one
+SELECT
+    id,
+    session_id,
+    mode,
+    prompt,
+    resolution_key,
+    width,
+    height,
+    requested_image_count,
+    provider_name,
+    provider_model,
+    provider_job_id,
+    status,
+    error_code,
+    error_message,
+    created_at,
+    started_at,
+    completed_at
+FROM image_generations
+WHERE id = $1
+FOR UPDATE;

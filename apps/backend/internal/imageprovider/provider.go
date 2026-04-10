@@ -3,7 +3,10 @@
 // provider-specific details out of the domain layer.
 package imageprovider
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Mode identifies the type of image generation operation.
 type Mode string
@@ -80,6 +83,16 @@ type PollResult struct {
 	Err string
 }
 
+// APIError represents an HTTP error returned by a concrete image provider.
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e APIError) Error() string {
+	return fmt.Sprintf("image provider returned status %d: %s", e.StatusCode, e.Message)
+}
+
 // ImageProvider is the provider-neutral interface for image generation.
 type ImageProvider interface {
 	// Generate submits an image generation request.
@@ -87,4 +100,11 @@ type ImageProvider interface {
 	Generate(ctx context.Context, req GenerateRequest) (GenerateResult, error)
 	// Poll queries the status of a previously submitted async job.
 	Poll(ctx context.Context, job ProviderJob) (PollResult, error)
+}
+
+// ProviderMetadata exposes stable provider metadata for persistence and debugging.
+// Implementations are optional; callers should fall back gracefully when absent.
+type ProviderMetadata interface {
+	ProviderName() string
+	ProviderModel() string
 }

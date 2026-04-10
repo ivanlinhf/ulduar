@@ -1,13 +1,19 @@
 package imagegen
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
@@ -242,6 +248,182 @@ func TestBuildBlobPaths(t *testing.T) {
 	}
 }
 
+func TestReadBytesWithinLimit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("within limit", func(t *testing.T) {
+		t.Parallel()
+
+		data, err := readBytesWithinLimit(bytes.NewBufferString("abc"), 3)
+		if err != nil {
+			t.Fatalf("readBytesWithinLimit() error = %v", err)
+		}
+		if string(data) != "abc" {
+			t.Fatalf("string(data) = %q, want %q", string(data), "abc")
+		}
+	})
+
+	t.Run("exceeds limit", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readBytesWithinLimit(bytes.NewBufferString("abcd"), 3)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "content exceeds 3 bytes") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("reader error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readBytesWithinLimit(errorReader{}, 3)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "read failed") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+func TestValidateOutputImageURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "accepts https url",
+			raw:  "https://cdn.example.com/output.png",
+			want: "https://cdn.example.com/output.png",
+		},
+		{
+			name:    "rejects non https",
+			raw:     "http://cdn.example.com/output.png",
+			wantErr: "must use HTTPS",
+		},
+		{
+			name:    "rejects userinfo",
+			raw:     "https://user:pass@cdn.example.com/output.png",
+			wantErr: "invalid",
+		},
+		{
+			name:    "rejects localhost",
+			raw:     "https://localhost/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
+			name:    "rejects link local ip",
+			raw:     "https://169.254.169.254/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
+			name:    "rejects cgnat ip",
+			raw:     "https://100.64.0.1/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
+			name:    "rejects relative url",
+			raw:     "/output.png",
+			wantErr: "absolute HTTPS URL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := validateOutputImageURL(tt.raw)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("validateOutputImageURL() error = %v", err)
+			}
+			if got.String() != tt.want {
+				t.Fatalf("validateOutputImageURL() = %q, want %q", got.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateOutputImageHostRejectsResolvedRestrictedAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		ip   string
+	}{
+		{name: "private", ip: "10.0.0.7"},
+		{name: "cgnat", ip: "100.64.0.1"},
+		{name: "loopback", ip: "127.0.0.1"},
+		{name: "link local unicast", ip: "169.254.1.10"},
+		{name: "multicast", ip: "224.0.0.1"},
+		{name: "unspecified", ip: "0.0.0.0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOutputImageHost(context.Background(), stubHostnameResolver{
+				lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+					if host != "cdn.example.com" {
+						t.Fatalf("host = %q", host)
+					}
+					return []net.IPAddr{{IP: net.ParseIP(tt.ip)}}, nil
+				},
+			}, "cdn.example.com")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), "host is not allowed") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestEffectiveOutputResolver(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	custom := stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			called = true
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
+			return nil, nil
+		},
+	}
+	got := effectiveOutputResolver(custom)
+	if _, ok := got.(stubHostnameResolver); !ok {
+		t.Fatalf("effectiveOutputResolver(custom) did not return the provided resolver type")
+	}
+	if _, err := got.LookupIPAddr(context.Background(), "cdn.example.com"); err != nil {
+		t.Fatalf("got.LookupIPAddr() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected custom resolver to be called")
+	}
+	if got := effectiveOutputResolver(nil); got != net.DefaultResolver {
+		t.Fatalf("effectiveOutputResolver(nil) = %#v, want net.DefaultResolver", got)
+	}
+}
+
 func TestCreatePendingGenerationPersistsGenerationAndUploadsInputs(t *testing.T) {
 	t.Parallel()
 
@@ -395,7 +577,7 @@ func TestGetGenerationAssemblesSessionScopedView(t *testing.T) {
 
 	createdAt := time.Date(2026, 4, 10, 2, 30, 0, 0, time.UTC)
 	service := &Service{
-		generationRead: stubGenerationReader{
+		generationRead: &stubGenerationReader{
 			generation: repository.ImageGeneration{
 				ID:                  "22222222-2222-2222-2222-222222222222",
 				SessionID:           "11111111-1111-1111-1111-111111111111",
@@ -445,14 +627,942 @@ func TestGetGenerationAssemblesSessionScopedView(t *testing.T) {
 	}
 }
 
+func TestExecuteGenerationCompletesTextToImageAndPersistsOutput(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		name:  "azure_foundry",
+		model: "FLUX.2-pro",
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{
+				Images: []imageprovider.OutputImage{{
+					Data:      slices.Clone(testPNGData()),
+					MediaType: "image/png",
+				}},
+			}, nil
+		},
+	}
+	blobStore := &stubBlobStore{}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1536x1024",
+			Width:               1536,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+	}
+	tx := &stubWriteTx{
+		lockGeneration: repository.ImageGeneration{
+			ID:                  generationRepo.generation.ID,
+			SessionID:           generationRepo.generation.SessionID,
+			Mode:                generationRepo.generation.Mode,
+			Prompt:              generationRepo.generation.Prompt,
+			ResolutionKey:       generationRepo.generation.ResolutionKey,
+			Width:               generationRepo.generation.Width,
+			Height:              generationRepo.generation.Height,
+			RequestedImageCount: generationRepo.generation.RequestedImageCount,
+			ProviderName:        "azure_foundry",
+			ProviderModel:       "FLUX.2-pro",
+			Status:              "running",
+			CreatedAt:           generationRepo.generation.CreatedAt,
+		},
+	}
+	service := &Service{
+		blobs:            blobStore,
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+
+	if len(provider.generateRequests) != 1 {
+		t.Fatalf("len(provider.generateRequests) = %d, want 1", len(provider.generateRequests))
+	}
+	req := provider.generateRequests[0]
+	if req.Mode != imageprovider.ModeTextToImage || req.Prompt != "draw a lighthouse" {
+		t.Fatalf("provider request = %+v", req)
+	}
+	if req.Width != 1536 || req.Height != 1024 || req.OutputFormat != "png" || req.NumImages != 1 {
+		t.Fatalf("provider request = %+v", req)
+	}
+	if len(generationRepo.updatedStates) != 1 || generationRepo.updatedStates[0].Status != "running" {
+		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+	if generationRepo.updatedStates[0].ProviderName != "azure_foundry" || generationRepo.updatedStates[0].ProviderModel != "FLUX.2-pro" {
+		t.Fatalf("running state metadata = %+v", generationRepo.updatedStates[0])
+	}
+	if len(blobStore.uploads) != 1 {
+		t.Fatalf("len(blobStore.uploads) = %d, want 1", len(blobStore.uploads))
+	}
+	if !strings.Contains(blobStore.uploads[0].blobPath, "/outputs/output.png") {
+		t.Fatalf("blobStore.uploads[0].blobPath = %q", blobStore.uploads[0].blobPath)
+	}
+	if len(tx.createdAssets) != 1 || tx.createdAssets[0].Role != "output" {
+		t.Fatalf("tx.createdAssets = %+v", tx.createdAssets)
+	}
+	if len(tx.updatedStates) != 1 || tx.updatedStates[0].Status != "completed" {
+		t.Fatalf("tx.updatedStates = %+v", tx.updatedStates)
+	}
+	if tx.updatedStates[0].ProviderName != "azure_foundry" || tx.updatedStates[0].ProviderModel != "FLUX.2-pro" {
+		t.Fatalf("completed state metadata = %+v", tx.updatedStates[0])
+	}
+	if !tx.committed {
+		t.Fatal("expected transaction commit")
+	}
+}
+
+func TestExecuteGenerationRejectsMissingOutputHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			t.Fatal("provider should not be called when output HTTP client is not configured")
+			return imageprovider.GenerateResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:     "22222222-2222-2222-2222-222222222222",
+			Status: "pending",
+		},
+	}
+	service := &Service{
+		blobs:          &stubBlobStore{},
+		provider:       provider,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead: generationRepo,
+		assetRead:      stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "output HTTP client is not configured") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		name:  "azure_foundry",
+		model: "FLUX.2-pro",
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{
+				Job: &imageprovider.ProviderJob{JobID: "job-123"},
+			}, nil
+		},
+		pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+			return imageprovider.PollResult{
+				Status: imageprovider.PollStatusCompleted,
+				Images: []imageprovider.OutputImage{{
+					URL: "https://cdn.example.com/output.png",
+				}},
+			}, nil
+		},
+	}
+	blobStore := &stubBlobStore{
+		downloads: map[string][]byte{
+			"sessions/s/image-generations/g/inputs/01-ref.png": testPNGData(),
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "image_edit",
+			Prompt:              "make it watercolor",
+			ResolutionKey:       "1152x896",
+			Width:               1152,
+			Height:              896,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+	}
+	tx := &stubWriteTx{}
+	resolverCalled := false
+	service := &Service{
+		blobs:    blobStore,
+		provider: provider,
+		outputResolver: stubHostnameResolver{lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			resolverCalled = true
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		}},
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://cdn.example.com/output.png" {
+				t.Fatalf("req.URL.String() = %q", req.URL.String())
+			}
+			return newHTTPResponse(http.StatusOK, "image/png", testPNGData()), nil
+		}},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: generationRepo,
+		assetRead: stubAssetReader{
+			assets: []repository.ImageGenerationAsset{{
+				ID:           "asset-input",
+				GenerationID: generationRepo.generation.ID,
+				Role:         "input",
+				SortOrder:    0,
+				BlobPath:     "sessions/s/image-generations/g/inputs/01-ref.png",
+				MediaType:    "image/png",
+				Filename:     "ref.png",
+				SizeBytes:    int64(len(testPNGData())),
+				Sha256:       "abc",
+				CreatedAt:    time.Now().UTC(),
+			}},
+		},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("first ExecuteGeneration() error = %v", err)
+	}
+	if len(provider.generateRequests) != 1 {
+		t.Fatalf("len(provider.generateRequests) = %d, want 1", len(provider.generateRequests))
+	}
+	req := provider.generateRequests[0]
+	if req.Mode != imageprovider.ModeImageEdit || len(req.InputImages) != 1 {
+		t.Fatalf("provider generate request = %+v", req)
+	}
+	if !slices.Equal(req.InputImages[0], testPNGData()) {
+		t.Fatalf("provider input image = %v, want %v", req.InputImages[0], testPNGData())
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	if generationRepo.updatedStates[1].ProviderJobID != "job-123" || generationRepo.updatedStates[1].Status != "running" {
+		t.Fatalf("job metadata state = %+v", generationRepo.updatedStates[1])
+	}
+	tx.lockGeneration = generationRepo.generation
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("second ExecuteGeneration() error = %v", err)
+	}
+	if len(provider.pollJobs) != 1 || provider.pollJobs[0].JobID != "job-123" {
+		t.Fatalf("provider.pollJobs = %+v", provider.pollJobs)
+	}
+	if len(tx.createdAssets) != 1 || tx.createdAssets[0].Role != "output" {
+		t.Fatalf("tx.createdAssets = %+v", tx.createdAssets)
+	}
+	if len(tx.updatedStates) != 1 || tx.updatedStates[0].Status != "completed" {
+		t.Fatalf("tx.updatedStates = %+v", tx.updatedStates)
+	}
+	if tx.updatedStates[0].ProviderJobID != "job-123" {
+		t.Fatalf("completed state provider job id = %q", tx.updatedStates[0].ProviderJobID)
+	}
+	if !resolverCalled {
+		t.Fatal("expected output hostname resolver to be called")
+	}
+}
+
+func TestExecuteGenerationSkipsProviderWhenPendingClaimIsLost(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			t.Fatal("provider should not be called when pending claim is lost")
+			return imageprovider.GenerateResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+		claimPendingBlocked: true,
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{err: errors.New("should not list input assets after claim loss")},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+	if generationRepo.claimPendingCalls != 1 {
+		t.Fatalf("claimPendingCalls = %d, want 1", generationRepo.claimPendingCalls)
+	}
+	if len(provider.generateRequests) != 0 {
+		t.Fatalf("provider.generateRequests = %+v", provider.generateRequests)
+	}
+	if len(generationRepo.updatedStates) != 0 {
+		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+}
+
+func TestExecuteRunningGenerationWithMissingJobIDIsNoop(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().UTC()
+	provider := &stubImageProvider{
+		pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+			t.Fatal("provider should not be polled while provider job id is not yet persisted")
+			return imageprovider.PollResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Status:    "running",
+			StartedAt: &startedAt,
+		},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 0 {
+		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+}
+
+func TestExecuteRunningGenerationWithStaleMissingJobIDFails(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().UTC().Add(-providerJobIDPersistGracePeriod - time.Second)
+	provider := &stubImageProvider{
+		pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+			t.Fatal("provider should not be polled without a provider job id")
+			return imageprovider.PollResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Status:    "running",
+			StartedAt: &startedAt,
+		},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "provider job id was not persisted") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 1 {
+		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+	failedState := generationRepo.updatedStates[0]
+	if failedState.Status != "failed" || failedState.ErrorCode != "missing_provider_job_id" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+}
+
+func TestExecuteGenerationMarksFailureWhenJobMetadataPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		name:  "azure_foundry",
+		model: "FLUX.2-pro",
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{
+				Job: &imageprovider.ProviderJob{JobID: "job-123"},
+			}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+		updateStateErrors: []error{errors.New("update failed")},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "persist image generation job metadata") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	failedState := generationRepo.updatedStates[1]
+	if failedState.Status != "failed" || failedState.ErrorCode != "persist_generation_state_failed" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+	if failedState.ProviderJobID != "job-123" {
+		t.Fatalf("failedState.ProviderJobID = %q", failedState.ProviderJobID)
+	}
+}
+
+func TestExecuteGenerationMarksFailureWhenProviderRequestFails(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{}, imageprovider.APIError{
+				StatusCode: http.StatusServiceUnavailable,
+				Message:    "upstream unavailable",
+			}
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	failedState := generationRepo.updatedStates[1]
+	if failedState.Status != "failed" || failedState.ErrorCode != "provider_http_503" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+	if !strings.Contains(failedState.ErrorMessage, "upstream unavailable") {
+		t.Fatalf("failedState.ErrorMessage = %q", failedState.ErrorMessage)
+	}
+}
+
+func TestExecuteGenerationMarksFailureWhenProviderRequestFailsWithPointerAPIError(t *testing.T) {
+	t.Parallel()
+
+	provider := stubImageProviderNoMetadata{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{}, &imageprovider.APIError{
+				StatusCode: http.StatusBadGateway,
+				Message:    "gateway failed",
+			}
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			Mode:          "text_to_image",
+			Prompt:        "draw a lighthouse",
+			ResolutionKey: "1024x1024",
+			Width:         1024,
+			Height:        1024,
+			Status:        "pending",
+			CreatedAt:     time.Now().UTC(),
+		},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	failedState := generationRepo.updatedStates[1]
+	if failedState.ErrorCode != "provider_http_502" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+}
+
+func TestExecuteGenerationPreservesProviderMetadataOnCompletedPollWithoutProviderMetadata(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{},
+		provider: stubImageProviderNoMetadata{
+			pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+				return imageprovider.PollResult{
+					Status: imageprovider.PollStatusCompleted,
+					Images: []imageprovider.OutputImage{{
+						Data:      slices.Clone(testPNGData()),
+						MediaType: "image/png",
+					}},
+				}, nil
+			},
+		},
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   &stubGenerationReader{},
+		assetRead:        stubAssetReader{},
+	}
+
+	generation := repository.ImageGeneration{
+		ID:            "22222222-2222-2222-2222-222222222222",
+		SessionID:     "11111111-1111-1111-1111-111111111111",
+		Status:        "running",
+		ProviderJobID: "job-123",
+		ProviderName:  "azure_foundry",
+		ProviderModel: "FLUX.2-pro",
+	}
+	tx := &stubWriteTx{lockGeneration: generation}
+	service.beginWriteTxFn = func(context.Context) (writeTx, error) { return tx, nil }
+
+	if err := service.completeGeneration(context.Background(), generation, []imageprovider.OutputImage{{
+		Data:      slices.Clone(testPNGData()),
+		MediaType: "image/png",
+	}}); err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if len(tx.updatedStates) != 1 {
+		t.Fatalf("len(tx.updatedStates) = %d, want 1", len(tx.updatedStates))
+	}
+	if tx.updatedStates[0].ProviderName != "azure_foundry" || tx.updatedStates[0].ProviderModel != "FLUX.2-pro" {
+		t.Fatalf("completed state metadata = %+v", tx.updatedStates[0])
+	}
+}
+
+func TestCompleteGenerationSkipsOutputWhenAlreadyTerminal(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Now().UTC()
+	tx := &stubWriteTx{
+		lockGeneration: repository.ImageGeneration{
+			ID:          "22222222-2222-2222-2222-222222222222",
+			SessionID:   "11111111-1111-1111-1111-111111111111",
+			Status:      "completed",
+			CompletedAt: &completedAt,
+		},
+	}
+	blobStore := &stubBlobStore{}
+	service := &Service{
+		blobs: blobStore,
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			t.Fatal("output URL should not be downloaded after terminal state is observed")
+			return nil, nil
+		}},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: &stubGenerationReader{},
+		assetRead:      stubAssetReader{},
+	}
+
+	err := service.completeGeneration(context.Background(), repository.ImageGeneration{
+		ID:        "22222222-2222-2222-2222-222222222222",
+		SessionID: "11111111-1111-1111-1111-111111111111",
+		Status:    "running",
+	}, []imageprovider.OutputImage{{
+		URL: "https://cdn.example.com/output.png",
+	}})
+	if err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if tx.lockCalls != 1 {
+		t.Fatalf("lockCalls = %d, want 1", tx.lockCalls)
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected transaction rollback")
+	}
+	if len(blobStore.uploads) != 0 || len(tx.createdAssets) != 0 || len(tx.updatedStates) != 0 {
+		t.Fatalf("unexpected persistence: uploads=%+v createdAssets=%+v updatedStates=%+v", blobStore.uploads, tx.createdAssets, tx.updatedStates)
+	}
+}
+
+func TestPersistGenerationFailurePreservesStoredProviderMetadata(t *testing.T) {
+	t.Parallel()
+
+	generationRepo := &stubGenerationReader{}
+	service := &Service{
+		provider:       stubImageProviderNoMetadata{},
+		generationRead: generationRepo,
+	}
+
+	err := service.persistGenerationFailure(context.Background(), repository.ImageGeneration{
+		ID:            "22222222-2222-2222-2222-222222222222",
+		ProviderJobID: "job-123",
+		ProviderName:  "azure_foundry",
+		ProviderModel: "FLUX.2-pro",
+	}, "provider_job_failed", "provider job failed")
+	if err != nil {
+		t.Fatalf("persistGenerationFailure() error = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 1 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 1", len(generationRepo.updatedStates))
+	}
+	if generationRepo.updatedStates[0].ProviderName != "azure_foundry" || generationRepo.updatedStates[0].ProviderModel != "FLUX.2-pro" {
+		t.Fatalf("failed state metadata = %+v", generationRepo.updatedStates[0])
+	}
+}
+
+func TestLoadInputImagesRejectsOversizedDownloadedInput(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			downloads: map[string][]byte{
+				"blob-path": testPNGData(),
+			},
+		},
+		maxReferenceImageBytes: 8,
+	}
+
+	_, err := service.loadInputImages(context.Background(), []repository.ImageGenerationAsset{{
+		ID:       "asset-input",
+		Role:     "input",
+		BlobPath: "blob-path",
+		Filename: "ref.png",
+	}})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), `download input asset "ref.png": blob "blob-path" exceeds 8 bytes`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestExecuteGenerationCleansUpOutputBlobWhenPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{
+				Images: []imageprovider.OutputImage{{
+					Data:      slices.Clone(testPNGData()),
+					MediaType: "image/png",
+				}},
+			}, nil
+		},
+	}
+	blobStore := &stubBlobStore{}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+	}
+	tx := &stubWriteTx{
+		createAssetErr: errors.New("insert failed"),
+		lockGeneration: repository.ImageGeneration{
+			ID:                  generationRepo.generation.ID,
+			SessionID:           generationRepo.generation.SessionID,
+			Mode:                generationRepo.generation.Mode,
+			Prompt:              generationRepo.generation.Prompt,
+			ResolutionKey:       generationRepo.generation.ResolutionKey,
+			Width:               generationRepo.generation.Width,
+			Height:              generationRepo.generation.Height,
+			RequestedImageCount: generationRepo.generation.RequestedImageCount,
+			Status:              "running",
+			CreatedAt:           generationRepo.generation.CreatedAt,
+		},
+	}
+	service := &Service{
+		blobs:            blobStore,
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if len(blobStore.uploads) != 1 {
+		t.Fatalf("len(blobStore.uploads) = %d, want 1", len(blobStore.uploads))
+	}
+	if len(blobStore.deletedPaths) != 1 || blobStore.deletedPaths[0] != blobStore.uploads[0].blobPath {
+		t.Fatalf("blob cleanup mismatch: uploads=%+v deleted=%+v", blobStore.uploads, blobStore.deletedPaths)
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected transaction rollback")
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	failedState := generationRepo.updatedStates[1]
+	if failedState.Status != "failed" || failedState.ErrorCode != "persist_output_failed" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+}
+
+func TestResolveOutputImageDataRejectsOversizedInlineData(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+
+	_, _, err := service.resolveOutputImageData(context.Background(), imageprovider.OutputImage{
+		Data: make([]byte, int(maxOutputImageBytes)+1),
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "inline output image exceeds") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPrepareOutputAssetValidatesOutputImageBytes(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+
+	tests := []struct {
+		name      string
+		image     imageprovider.OutputImage
+		wantError string
+	}{
+		{
+			name: "rejects non image bytes",
+			image: imageprovider.OutputImage{
+				Data:      []byte("<html>not an image</html>"),
+				MediaType: "image/png",
+			},
+			wantError: "not a supported image",
+		},
+		{
+			name: "rejects declared type mismatch",
+			image: imageprovider.OutputImage{
+				Data:      testPNGData(),
+				MediaType: "image/jpeg",
+			},
+			wantError: `does not match image bytes "image/png"`,
+		},
+		{
+			name: "accepts octet stream when bytes decode",
+			image: imageprovider.OutputImage{
+				Data:      testPNGData(),
+				MediaType: "application/octet-stream",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			asset, err := service.prepareOutputAsset(context.Background(), tt.image)
+			if tt.wantError != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("err = %v, want substring %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("prepareOutputAsset() error = %v", err)
+			}
+			if asset.MediaType != "image/png" || asset.Width == nil || asset.Height == nil {
+				t.Fatalf("asset = %+v", asset)
+			}
+		})
+	}
+}
+
+func TestResolveOutputImageDataDoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		outputResolver: stubHostnameResolver{lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		}},
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			return newHTTPResponse(http.StatusFound, "", nil), nil
+		}},
+	}
+
+	_, _, err := service.resolveOutputImageData(context.Background(), imageprovider.OutputImage{
+		URL: "https://cdn.example.com/source.png",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected status 302") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestValidatedOutputDialAddressUsesResolvedPublicIP(t *testing.T) {
+	t.Parallel()
+
+	address, err := validatedOutputDialAddress(context.Background(), stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		},
+	}, "cdn.example.com:443")
+	if err != nil {
+		t.Fatalf("validatedOutputDialAddress() error = %v", err)
+	}
+	if address != "93.184.216.34:443" {
+		t.Fatalf("address = %q", address)
+	}
+}
+
+func TestValidatedOutputDialAddressRejectsResolvedPrivateIP(t *testing.T) {
+	t.Parallel()
+
+	_, err := validatedOutputDialAddress(context.Background(), stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.4")}}, nil
+		},
+	}, "cdn.example.com:443")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "provider output URL host is not allowed") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestOutputHTTPClientDisablesProxy(t *testing.T) {
+	t.Parallel()
+
+	client := newOutputHTTPClient(time.Second, stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		},
+	})
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("client.Transport = %T, want *http.Transport", client.Transport)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://cdn.example.com/output.png", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("transport.Proxy() error = %v", err)
+	}
+	if proxyURL != nil {
+		t.Fatalf("proxyURL = %v, want nil", proxyURL)
+	}
+}
+
 type stubBlobStore struct {
 	uploads      []stubBlobUpload
 	deletedPaths []string
+	downloads    map[string][]byte
 }
 
 type stubBlobUpload struct {
 	blobPath    string
 	contentType string
+}
+
+type stubHTTPDoer struct {
+	do func(req *http.Request) (*http.Response, error)
+}
+
+type stubHostnameResolver struct {
+	lookupIPAddr func(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
+func (s stubHTTPDoer) Do(req *http.Request) (*http.Response, error) {
+	return s.do(req)
+}
+
+func (s stubHostnameResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return s.lookupIPAddr(ctx, host)
+}
+
+func newHTTPResponse(statusCode int, contentType string, data []byte) *http.Response {
+	header := make(http.Header)
+	if contentType != "" {
+		header.Set("Content-Type", contentType)
+	}
+
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     header,
+		Body:       io.NopCloser(bytes.NewReader(data)),
+	}
 }
 
 func (s *stubBlobStore) Upload(ctx context.Context, blobPath string, data []byte, contentType string) error {
@@ -468,14 +1578,38 @@ func (s *stubBlobStore) Delete(ctx context.Context, blobPath string) error {
 	return nil
 }
 
+func (s *stubBlobStore) Download(ctx context.Context, blobPath string) ([]byte, error) {
+	data, ok := s.downloads[blobPath]
+	if !ok {
+		return nil, errors.New("blob not found")
+	}
+	return slices.Clone(data), nil
+}
+
+func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+	data, err := s.Download(ctx, blobPath)
+	if err != nil {
+		return nil, err
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("blob %q exceeds %d bytes", blobPath, maxBytes)
+	}
+	return data, nil
+}
+
 type stubWriteTx struct {
 	session             repository.Session
 	getSessionErr       error
 	generation          repository.ImageGeneration
+	lockGeneration      repository.ImageGeneration
+	lockGenerationErr   error
+	lockCalls           int
 	createGenerationErr error
 	createAssetErr      error
+	updateStateErr      error
 	createdGenerations  []repository.CreateImageGenerationParams
 	createdAssets       []repository.CreateImageGenerationAssetParams
+	updatedStates       []repository.UpdateImageGenerationStateParams
 	committed           bool
 	rolledBack          bool
 }
@@ -516,6 +1650,22 @@ func (s *stubWriteTx) CreateGenerationAsset(ctx context.Context, params reposito
 	}, nil
 }
 
+func (s *stubWriteTx) LockGenerationForUpdate(ctx context.Context, generationID string) (repository.ImageGeneration, error) {
+	s.lockCalls++
+	if s.lockGenerationErr != nil {
+		return repository.ImageGeneration{}, s.lockGenerationErr
+	}
+	return s.lockGeneration, nil
+}
+
+func (s *stubWriteTx) UpdateGenerationState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error {
+	if s.updateStateErr != nil {
+		return s.updateStateErr
+	}
+	s.updatedStates = append(s.updatedStates, params)
+	return nil
+}
+
 func (s *stubWriteTx) Commit(ctx context.Context) error {
 	s.committed = true
 	return nil
@@ -527,15 +1677,75 @@ func (s *stubWriteTx) Rollback(ctx context.Context) error {
 }
 
 type stubGenerationReader struct {
-	generation repository.ImageGeneration
-	err        error
+	generation          repository.ImageGeneration
+	err                 error
+	claimPendingErr     error
+	claimPendingBlocked bool
+	claimPendingCalls   int
+	updateStateErrors   []error
+	updatedStates       []repository.UpdateImageGenerationStateParams
 }
 
-func (s stubGenerationReader) GetByIDAndSession(ctx context.Context, generationID string, sessionID string) (repository.ImageGeneration, error) {
+func (s *stubGenerationReader) GetByID(ctx context.Context, generationID string) (repository.ImageGeneration, error) {
 	if s.err != nil {
 		return repository.ImageGeneration{}, s.err
 	}
 	return s.generation, nil
+}
+
+func (s *stubGenerationReader) GetByIDAndSession(ctx context.Context, generationID string, sessionID string) (repository.ImageGeneration, error) {
+	if s.err != nil {
+		return repository.ImageGeneration{}, s.err
+	}
+	return s.generation, nil
+}
+
+func (s *stubGenerationReader) ClaimPending(ctx context.Context, params repository.ClaimPendingImageGenerationParams) (bool, error) {
+	s.claimPendingCalls++
+	if s.claimPendingErr != nil {
+		return false, s.claimPendingErr
+	}
+	if s.claimPendingBlocked {
+		return false, nil
+	}
+
+	state := repository.UpdateImageGenerationStateParams{
+		ID:            params.ID,
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
+		Status:        string(StatusRunning),
+	}
+	s.updatedStates = append(s.updatedStates, state)
+	s.generation.ProviderName = params.ProviderName
+	s.generation.ProviderModel = params.ProviderModel
+	s.generation.ProviderJobID = ""
+	s.generation.Status = string(StatusRunning)
+	s.generation.ErrorCode = ""
+	s.generation.ErrorMessage = ""
+	startedAt := time.Now().UTC()
+	s.generation.StartedAt = &startedAt
+	s.generation.CompletedAt = nil
+
+	return true, nil
+}
+
+func (s *stubGenerationReader) UpdateState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error {
+	if len(s.updateStateErrors) > 0 {
+		err := s.updateStateErrors[0]
+		s.updateStateErrors = s.updateStateErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
+	s.updatedStates = append(s.updatedStates, params)
+	s.generation.ProviderName = params.ProviderName
+	s.generation.ProviderModel = params.ProviderModel
+	s.generation.ProviderJobID = params.ProviderJobID
+	s.generation.Status = params.Status
+	s.generation.ErrorCode = params.ErrorCode
+	s.generation.ErrorMessage = params.ErrorMessage
+	s.generation.CompletedAt = params.CompletedAt
+	return nil
 }
 
 type stubAssetReader struct {
@@ -543,9 +1753,90 @@ type stubAssetReader struct {
 	err    error
 }
 
+func (s stubAssetReader) ListByGeneration(ctx context.Context, generationID string) ([]repository.ImageGenerationAsset, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.assets, nil
+}
+
 func (s stubAssetReader) ListByGenerationAndSession(ctx context.Context, generationID string, sessionID string) ([]repository.ImageGenerationAsset, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 	return s.assets, nil
+}
+
+type stubImageProvider struct {
+	name             string
+	model            string
+	generateFn       func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error)
+	pollFn           func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error)
+	generateRequests []imageprovider.GenerateRequest
+	pollJobs         []imageprovider.ProviderJob
+}
+
+func (s *stubImageProvider) Generate(ctx context.Context, req imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+	s.generateRequests = append(s.generateRequests, req)
+	if s.generateFn != nil {
+		return s.generateFn(ctx, req)
+	}
+	return imageprovider.GenerateResult{}, nil
+}
+
+func (s *stubImageProvider) Poll(ctx context.Context, job imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+	s.pollJobs = append(s.pollJobs, job)
+	if s.pollFn != nil {
+		return s.pollFn(ctx, job)
+	}
+	return imageprovider.PollResult{}, nil
+}
+
+func (s *stubImageProvider) ProviderName() string {
+	return s.name
+}
+
+func (s *stubImageProvider) ProviderModel() string {
+	return s.model
+}
+
+type stubImageProviderNoMetadata struct {
+	generateFn func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error)
+	pollFn     func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error)
+}
+
+func (s stubImageProviderNoMetadata) Generate(ctx context.Context, req imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+	if s.generateFn != nil {
+		return s.generateFn(ctx, req)
+	}
+	return imageprovider.GenerateResult{}, nil
+}
+
+func (s stubImageProviderNoMetadata) Poll(ctx context.Context, job imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+	if s.pollFn != nil {
+		return s.pollFn(ctx, job)
+	}
+	return imageprovider.PollResult{}, nil
+}
+
+func testPNGData() []byte {
+	return []byte{
+		0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n',
+		0x00, 0x00, 0x00, 0x0d, 'I', 'H', 'D', 'R',
+		0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00,
+		0x1f, 0x15, 0xc4, 0x89,
+		0x00, 0x00, 0x00, 0x0a, 'I', 'D', 'A', 'T',
+		0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02,
+		0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33,
+		0x00, 0x00, 0x00, 0x00, 'I', 'E', 'N', 'D',
+		0xae, 0x42, 0x60, 0x82,
+	}
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("read failed")
 }

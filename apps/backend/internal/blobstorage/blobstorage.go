@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -68,16 +69,38 @@ func (c *Client) Delete(ctx context.Context, blobPath string) error {
 }
 
 func (c *Client) Download(ctx context.Context, blobPath string) ([]byte, error) {
+	return c.download(ctx, blobPath, 0)
+}
+
+func (c *Client) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+	return c.download(ctx, blobPath, maxBytes)
+}
+
+func (c *Client) download(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
 	resp, err := c.Service.DownloadStream(ctx, c.ContainerName, blobPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("download blob %s: %w", blobPath, err)
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(limitedDownloadReader(resp.Body, maxBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read blob %s: %w", blobPath, err)
 	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("blob %s exceeds %d bytes", blobPath, maxBytes)
+	}
 
 	return data, nil
+}
+
+func limitedDownloadReader(r io.Reader, maxBytes int64) io.Reader {
+	if maxBytes <= 0 {
+		return r
+	}
+	limit := maxBytes
+	if maxBytes < math.MaxInt64 {
+		limit = maxBytes + 1
+	}
+	return io.LimitReader(r, limit)
 }

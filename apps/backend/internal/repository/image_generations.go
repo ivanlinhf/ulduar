@@ -26,6 +26,7 @@ type ImageGeneration struct {
 	ErrorCode           string
 	ErrorMessage        string
 	CreatedAt           time.Time
+	StartedAt           *time.Time
 	CompletedAt         *time.Time
 }
 
@@ -47,12 +48,20 @@ type CreateImageGenerationParams struct {
 }
 
 type UpdateImageGenerationStateParams struct {
+	ProviderName  string
+	ProviderModel string
 	ID            string
 	ProviderJobID string
 	Status        string
 	ErrorCode     string
 	ErrorMessage  string
 	CompletedAt   *time.Time
+}
+
+type ClaimPendingImageGenerationParams struct {
+	ID            string
+	ProviderName  string
+	ProviderModel string
 }
 
 type ImageGenerationRepository struct {
@@ -174,6 +183,46 @@ func (r *ImageGenerationRepository) ListBySession(ctx context.Context, sessionID
 	return generations, nil
 }
 
+func (r *ImageGenerationRepository) ClaimPending(ctx context.Context, params ClaimPendingImageGenerationParams) (bool, error) {
+	id, err := parseUUID(params.ID)
+	if err != nil {
+		return false, fmt.Errorf("parse image generation id: %w", err)
+	}
+
+	rowsAffected, err := r.queries.ClaimPendingImageGeneration(ctx, dbsqlc.ClaimPendingImageGenerationParams{
+		ID:            id,
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
+	})
+	if err != nil {
+		return false, fmt.Errorf("claim pending image generation %s: %w", params.ID, err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+func (r *ImageGenerationRepository) LockForUpdate(ctx context.Context, generationID string) (ImageGeneration, error) {
+	id, err := parseUUID(generationID)
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("parse image generation id: %w", err)
+	}
+
+	row, err := r.queries.LockImageGenerationForUpdate(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ImageGeneration{}, ErrNotFound
+	}
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("lock image generation %s: %w", generationID, err)
+	}
+
+	generation, err := mapImageGeneration(row)
+	if err != nil {
+		return ImageGeneration{}, fmt.Errorf("map locked image generation %s: %w", generationID, err)
+	}
+
+	return generation, nil
+}
+
 func (r *ImageGenerationRepository) UpdateState(ctx context.Context, params UpdateImageGenerationStateParams) error {
 	id, err := parseUUID(params.ID)
 	if err != nil {
@@ -181,6 +230,8 @@ func (r *ImageGenerationRepository) UpdateState(ctx context.Context, params Upda
 	}
 
 	rowsAffected, err := r.queries.UpdateImageGenerationState(ctx, dbsqlc.UpdateImageGenerationStateParams{
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
 		ID:            id,
 		ProviderJobID: textValue(params.ProviderJobID),
 		Status:        params.Status,
@@ -225,6 +276,7 @@ func mapImageGeneration(row dbsqlc.ImageGeneration) (ImageGeneration, error) {
 		ErrorCode:           nullableText(row.ErrorCode),
 		ErrorMessage:        nullableText(row.ErrorMessage),
 		CreatedAt:           row.CreatedAt.Time,
+		StartedAt:           nullableTime(row.StartedAt),
 		CompletedAt:         nullableTime(row.CompletedAt),
 	}, nil
 }
