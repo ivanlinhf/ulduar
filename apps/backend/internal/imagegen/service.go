@@ -189,6 +189,10 @@ func (s *Service) Capabilities() Capabilities {
 	}
 }
 
+func (s *Service) ProviderConfigured() bool {
+	return s.provider != nil
+}
+
 func (s *Service) CreatePendingGeneration(ctx context.Context, params CreateGenerationParams) (GenerationView, error) {
 	if err := validateUUID(params.SessionID, "sessionId"); err != nil {
 		return GenerationView{}, err

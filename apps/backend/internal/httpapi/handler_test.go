@@ -516,6 +516,7 @@ func TestRequestTimeoutReturnsStructuredError(t *testing.T) {
 
 func TestImageGenerationCapabilitiesHandler(t *testing.T) {
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		capabilities: imagegen.Capabilities{
 			Modes:              []imagegen.Mode{imagegen.ModeTextToImage, imagegen.ModeImageEdit},
 			Resolutions:        []imagegen.Resolution{{Key: "1024x1024", Width: 1024, Height: 1024}},
@@ -546,9 +547,31 @@ func TestImageGenerationCapabilitiesHandler(t *testing.T) {
 	}
 }
 
+func TestImageGenerationCapabilitiesHandlerReturnsServiceUnavailableWithoutProvider(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/image-generations/capabilities", nil)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{
+		ImageGenerationService: &fakeImageGenerationService{},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+
+	var payload errorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Error != "image generation is not configured" {
+		t.Fatalf("payload.Error = %q", payload.Error)
+	}
+}
+
 func TestCreateImageGenerationHandlerJSONFlow(t *testing.T) {
 	var received imagegen.CreateGenerationParams
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		createPendingGenerationFn: func(_ context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error) {
 			received = params
 			return imagegen.GenerationView{
@@ -597,9 +620,62 @@ func TestCreateImageGenerationHandlerJSONFlow(t *testing.T) {
 	}
 }
 
+func TestCreateImageGenerationHandlerDefaultsMissingContentTypeToJSON(t *testing.T) {
+	var received imagegen.CreateGenerationParams
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		createPendingGenerationFn: func(_ context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error) {
+			received = params
+			return imagegen.GenerationView{
+				Generation: imagegen.Generation{
+					ID:        "55555555-5555-5555-5555-555555555555",
+					SessionID: params.SessionID,
+					Status:    imagegen.StatusPending,
+					CreatedAt: time.Date(2026, 4, 10, 9, 1, 0, 0, time.UTC),
+				},
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations",
+		strings.NewReader(`{"mode":"text_to_image","prompt":"draw a fox","resolution":"1024x1024"}`),
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+	if received.Mode != imagegen.ModeTextToImage {
+		t.Fatalf("received.Mode = %q", received.Mode)
+	}
+}
+
+func TestCreateImageGenerationHandlerReturnsServiceUnavailableWithoutProvider(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations",
+		strings.NewReader(`{"mode":"text_to_image","prompt":"draw a fox","resolution":"1024x1024"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	NewHandler(&fakeChatService{}, HandlerOptions{
+		ImageGenerationService: &fakeImageGenerationService{},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func TestCreateImageGenerationHandlerMultipartFlow(t *testing.T) {
 	var received imagegen.CreateGenerationParams
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		createPendingGenerationFn: func(_ context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error) {
 			received = params
 			return imagegen.GenerationView{
@@ -668,7 +744,9 @@ func TestCreateImageGenerationHandlerRejectsImageEditJSON(t *testing.T) {
 	)
 	request.Header.Set("Content-Type", "application/json")
 
-	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: &fakeImageGenerationService{}}).ServeHTTP(recorder, request)
+	NewHandler(&fakeChatService{}, HandlerOptions{
+		ImageGenerationService: &fakeImageGenerationService{providerConfigured: true},
+	}).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
@@ -685,6 +763,7 @@ func TestCreateImageGenerationHandlerRejectsImageEditJSON(t *testing.T) {
 
 func TestGetImageGenerationHandlerIncludesScopedOutputContentURL(t *testing.T) {
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		getGenerationFn: func(_ context.Context, sessionID, generationID string) (imagegen.GenerationView, error) {
 			if sessionID != "11111111-1111-1111-1111-111111111111" {
 				t.Fatalf("sessionID = %q", sessionID)
@@ -760,6 +839,7 @@ func TestGetImageGenerationHandlerIncludesScopedOutputContentURL(t *testing.T) {
 
 func TestGetImageGenerationAssetContentHandler(t *testing.T) {
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		getAssetContentFn: func(_ context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error) {
 			if sessionID != "11111111-1111-1111-1111-111111111111" {
 				t.Fatalf("sessionID = %q", sessionID)
@@ -804,6 +884,7 @@ func TestGetImageGenerationAssetContentHandler(t *testing.T) {
 func TestStreamImageGenerationHandlerSuccessFlow(t *testing.T) {
 	getCalls := 0
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		getGenerationFn: func(_ context.Context, _, generationID string) (imagegen.GenerationView, error) {
 			getCalls++
 			switch getCalls {
@@ -864,6 +945,7 @@ func TestStreamImageGenerationHandlerSuccessFlow(t *testing.T) {
 func TestStreamImageGenerationHandlerFailureFlow(t *testing.T) {
 	getCalls := 0
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		getGenerationFn: func(_ context.Context, _, generationID string) (imagegen.GenerationView, error) {
 			getCalls++
 			view := testGenerationView(generationID, imagegen.StatusPending)
@@ -899,9 +981,40 @@ func TestStreamImageGenerationHandlerFailureFlow(t *testing.T) {
 	}
 }
 
+func TestStreamImageGenerationHandlerSuppressesSyntheticFailureAfterStreamStarts(t *testing.T) {
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		getGenerationFn: func(_ context.Context, _, generationID string) (imagegen.GenerationView, error) {
+			return testGenerationView(generationID, imagegen.StatusPending), nil
+		},
+		executeGenerationFn: func(context.Context, string) error { return errors.New("provider unavailable") },
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/stream",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: image_generation.started") {
+		t.Fatalf("stream body missing started event:\n%s", body)
+	}
+	if strings.Contains(body, "event: image_generation.failed") {
+		t.Fatalf("unexpected synthetic failed event:\n%s", body)
+	}
+	if strings.Contains(body, "internal server error") {
+		t.Fatalf("unexpected JSON error in stream body:\n%s", body)
+	}
+}
+
 func TestStreamImageGenerationHandlerAlreadyCompleted(t *testing.T) {
 	executeCalls := 0
 	service := &fakeImageGenerationService{
+		providerConfigured: true,
 		getGenerationFn: func(_ context.Context, _, generationID string) (imagegen.GenerationView, error) {
 			return testGenerationView(generationID, imagegen.StatusCompleted), nil
 		},
@@ -929,6 +1042,30 @@ func TestStreamImageGenerationHandlerAlreadyCompleted(t *testing.T) {
 	}
 	if strings.Contains(body, "event: image_generation.started") {
 		t.Fatalf("unexpected started event:\n%s", body)
+	}
+}
+
+func TestStreamImageGenerationHandlerReturnsServiceUnavailableWhenProviderMissing(t *testing.T) {
+	service := &fakeImageGenerationService{
+		getGenerationFn: func(_ context.Context, _, generationID string) (imagegen.GenerationView, error) {
+			return testGenerationView(generationID, imagegen.StatusPending), nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/stream",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q", got)
 	}
 }
 
@@ -972,6 +1109,7 @@ func (f *fakeChatService) StreamRun(
 }
 
 type fakeImageGenerationService struct {
+	providerConfigured        bool
 	capabilities              imagegen.Capabilities
 	createPendingGenerationFn func(ctx context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error)
 	getGenerationFn           func(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
@@ -981,6 +1119,10 @@ type fakeImageGenerationService struct {
 
 func (f *fakeImageGenerationService) Capabilities() imagegen.Capabilities {
 	return f.capabilities
+}
+
+func (f *fakeImageGenerationService) ProviderConfigured() bool {
+	return f.providerConfigured
 }
 
 func (f *fakeImageGenerationService) CreatePendingGeneration(ctx context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error) {

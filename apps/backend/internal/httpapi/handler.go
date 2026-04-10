@@ -45,6 +45,7 @@ type chatService interface {
 
 type imageGenerationService interface {
 	Capabilities() imagegen.Capabilities
+	ProviderConfigured() bool
 	CreatePendingGeneration(ctx context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error)
 	GetGeneration(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
 	ExecuteGeneration(ctx context.Context, generationID string) error
@@ -393,6 +394,10 @@ func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *h
 		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
 		return
 	}
+	if !h.imageGenerationService.ProviderConfigured() {
+		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, mapImageGenerationCapabilities(h.imageGenerationService.Capabilities()))
 }
@@ -400,6 +405,10 @@ func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *h
 func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
 		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+	if !h.imageGenerationService.ProviderConfigured() {
+		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
 		return
 	}
 
@@ -499,6 +508,11 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if _, done := imageGenerationTerminalEvent(view.Generation.Status); !done && !h.imageGenerationService.ProviderConfigured() {
+		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -544,16 +558,7 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if execErr != nil {
-			view.Generation.Status = imagegen.StatusFailed
-			if view.Generation.ErrorCode == "" {
-				view.Generation.ErrorCode = "execution_failed"
-			}
-			if view.Generation.ErrorMessage == "" {
-				view.Generation.ErrorMessage = execErr.Error()
-			}
-			if err := emit("image_generation.failed", view); err != nil {
-				slog.ErrorContext(r.Context(), "write image generation failed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
-			}
+			slog.ErrorContext(r.Context(), "image generation execution failed", logFields(r.Context(), "generation_id", generationID, "error", execErr)...)
 			return
 		}
 
@@ -700,7 +705,7 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 	maxRequestBytes += 1 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	mediaType, err := optionalRequestMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
 		return imagegen.CreateGenerationParams{}, imagegen.ValidationError{
 			StatusCode: http.StatusBadRequest,
@@ -719,6 +724,20 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 			Message:    "Content-Type must be application/json or multipart/form-data",
 		}
 	}
+}
+
+func optionalRequestMediaType(header string) (string, error) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", nil
+	}
+
+	mediaType, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		return "", err
+	}
+
+	return mediaType, nil
 }
 
 func decodeJSONMessageRequest(r *http.Request) (chat.CreateMessageParams, error) {
