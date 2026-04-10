@@ -387,13 +387,25 @@ func TestValidateOutputImageHostRejectsResolvedRestrictedAddress(t *testing.T) {
 func TestEffectiveOutputResolver(t *testing.T) {
 	t.Parallel()
 
+	called := false
 	custom := stubHostnameResolver{
 		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			called = true
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
 			return nil, nil
 		},
 	}
-	if _, ok := effectiveOutputResolver(custom).(stubHostnameResolver); !ok {
+	got := effectiveOutputResolver(custom)
+	if _, ok := got.(stubHostnameResolver); !ok {
 		t.Fatalf("effectiveOutputResolver(custom) did not return the provided resolver type")
+	}
+	if _, err := got.LookupIPAddr(context.Background(), "cdn.example.com"); err != nil {
+		t.Fatalf("got.LookupIPAddr() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected custom resolver to be called")
 	}
 	if got := effectiveOutputResolver(nil); got != net.DefaultResolver {
 		t.Fatalf("effectiveOutputResolver(nil) = %#v, want net.DefaultResolver", got)

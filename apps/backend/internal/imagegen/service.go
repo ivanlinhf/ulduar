@@ -606,6 +606,9 @@ func (s *Service) providerModel() string {
 	return ""
 }
 
+// resolvedProviderMetadata preserves the metadata already persisted on the
+// generation when the current provider implementation does not expose
+// ProviderMetadata, keeping later running/completed/failed transitions stable.
 func (s *Service) resolvedProviderMetadata(generation repository.ImageGeneration) (string, string) {
 	providerName := s.providerName()
 	if providerName == "" {
@@ -629,6 +632,9 @@ func providerErrorCode(err error) string {
 	if errors.As(err, &apiErr) {
 		return fmt.Sprintf("provider_http_%d", apiErr.StatusCode)
 	}
+
+	// errors.As with a value target does not match a concrete *APIError, so check
+	// the pointer form as well to keep status-based error codes consistent.
 	var apiErrPtr *imageprovider.APIError
 	if errors.As(err, &apiErrPtr) && apiErrPtr != nil {
 		return fmt.Sprintf("provider_http_%d", apiErrPtr.StatusCode)
@@ -727,6 +733,8 @@ func validateOutputImageHost(ctx context.Context, resolver hostnameResolver, hos
 	return nil
 }
 
+// effectiveOutputResolver keeps production behavior on net.DefaultResolver
+// while allowing tests to inject deterministic hostname resolution.
 func effectiveOutputResolver(resolver hostnameResolver) hostnameResolver {
 	if resolver != nil {
 		return resolver
