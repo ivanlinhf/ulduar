@@ -316,27 +316,24 @@ func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID str
 }
 
 func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (AssetContent, error) {
-	if err := validateUUID(assetID, "assetId"); err != nil {
-		return AssetContent{}, err
-	}
-	return s.fetchOutputAssetContent(ctx, sessionID, generationID, assetID, "image generation asset not found")
+	return s.fetchOutputAssetContent(ctx, sessionID, generationID, assetID, "assetId", "image generation asset not found")
 }
 
 // GetImageContent returns the binary content of a generated output image.
 // It is equivalent to GetAssetContent but uses "image not found" in error
 // responses, matching the /images/{imageId}/content route naming.
 func (s *Service) GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (AssetContent, error) {
-	if err := validateUUID(imageID, "imageId"); err != nil {
-		return AssetContent{}, err
-	}
-	return s.fetchOutputAssetContent(ctx, sessionID, generationID, imageID, "image not found")
+	return s.fetchOutputAssetContent(ctx, sessionID, generationID, imageID, "imageId", "image not found")
 }
 
-func (s *Service) fetchOutputAssetContent(ctx context.Context, sessionID, generationID, assetID, notFoundMsg string) (AssetContent, error) {
+func (s *Service) fetchOutputAssetContent(ctx context.Context, sessionID, generationID, assetID, assetIDField, notFoundMsg string) (AssetContent, error) {
 	if err := validateUUID(sessionID, "sessionId"); err != nil {
 		return AssetContent{}, err
 	}
 	if err := validateUUID(generationID, "generationId"); err != nil {
+		return AssetContent{}, err
+	}
+	if err := validateUUID(assetID, assetIDField); err != nil {
 		return AssetContent{}, err
 	}
 	if s.assetRead == nil {
