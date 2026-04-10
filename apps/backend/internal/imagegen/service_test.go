@@ -318,6 +318,11 @@ func TestValidateOutputImageURL(t *testing.T) {
 			wantErr: "host is not allowed",
 		},
 		{
+			name:    "rejects cgnat ip",
+			raw:     "https://100.64.0.1/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
 			name:    "rejects relative url",
 			raw:     "/output.png",
 			wantErr: "absolute HTTPS URL",
@@ -357,6 +362,7 @@ func TestValidateOutputImageHostRejectsResolvedRestrictedAddress(t *testing.T) {
 		ip   string
 	}{
 		{name: "private", ip: "10.0.0.7"},
+		{name: "cgnat", ip: "100.64.0.1"},
 		{name: "loopback", ip: "127.0.0.1"},
 		{name: "link local unicast", ip: "169.254.1.10"},
 		{name: "multicast", ip: "224.0.0.1"},
@@ -877,6 +883,7 @@ func TestExecuteGenerationSkipsProviderWhenPendingClaimIsLost(t *testing.T) {
 func TestExecuteRunningGenerationWithMissingJobIDIsNoop(t *testing.T) {
 	t.Parallel()
 
+	startedAt := time.Now().UTC()
 	provider := &stubImageProvider{
 		pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
 			t.Fatal("provider should not be polled while provider job id is not yet persisted")
@@ -888,6 +895,7 @@ func TestExecuteRunningGenerationWithMissingJobIDIsNoop(t *testing.T) {
 			ID:        "22222222-2222-2222-2222-222222222222",
 			SessionID: "11111111-1111-1111-1111-111111111111",
 			Status:    "running",
+			StartedAt: &startedAt,
 		},
 	}
 	service := &Service{
@@ -904,6 +912,49 @@ func TestExecuteRunningGenerationWithMissingJobIDIsNoop(t *testing.T) {
 	}
 	if len(generationRepo.updatedStates) != 0 {
 		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+}
+
+func TestExecuteRunningGenerationWithStaleMissingJobIDFails(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().UTC().Add(-providerJobIDPersistGracePeriod - time.Second)
+	provider := &stubImageProvider{
+		pollFn: func(context.Context, imageprovider.ProviderJob) (imageprovider.PollResult, error) {
+			t.Fatal("provider should not be polled without a provider job id")
+			return imageprovider.PollResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Status:    "running",
+			StartedAt: &startedAt,
+		},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "provider job id was not persisted") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 1 {
+		t.Fatalf("generationRepo.updatedStates = %+v", generationRepo.updatedStates)
+	}
+	failedState := generationRepo.updatedStates[0]
+	if failedState.Status != "failed" || failedState.ErrorCode != "missing_provider_job_id" {
+		t.Fatalf("failedState = %+v", failedState)
 	}
 }
 
@@ -1573,6 +1624,8 @@ func (s *stubGenerationReader) ClaimPending(ctx context.Context, params reposito
 	s.generation.Status = string(StatusRunning)
 	s.generation.ErrorCode = ""
 	s.generation.ErrorMessage = ""
+	startedAt := time.Now().UTC()
+	s.generation.StartedAt = &startedAt
 	s.generation.CompletedAt = nil
 
 	return true, nil

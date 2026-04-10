@@ -59,6 +59,7 @@ RETURNING
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 `
 
@@ -113,6 +114,7 @@ func (q *Queries) CreateImageGeneration(ctx context.Context, arg CreateImageGene
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
@@ -126,6 +128,7 @@ SET provider_name = $2,
     status = 'running',
     error_code = NULL,
     error_message = NULL,
+    started_at = NOW(),
     completed_at = NULL
 WHERE id = $1
   AND status = 'pending'
@@ -162,6 +165,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -186,6 +190,7 @@ func (q *Queries) GetImageGeneration(ctx context.Context, id pgtype.UUID) (Image
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
@@ -208,6 +213,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -238,6 +244,7 @@ func (q *Queries) GetImageGenerationBySession(ctx context.Context, arg GetImageG
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err
@@ -260,6 +267,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE session_id = $1
@@ -291,6 +299,7 @@ func (q *Queries) ListImageGenerationsBySession(ctx context.Context, sessionID p
 			&i.ErrorCode,
 			&i.ErrorMessage,
 			&i.CreatedAt,
+			&i.StartedAt,
 			&i.CompletedAt,
 		); err != nil {
 			return nil, err
@@ -320,6 +329,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -345,6 +355,7 @@ func (q *Queries) LockImageGenerationForUpdate(ctx context.Context, id pgtype.UU
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.CreatedAt,
+		&i.StartedAt,
 		&i.CompletedAt,
 	)
 	return i, err

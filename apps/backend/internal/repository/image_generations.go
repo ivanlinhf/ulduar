@@ -26,6 +26,7 @@ type ImageGeneration struct {
 	ErrorCode           string
 	ErrorMessage        string
 	CreatedAt           time.Time
+	StartedAt           *time.Time
 	CompletedAt         *time.Time
 }
 
@@ -275,6 +276,7 @@ func mapImageGeneration(row dbsqlc.ImageGeneration) (ImageGeneration, error) {
 		ErrorCode:           nullableText(row.ErrorCode),
 		ErrorMessage:        nullableText(row.ErrorMessage),
 		CreatedAt:           row.CreatedAt.Time,
+		StartedAt:           nullableTime(row.StartedAt),
 		CompletedAt:         nullableTime(row.CompletedAt),
 	}, nil
 }

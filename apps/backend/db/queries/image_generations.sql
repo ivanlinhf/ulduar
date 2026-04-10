@@ -46,6 +46,7 @@ RETURNING
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at;
 
 -- name: GetImageGeneration :one
@@ -65,6 +66,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1;
@@ -86,6 +88,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1
@@ -108,6 +111,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE session_id = $1
@@ -132,6 +136,7 @@ SET provider_name = $2,
     status = 'running',
     error_code = NULL,
     error_message = NULL,
+    started_at = NOW(),
     completed_at = NULL
 WHERE id = $1
   AND status = 'pending';
@@ -153,6 +158,7 @@ SELECT
     error_code,
     error_message,
     created_at,
+    started_at,
     completed_at
 FROM image_generations
 WHERE id = $1

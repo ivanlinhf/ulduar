@@ -14,6 +14,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"sort"
@@ -42,11 +43,36 @@ var (
 )
 
 const (
-	defaultOutputFormat                = "png"
-	defaultOutputFilenamePrefix        = "output"
-	defaultOutputDownloadTimeout       = 30 * time.Second
-	maxOutputImageBytes          int64 = 32 << 20
+	defaultOutputFormat                   = "png"
+	defaultOutputFilenamePrefix           = "output"
+	defaultOutputDownloadTimeout          = 30 * time.Second
+	maxOutputImageBytes             int64 = 32 << 20
+	providerJobIDPersistGracePeriod       = 10 * time.Minute
 )
+
+var blockedOutputIPPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("100::/64"),
+	netip.MustParsePrefix("2001:db8::/32"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("ff00::/8"),
+}
 
 type BlobStore interface {
 	Upload(ctx context.Context, blobPath string, data []byte, contentType string) error
@@ -366,7 +392,10 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 func (s *Service) executeRunningGeneration(ctx context.Context, generation repository.ImageGeneration) error {
 	jobID := strings.TrimSpace(generation.ProviderJobID)
 	if jobID == "" {
-		return nil
+		if generation.StartedAt != nil && time.Since(*generation.StartedAt) < providerJobIDPersistGracePeriod {
+			return nil
+		}
+		return s.failGenerationWithMessage(ctx, generation, "missing_provider_job_id", "provider job id was not persisted after starting image generation")
 	}
 
 	pollResult, err := s.provider.Poll(ctx, imageprovider.ProviderJob{JobID: jobID})
@@ -793,8 +822,19 @@ func effectiveOutputResolver(resolver hostnameResolver) hostnameResolver {
 }
 
 func validateOutputIP(ip net.IP) error {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
 		return fmt.Errorf("provider output URL host is not allowed")
+	}
+	addr = addr.Unmap()
+
+	if !addr.IsGlobalUnicast() || addr.IsPrivate() {
+		return fmt.Errorf("provider output URL host is not allowed")
+	}
+	for _, prefix := range blockedOutputIPPrefixes {
+		if prefix.Contains(addr) {
+			return fmt.Errorf("provider output URL host is not allowed")
+		}
 	}
 
 	return nil
