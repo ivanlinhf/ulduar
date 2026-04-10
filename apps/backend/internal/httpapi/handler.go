@@ -518,7 +518,7 @@ func writeAssetContent(ctx context.Context, w http.ResponseWriter, content image
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(content.Data); err != nil {
-		slog.ErrorContext(ctx, "write image generation asset content", logFields(ctx, "error", err)...)
+		slog.ErrorContext(ctx, "write image generation content", logFields(ctx, "error", err)...)
 	}
 }
 
