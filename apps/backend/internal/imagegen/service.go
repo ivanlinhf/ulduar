@@ -107,6 +107,7 @@ type generationReader interface {
 }
 
 type assetReader interface {
+	GetByIDAndSession(ctx context.Context, assetID string, sessionID string) (repository.ImageGenerationAsset, error)
 	ListByGeneration(ctx context.Context, generationID string) ([]repository.ImageGenerationAsset, error)
 	ListByGenerationAndSession(ctx context.Context, generationID string, sessionID string) ([]repository.ImageGenerationAsset, error)
 }
@@ -176,6 +177,20 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *S
 	}
 
 	return service
+}
+
+func (s *Service) Capabilities() Capabilities {
+	return Capabilities{
+		Modes:              []Mode{ModeTextToImage, ModeImageEdit},
+		Resolutions:        SupportedResolutions(),
+		MaxReferenceImages: MaxReferenceImages,
+		OutputImageCount:   OutputImageCountV1,
+		ProviderName:       s.providerName(),
+	}
+}
+
+func (s *Service) ProviderConfigured() bool {
+	return s.provider != nil
 }
 
 func (s *Service) CreatePendingGeneration(ctx context.Context, params CreateGenerationParams) (GenerationView, error) {
@@ -297,6 +312,50 @@ func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID str
 	return GenerationView{
 		Generation: mapGeneration(generationRecord),
 		Assets:     mapAssets(assetRecords),
+	}, nil
+}
+
+func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (AssetContent, error) {
+	if err := validateUUID(sessionID, "sessionId"); err != nil {
+		return AssetContent{}, err
+	}
+	if err := validateUUID(generationID, "generationId"); err != nil {
+		return AssetContent{}, err
+	}
+	if err := validateUUID(assetID, "assetId"); err != nil {
+		return AssetContent{}, err
+	}
+	if s.assetRead == nil {
+		return AssetContent{}, fmt.Errorf("image generation service is not configured")
+	}
+	if s.blobs == nil {
+		return AssetContent{}, fmt.Errorf("blob store is not configured")
+	}
+
+	assetRecord, err := s.assetRead.GetByIDAndSession(ctx, assetID, sessionID)
+	if err != nil {
+		return AssetContent{}, mapRepositoryError(err, "image generation asset not found")
+	}
+	if assetRecord.GenerationID != generationID || AssetRole(assetRecord.Role) != AssetRoleOutput {
+		return AssetContent{}, ValidationError{
+			StatusCode: http.StatusNotFound,
+			Message:    "image generation asset not found",
+		}
+	}
+
+	maxBytes := assetRecord.SizeBytes
+	if maxBytes <= 0 {
+		maxBytes = maxOutputImageBytes
+	}
+	data, err := s.blobs.DownloadWithinLimit(ctx, assetRecord.BlobPath, maxBytes)
+	if err != nil {
+		return AssetContent{}, fmt.Errorf("download image generation asset: %w", err)
+	}
+
+	return AssetContent{
+		Filename:  assetRecord.Filename,
+		MediaType: assetRecord.MediaType,
+		Data:      data,
 	}, nil
 }
 

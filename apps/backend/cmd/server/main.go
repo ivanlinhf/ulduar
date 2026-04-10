@@ -5,13 +5,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/config"
 	"github.com/ivanlin/ulduar/apps/backend/internal/httpapi"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	applogging "github.com/ivanlin/ulduar/apps/backend/internal/logging"
 	"github.com/ivanlin/ulduar/apps/backend/internal/postgres"
 )
@@ -66,9 +70,37 @@ func main() {
 		EnableWebSearch:     cfg.AzureOpenAIWebSearch,
 	})
 
+	var imageProvider imageprovider.ImageProvider
+	if strings.TrimSpace(cfg.Image.AzureFoundry.Endpoint) != "" {
+		foundryClient, err := azurefoundry.NewClient(
+			cfg.Image.AzureFoundry.Endpoint,
+			cfg.Image.AzureFoundry.APIKey,
+			azurefoundry.ClientOptions{
+				APIVersion:     cfg.Image.AzureFoundry.APIVersion,
+				Model:          cfg.Image.AzureFoundry.Model,
+				ModelPath:      cfg.Image.AzureFoundry.ModelPath,
+				RequestTimeout: cfg.Image.AzureFoundry.RequestTimeout,
+			},
+		)
+		if err != nil {
+			slog.Error("connect azure foundry", "error", err)
+			return
+		}
+		imageProvider = foundryClient
+	}
+	imageService := imagegen.NewService(dbPool, blobClient, imagegen.ServiceOptions{
+		MaxReferenceImageBytes: cfg.Image.MaxReferenceImageBytes,
+		Provider:               imageProvider,
+	})
+
 	server := &http.Server{
-		Addr:              cfg.HTTPAddress(),
-		Handler:           httpapi.NewHandler(service, httpapi.HandlerOptions{RequestTimeout: cfg.RequestTimeout, MessageRequestTimeout: cfg.MessageRequestTimeout}),
+		Addr: cfg.HTTPAddress(),
+		Handler: httpapi.NewHandler(service, httpapi.HandlerOptions{
+			RequestTimeout:                        cfg.RequestTimeout,
+			MessageRequestTimeout:                 cfg.MessageRequestTimeout,
+			ImageGenerationService:                imageService,
+			ImageGenerationMaxReferenceImageBytes: cfg.Image.MaxReferenceImageBytes,
+		}),
 		ErrorLog:          slog.NewLogLogger(logger.With("component", "http_server").Handler(), slog.LevelError),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,

@@ -627,6 +627,70 @@ func TestGetGenerationAssemblesSessionScopedView(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesExposeProviderNeutralMetadata(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		provider: &stubImageProvider{name: "azure_foundry"},
+	}
+
+	capabilities := service.Capabilities()
+	if len(capabilities.Modes) != 2 || capabilities.Modes[0] != ModeTextToImage || capabilities.Modes[1] != ModeImageEdit {
+		t.Fatalf("capabilities.Modes = %#v", capabilities.Modes)
+	}
+	if capabilities.MaxReferenceImages != MaxReferenceImages {
+		t.Fatalf("capabilities.MaxReferenceImages = %d", capabilities.MaxReferenceImages)
+	}
+	if capabilities.OutputImageCount != OutputImageCountV1 {
+		t.Fatalf("capabilities.OutputImageCount = %d", capabilities.OutputImageCount)
+	}
+	if capabilities.ProviderName != "azure_foundry" {
+		t.Fatalf("capabilities.ProviderName = %q", capabilities.ProviderName)
+	}
+}
+
+func TestGetAssetContentReturnsScopedOutputAssetBytes(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			downloads: map[string][]byte{
+				"sessions/s/image-generations/g/outputs/output.png": slices.Clone(testPNGData()),
+			},
+		},
+		assetRead: stubAssetReader{
+			asset: repository.ImageGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         "output",
+				BlobPath:     "sessions/s/image-generations/g/outputs/output.png",
+				MediaType:    "image/png",
+				Filename:     "output.png",
+				SizeBytes:    int64(len(testPNGData())),
+			},
+		},
+	}
+
+	content, err := service.GetAssetContent(
+		context.Background(),
+		"11111111-1111-1111-1111-111111111111",
+		"22222222-2222-2222-2222-222222222222",
+		"33333333-3333-3333-3333-333333333333",
+	)
+	if err != nil {
+		t.Fatalf("GetAssetContent() error = %v", err)
+	}
+	if content.Filename != "output.png" {
+		t.Fatalf("content.Filename = %q", content.Filename)
+	}
+	if content.MediaType != "image/png" {
+		t.Fatalf("content.MediaType = %q", content.MediaType)
+	}
+	if !bytes.Equal(content.Data, testPNGData()) {
+		t.Fatal("content.Data mismatch")
+	}
+}
+
 func TestExecuteGenerationCompletesTextToImageAndPersistsOutput(t *testing.T) {
 	t.Parallel()
 
@@ -1750,7 +1814,15 @@ func (s *stubGenerationReader) UpdateState(ctx context.Context, params repositor
 
 type stubAssetReader struct {
 	assets []repository.ImageGenerationAsset
+	asset  repository.ImageGenerationAsset
 	err    error
+}
+
+func (s stubAssetReader) GetByIDAndSession(ctx context.Context, assetID string, sessionID string) (repository.ImageGenerationAsset, error) {
+	if s.err != nil {
+		return repository.ImageGenerationAsset{}, s.err
+	}
+	return s.asset, nil
 }
 
 func (s stubAssetReader) ListByGeneration(ctx context.Context, generationID string) ([]repository.ImageGenerationAsset, error) {
