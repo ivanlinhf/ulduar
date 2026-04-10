@@ -316,13 +316,27 @@ func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID str
 }
 
 func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (AssetContent, error) {
+	if err := validateUUID(assetID, "assetId"); err != nil {
+		return AssetContent{}, err
+	}
+	return s.fetchOutputAssetContent(ctx, sessionID, generationID, assetID, "image generation asset not found")
+}
+
+// GetImageContent returns the binary content of a generated output image.
+// It is equivalent to GetAssetContent but uses "image not found" in error
+// responses, matching the /images/{imageId}/content route naming.
+func (s *Service) GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (AssetContent, error) {
+	if err := validateUUID(imageID, "imageId"); err != nil {
+		return AssetContent{}, err
+	}
+	return s.fetchOutputAssetContent(ctx, sessionID, generationID, imageID, "image not found")
+}
+
+func (s *Service) fetchOutputAssetContent(ctx context.Context, sessionID, generationID, assetID, notFoundMsg string) (AssetContent, error) {
 	if err := validateUUID(sessionID, "sessionId"); err != nil {
 		return AssetContent{}, err
 	}
 	if err := validateUUID(generationID, "generationId"); err != nil {
-		return AssetContent{}, err
-	}
-	if err := validateUUID(assetID, "assetId"); err != nil {
 		return AssetContent{}, err
 	}
 	if s.assetRead == nil {
@@ -334,12 +348,12 @@ func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, 
 
 	assetRecord, err := s.assetRead.GetByIDAndSession(ctx, assetID, sessionID)
 	if err != nil {
-		return AssetContent{}, mapRepositoryError(err, "image generation asset not found")
+		return AssetContent{}, mapRepositoryError(err, notFoundMsg)
 	}
 	if assetRecord.GenerationID != generationID || AssetRole(assetRecord.Role) != AssetRoleOutput {
 		return AssetContent{}, ValidationError{
 			StatusCode: http.StatusNotFound,
-			Message:    "image generation asset not found",
+			Message:    notFoundMsg,
 		}
 	}
 

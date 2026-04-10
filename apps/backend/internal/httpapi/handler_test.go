@@ -953,15 +953,15 @@ func TestGetImageGenerationAssetContentHandler(t *testing.T) {
 func TestGetImageGenerationImageContentHandlerSuccess(t *testing.T) {
 	service := &fakeImageGenerationService{
 		providerConfigured: true,
-		getAssetContentFn: func(_ context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error) {
+		getImageContentFn: func(_ context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error) {
 			if sessionID != "11111111-1111-1111-1111-111111111111" {
 				t.Fatalf("sessionID = %q", sessionID)
 			}
 			if generationID != "55555555-5555-5555-5555-555555555555" {
 				t.Fatalf("generationID = %q", generationID)
 			}
-			if assetID != "77777777-7777-7777-7777-777777777777" {
-				t.Fatalf("assetID = %q", assetID)
+			if imageID != "77777777-7777-7777-7777-777777777777" {
+				t.Fatalf("imageID = %q", imageID)
 			}
 			return imagegen.AssetContent{
 				Filename:  "output.png",
@@ -1000,8 +1000,8 @@ func TestGetImageGenerationImageContentHandlerSuccess(t *testing.T) {
 func TestGetImageGenerationImageContentHandlerNotFound(t *testing.T) {
 	service := &fakeImageGenerationService{
 		providerConfigured: true,
-		getAssetContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
-			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image generation asset not found"}
+		getImageContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
+			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image not found"}
 		},
 	}
 
@@ -1025,8 +1025,8 @@ func TestGetImageGenerationImageContentHandlerNotFound(t *testing.T) {
 func TestGetImageGenerationImageContentHandlerMismatchedIDs(t *testing.T) {
 	service := &fakeImageGenerationService{
 		providerConfigured: true,
-		getAssetContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
-			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image generation asset not found"}
+		getImageContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
+			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image not found"}
 		},
 	}
 
@@ -1313,6 +1313,7 @@ type fakeImageGenerationService struct {
 	getGenerationFn           func(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
 	executeGenerationFn       func(ctx context.Context, generationID string) error
 	getAssetContentFn         func(ctx context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error)
+	getImageContentFn         func(ctx context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error)
 }
 
 func (f *fakeImageGenerationService) Capabilities() imagegen.Capabilities {
@@ -1349,6 +1350,13 @@ func (f *fakeImageGenerationService) GetAssetContent(ctx context.Context, sessio
 		return imagegen.AssetContent{}, errors.New("unexpected GetAssetContent call")
 	}
 	return f.getAssetContentFn(ctx, sessionID, generationID, assetID)
+}
+
+func (f *fakeImageGenerationService) GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error) {
+	if f.getImageContentFn == nil {
+		return imagegen.AssetContent{}, errors.New("unexpected GetImageContent call")
+	}
+	return f.getImageContentFn(ctx, sessionID, generationID, imageID)
 }
 
 func testGenerationView(generationID string, status imagegen.Status) imagegen.GenerationView {

@@ -50,6 +50,7 @@ type imageGenerationService interface {
 	GetGeneration(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
 	ExecuteGeneration(ctx context.Context, generationID string) error
 	GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error)
+	GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error)
 }
 
 type errorResponse struct {
@@ -494,7 +495,7 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 		return
 	}
 
-	content, err := h.imageGenerationService.GetAssetContent(
+	content, err := h.imageGenerationService.GetImageContent(
 		r.Context(),
 		r.PathValue("sessionId"),
 		r.PathValue("generationId"),
