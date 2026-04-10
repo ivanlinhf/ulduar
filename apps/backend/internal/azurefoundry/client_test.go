@@ -455,6 +455,57 @@ func TestGenerateNormalizesAsyncJobResponse(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectsAsyncResponseWithEmptyJobID(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		resp := asyncResponse{ID: "", Status: "InQueue"}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c, _ := NewClient(srv.URL, "key", ClientOptions{HTTPClient: srv.Client()})
+
+	_, err := c.Generate(context.Background(), imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeTextToImage,
+		Prompt: "test",
+	})
+	if err == nil {
+		t.Fatal("Generate() error = nil, want error for empty job id")
+	}
+	if !strings.Contains(err.Error(), "job id") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestGenerateRejectsAsyncResponseWithInvalidPollingURL(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		resp := asyncResponse{
+			ID:          "run_1",
+			Status:      "InQueue",
+			FutureLinks: []string{"javascript:alert(1)"},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c, _ := NewClient(srv.URL, "key", ClientOptions{HTTPClient: srv.Client()})
+
+	_, err := c.Generate(context.Background(), imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeTextToImage,
+		Prompt: "test",
+	})
+	if err == nil {
+		t.Fatal("Generate() error = nil, want error for invalid polling URL")
+	}
+}
+
 func TestGenerateReturnsAPIErrorOnBadStatus(t *testing.T) {
 	t.Parallel()
 

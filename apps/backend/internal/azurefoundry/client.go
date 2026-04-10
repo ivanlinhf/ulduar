@@ -56,8 +56,10 @@ type ClientOptions struct {
 	// ModelPath overrides the URL path segment (default: "flux-2-pro").
 	ModelPath string
 	// RequestTimeout sets the HTTP client timeout (default: 60s).
+	// Ignored when HTTPClient is also set (HTTPClient takes precedence).
 	RequestTimeout time.Duration
 	// HTTPClient replaces the default http.Client, useful in tests.
+	// When set, RequestTimeout is ignored.
 	HTTPClient HTTPDoer
 }
 
@@ -223,9 +225,12 @@ func (c *Client) Generate(ctx context.Context, req imageprovider.GenerateRequest
 	}
 	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return imageprovider.GenerateResult{}, fmt.Errorf("read response body: %w", err)
+	}
+	if len(rawBody) > maxResponseBodyBytes {
+		return imageprovider.GenerateResult{}, fmt.Errorf("response body too large: exceeds %d bytes", maxResponseBodyBytes)
 	}
 
 	switch resp.StatusCode {
@@ -257,9 +262,12 @@ func (c *Client) Poll(ctx context.Context, job imageprovider.ProviderJob) (image
 	}
 	defer resp.Body.Close()
 
-	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
 	if err != nil {
 		return imageprovider.PollResult{}, fmt.Errorf("read poll response body: %w", err)
+	}
+	if len(rawBody) > maxResponseBodyBytes {
+		return imageprovider.PollResult{}, fmt.Errorf("poll response body too large: exceeds %d bytes", maxResponseBodyBytes)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -371,9 +379,19 @@ func (c *Client) normalizeAsyncResponse(rawBody []byte) (imageprovider.GenerateR
 		return imageprovider.GenerateResult{}, fmt.Errorf("decode async response: %w", err)
 	}
 
-	job := &imageprovider.ProviderJob{JobID: ar.ID}
+	jobID := strings.TrimSpace(ar.ID)
+	if jobID == "" {
+		return imageprovider.GenerateResult{}, fmt.Errorf("decode async response: missing job id")
+	}
+
+	job := &imageprovider.ProviderJob{JobID: jobID}
 	if len(ar.FutureLinks) > 0 {
-		job.PollingURL = ar.FutureLinks[0]
+		pollingURL := strings.TrimSpace(ar.FutureLinks[0])
+		parsed, err := url.Parse(pollingURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return imageprovider.GenerateResult{}, fmt.Errorf("decode async response: invalid future_links[0]: must be an absolute http/https URL")
+		}
+		job.PollingURL = pollingURL
 	}
 
 	return imageprovider.GenerateResult{Job: job}, nil
