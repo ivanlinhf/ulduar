@@ -57,6 +57,12 @@ type UpdateImageGenerationStateParams struct {
 	CompletedAt   *time.Time
 }
 
+type ClaimPendingImageGenerationParams struct {
+	ID            string
+	ProviderName  string
+	ProviderModel string
+}
+
 type ImageGenerationRepository struct {
 	queries *dbsqlc.Queries
 }
@@ -174,6 +180,24 @@ func (r *ImageGenerationRepository) ListBySession(ctx context.Context, sessionID
 	}
 
 	return generations, nil
+}
+
+func (r *ImageGenerationRepository) ClaimPending(ctx context.Context, params ClaimPendingImageGenerationParams) (bool, error) {
+	id, err := parseUUID(params.ID)
+	if err != nil {
+		return false, fmt.Errorf("parse image generation id: %w", err)
+	}
+
+	rowsAffected, err := r.queries.ClaimPendingImageGeneration(ctx, dbsqlc.ClaimPendingImageGenerationParams{
+		ID:            id,
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
+	})
+	if err != nil {
+		return false, fmt.Errorf("claim pending image generation %s: %w", params.ID, err)
+	}
+
+	return rowsAffected > 0, nil
 }
 
 func (r *ImageGenerationRepository) UpdateState(ctx context.Context, params UpdateImageGenerationStateParams) error {

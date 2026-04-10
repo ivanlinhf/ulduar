@@ -51,7 +51,7 @@ const (
 type BlobStore interface {
 	Upload(ctx context.Context, blobPath string, data []byte, contentType string) error
 	Delete(ctx context.Context, blobPath string) error
-	Download(ctx context.Context, blobPath string) ([]byte, error)
+	DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error)
 }
 
 type ValidationError struct {
@@ -75,6 +75,7 @@ type writeTx interface {
 type generationReader interface {
 	GetByID(ctx context.Context, generationID string) (repository.ImageGeneration, error)
 	GetByIDAndSession(ctx context.Context, generationID string, sessionID string) (repository.ImageGeneration, error)
+	ClaimPending(ctx context.Context, params repository.ClaimPendingImageGenerationParams) (bool, error)
 	UpdateState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error
 }
 
@@ -314,44 +315,48 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 		return s.failGenerationWithCause(ctx, generation, "load input images", "input_asset_read_failed", err)
 	}
 
-	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
+	providerName, providerModel := s.resolvedProviderMetadata(generation)
+	claimed, err := s.generationRead.ClaimPending(ctx, repository.ClaimPendingImageGenerationParams{
 		ID:            generation.ID,
-		ProviderName:  s.providerName(),
-		ProviderModel: s.providerModel(),
-		Status:        string(StatusRunning),
-	}); err != nil {
-		return fmt.Errorf("mark image generation running: %w", err)
+		ProviderName:  providerName,
+		ProviderModel: providerModel,
+	})
+	if err != nil {
+		return fmt.Errorf("claim pending image generation: %w", err)
 	}
+	if !claimed {
+		return nil
+	}
+	generation.ProviderName = providerName
+	generation.ProviderModel = providerModel
+	generation.Status = string(StatusRunning)
 
 	result, err := s.provider.Generate(ctx, buildGenerateRequest(generation, inputImages))
 	if err != nil {
-		generation.Status = string(StatusRunning)
 		return s.failGenerationWithCause(ctx, generation, "generate image", providerErrorCode(err), err)
 	}
 
 	if result.Completed() {
-		generation.Status = string(StatusRunning)
 		return s.completeGeneration(ctx, generation, result.Images)
 	}
 	if result.Job == nil {
-		generation.Status = string(StatusRunning)
 		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", "provider returned neither output images nor a job")
 	}
 
 	jobID := strings.TrimSpace(result.Job.JobID)
 	if jobID == "" {
-		generation.Status = string(StatusRunning)
 		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", "provider returned an async job without a job id")
 	}
 
+	generation.ProviderJobID = jobID
 	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
 		ID:            generation.ID,
-		ProviderName:  s.providerName(),
-		ProviderModel: s.providerModel(),
+		ProviderName:  providerName,
+		ProviderModel: providerModel,
 		ProviderJobID: jobID,
 		Status:        string(StatusRunning),
 	}); err != nil {
-		return fmt.Errorf("persist image generation job metadata: %w", err)
+		return s.failGenerationWithCause(ctx, generation, "persist image generation job metadata", "persist_generation_state_failed", err)
 	}
 
 	return nil
@@ -463,13 +468,14 @@ func (s *Service) loadInputImages(ctx context.Context, assets []repository.Image
 	})
 
 	images := make([][]byte, 0, len(inputAssets))
+	maxReferenceImageBytes := s.maxReferenceImageBytes
+	if maxReferenceImageBytes <= 0 {
+		maxReferenceImageBytes = DefaultMaxReferenceImageBytes
+	}
 	for _, asset := range inputAssets {
-		data, err := s.blobs.Download(ctx, asset.BlobPath)
+		data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, maxReferenceImageBytes)
 		if err != nil {
 			return nil, fmt.Errorf("download input asset %q: %w", asset.Filename, err)
-		}
-		if s.maxReferenceImageBytes > 0 && int64(len(data)) > s.maxReferenceImageBytes {
-			return nil, fmt.Errorf("input asset %q exceeds %d bytes", asset.Filename, s.maxReferenceImageBytes)
 		}
 		images = append(images, data)
 	}
@@ -662,22 +668,53 @@ func newOutputHTTPClient(timeout time.Duration, resolver hostnameResolver) *http
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
 			DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
-				host, _, err := net.SplitHostPort(address)
+				dialAddress, err := validatedOutputDialAddress(ctx, resolver, address)
 				if err != nil {
 					return nil, err
 				}
-				if err := validateOutputImageHost(ctx, resolver, host); err != nil {
-					return nil, err
-				}
-				return dialer.DialContext(ctx, network, address)
+				return dialer.DialContext(ctx, network, dialAddress)
 			},
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
+}
+
+func validatedOutputDialAddress(ctx context.Context, resolver hostnameResolver, address string) (string, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", err
+	}
+
+	if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
+		if err := validateOutputIP(ip); err != nil {
+			return "", err
+		}
+		return net.JoinHostPort(ip.String(), port), nil
+	}
+
+	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
+		return "", fmt.Errorf("provider output URL host is not allowed")
+	}
+
+	resolver = effectiveOutputResolver(resolver)
+	ips, err := resolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return "", fmt.Errorf("resolve output image host: %w", err)
+	}
+	if len(ips) == 0 {
+		return "", fmt.Errorf("provider output URL host did not resolve")
+	}
+
+	for _, ip := range ips {
+		if err := validateOutputIP(ip.IP); err != nil {
+			return "", err
+		}
+	}
+
+	return net.JoinHostPort(ips[0].IP.String(), port), nil
 }
 
 func validateOutputImageURL(raw string) (*url.URL, error) {

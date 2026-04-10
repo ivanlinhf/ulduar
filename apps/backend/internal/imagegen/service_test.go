@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -810,6 +811,105 @@ func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing
 	}
 }
 
+func TestExecuteGenerationSkipsProviderWhenPendingClaimIsLost(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			t.Fatal("provider should not be called when pending claim is lost")
+			return imageprovider.GenerateResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+		claimPendingBlocked: true,
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+	if generationRepo.claimPendingCalls != 1 {
+		t.Fatalf("claimPendingCalls = %d, want 1", generationRepo.claimPendingCalls)
+	}
+	if len(provider.generateRequests) != 0 {
+		t.Fatalf("provider.generateRequests = %+v", provider.generateRequests)
+	}
+}
+
+func TestExecuteGenerationMarksFailureWhenJobMetadataPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		name:  "azure_foundry",
+		model: "FLUX.2-pro",
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			return imageprovider.GenerateResult{
+				Job: &imageprovider.ProviderJob{JobID: "job-123"},
+			}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:                  "22222222-2222-2222-2222-222222222222",
+			SessionID:           "11111111-1111-1111-1111-111111111111",
+			Mode:                "text_to_image",
+			Prompt:              "draw a lighthouse",
+			ResolutionKey:       "1024x1024",
+			Width:               1024,
+			Height:              1024,
+			RequestedImageCount: 1,
+			Status:              "pending",
+			CreatedAt:           time.Now().UTC(),
+		},
+		updateStateErrors: []error{errors.New("update failed")},
+	}
+	service := &Service{
+		blobs:            &stubBlobStore{},
+		provider:         provider,
+		outputHTTPClient: &http.Client{Timeout: time.Second},
+		beginWriteTxFn:   func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead:   generationRepo,
+		assetRead:        stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "persist image generation job metadata") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(generationRepo.updatedStates) != 2 {
+		t.Fatalf("len(generationRepo.updatedStates) = %d, want 2", len(generationRepo.updatedStates))
+	}
+	failedState := generationRepo.updatedStates[1]
+	if failedState.Status != "failed" || failedState.ErrorCode != "persist_generation_state_failed" {
+		t.Fatalf("failedState = %+v", failedState)
+	}
+	if failedState.ProviderJobID != "job-123" {
+		t.Fatalf("failedState.ProviderJobID = %q", failedState.ProviderJobID)
+	}
+}
+
 func TestExecuteGenerationMarksFailureWhenProviderRequestFails(t *testing.T) {
 	t.Parallel()
 
@@ -1001,7 +1101,7 @@ func TestLoadInputImagesRejectsOversizedDownloadedInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), `input asset "ref.png" exceeds 8 bytes`) {
+	if !strings.Contains(err.Error(), `download input asset "ref.png": blob "blob-path" exceeds 8 bytes`) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1108,6 +1208,41 @@ func TestResolveOutputImageDataDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestValidatedOutputDialAddressUsesResolvedPublicIP(t *testing.T) {
+	t.Parallel()
+
+	address, err := validatedOutputDialAddress(context.Background(), stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			if host != "cdn.example.com" {
+				t.Fatalf("host = %q", host)
+			}
+			return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+		},
+	}, "cdn.example.com:443")
+	if err != nil {
+		t.Fatalf("validatedOutputDialAddress() error = %v", err)
+	}
+	if address != "93.184.216.34:443" {
+		t.Fatalf("address = %q", address)
+	}
+}
+
+func TestValidatedOutputDialAddressRejectsResolvedPrivateIP(t *testing.T) {
+	t.Parallel()
+
+	_, err := validatedOutputDialAddress(context.Background(), stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.4")}}, nil
+		},
+	}, "cdn.example.com:443")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "provider output URL host is not allowed") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 type stubBlobStore struct {
 	uploads      []stubBlobUpload
 	deletedPaths []string
@@ -1167,6 +1302,17 @@ func (s *stubBlobStore) Download(ctx context.Context, blobPath string) ([]byte, 
 		return nil, errors.New("blob not found")
 	}
 	return slices.Clone(data), nil
+}
+
+func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+	data, err := s.Download(ctx, blobPath)
+	if err != nil {
+		return nil, err
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("blob %q exceeds %d bytes", blobPath, maxBytes)
+	}
+	return data, nil
 }
 
 type stubWriteTx struct {
@@ -1238,9 +1384,13 @@ func (s *stubWriteTx) Rollback(ctx context.Context) error {
 }
 
 type stubGenerationReader struct {
-	generation    repository.ImageGeneration
-	err           error
-	updatedStates []repository.UpdateImageGenerationStateParams
+	generation          repository.ImageGeneration
+	err                 error
+	claimPendingErr     error
+	claimPendingBlocked bool
+	claimPendingCalls   int
+	updateStateErrors   []error
+	updatedStates       []repository.UpdateImageGenerationStateParams
 }
 
 func (s *stubGenerationReader) GetByID(ctx context.Context, generationID string) (repository.ImageGeneration, error) {
@@ -1257,7 +1407,41 @@ func (s *stubGenerationReader) GetByIDAndSession(ctx context.Context, generation
 	return s.generation, nil
 }
 
+func (s *stubGenerationReader) ClaimPending(ctx context.Context, params repository.ClaimPendingImageGenerationParams) (bool, error) {
+	s.claimPendingCalls++
+	if s.claimPendingErr != nil {
+		return false, s.claimPendingErr
+	}
+	if s.claimPendingBlocked {
+		return false, nil
+	}
+
+	state := repository.UpdateImageGenerationStateParams{
+		ID:            params.ID,
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
+		Status:        string(StatusRunning),
+	}
+	s.updatedStates = append(s.updatedStates, state)
+	s.generation.ProviderName = params.ProviderName
+	s.generation.ProviderModel = params.ProviderModel
+	s.generation.ProviderJobID = ""
+	s.generation.Status = string(StatusRunning)
+	s.generation.ErrorCode = ""
+	s.generation.ErrorMessage = ""
+	s.generation.CompletedAt = nil
+
+	return true, nil
+}
+
 func (s *stubGenerationReader) UpdateState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error {
+	if len(s.updateStateErrors) > 0 {
+		err := s.updateStateErrors[0]
+		s.updateStateErrors = s.updateStateErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
 	s.updatedStates = append(s.updatedStates, params)
 	s.generation.ProviderName = params.ProviderName
 	s.generation.ProviderModel = params.ProviderModel

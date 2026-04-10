@@ -123,3 +123,15 @@ SET provider_name = $2,
     error_message = $7,
     completed_at = $8
 WHERE id = $1;
+
+-- name: ClaimPendingImageGeneration :execrows
+UPDATE image_generations
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = NULL,
+    status = 'running',
+    error_code = NULL,
+    error_message = NULL,
+    completed_at = NULL
+WHERE id = $1
+  AND status = 'pending';

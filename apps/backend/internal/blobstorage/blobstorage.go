@@ -68,15 +68,30 @@ func (c *Client) Delete(ctx context.Context, blobPath string) error {
 }
 
 func (c *Client) Download(ctx context.Context, blobPath string) ([]byte, error) {
+	return c.download(ctx, blobPath, 0)
+}
+
+func (c *Client) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+	return c.download(ctx, blobPath, maxBytes)
+}
+
+func (c *Client) download(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
 	resp, err := c.Service.DownloadStream(ctx, c.ContainerName, blobPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("download blob %s: %w", blobPath, err)
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	reader := io.Reader(resp.Body)
+	if maxBytes > 0 {
+		reader = io.LimitReader(resp.Body, maxBytes+1)
+	}
+	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("read blob %s: %w", blobPath, err)
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("blob %s exceeds %d bytes", blobPath, maxBytes)
 	}
 
 	return data, nil
