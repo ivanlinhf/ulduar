@@ -1179,13 +1179,14 @@ func shouldBypassTimeoutBuffering(r *http.Request) bool {
 		return false
 	}
 
+	resourceType := parts[imageGenerationAssetContentIndexAssets]
 	return parts[imageGenerationAssetContentIndexAPI] == "api" &&
 		parts[imageGenerationAssetContentIndexVersion] == "v1" &&
 		parts[imageGenerationAssetContentIndexSessions] == "sessions" &&
 		parts[imageGenerationAssetContentIndexSessionID] != "" &&
 		parts[imageGenerationAssetContentIndexGenerations] == "image-generations" &&
 		parts[imageGenerationAssetContentIndexGenerationID] != "" &&
-		parts[imageGenerationAssetContentIndexAssets] == "assets" &&
+		(resourceType == "assets" || resourceType == "images") &&
 		parts[imageGenerationAssetContentIndexAssetID] != "" &&
 		parts[imageGenerationAssetContentIndexContent] == "content"
 }
