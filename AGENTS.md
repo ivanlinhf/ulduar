@@ -44,7 +44,7 @@ Chat:
 - `POST /api/v1/sessions/{sessionId}/messages`
 - `GET /api/v1/sessions/{sessionId}/runs/{runId}/stream`
 
-Image generation (active when `AZURE_FOUNDRY_ENDPOINT` is set; returns 503 otherwise):
+Image generation (`AZURE_FOUNDRY_ENDPOINT` required for capabilities and create; stream returns 503 for non-terminal generations without a configured provider; read-only retrieval/content endpoints remain available for existing completed generations):
 
 - `GET /api/v1/image-generations/capabilities`
 - `POST /api/v1/sessions/{sessionId}/image-generations`

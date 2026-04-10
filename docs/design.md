@@ -319,7 +319,7 @@ When available, `run.completed` includes optional numeric `inputTokens`, `output
 
 ### Image generation endpoints
 
-All image generation endpoints return `503 Service Unavailable` when no provider is configured.
+Provider-dependent endpoints return `503 Service Unavailable` when no image generation provider is configured. This applies to `GET /api/v1/image-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/image-generations`, and the stream endpoint while a generation is still non-terminal. Read-only retrieval endpoints for existing completed generations, including the generation record and stored asset/image content, remain available without an active provider.
 
 #### `GET /api/v1/image-generations/capabilities`
 

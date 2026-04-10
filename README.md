@@ -205,16 +205,21 @@ Supported resolutions:
 | `1536x1024` | 1536 | 1024 |
 | `1024x1536` | 1024 | 1536 |
 
-Image generation endpoints (all scoped to a session):
+Image generation endpoints:
+
+Non-session-scoped:
 
 - `GET /api/v1/image-generations/capabilities` — returns available modes, resolutions, and provider info
+
+Session-scoped:
+
 - `POST /api/v1/sessions/{sessionId}/image-generations` — submit a new generation request
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}` — poll generation status and asset list
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream` — SSE stream for generation progress
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content` — download a raw generation asset (input or output)
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content` — download a generation output image directly
 
-All image generation endpoints return `503 Service Unavailable` when no provider is configured.
+When no provider is configured, `GET /api/v1/image-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/image-generations`, and the stream endpoint for non-terminal generations return `503 Service Unavailable`. Read-only endpoints that fetch an existing generation record or download stored asset/image content remain available for already completed generations.
 
 ### Option 2: Use `compose.yaml`
 
