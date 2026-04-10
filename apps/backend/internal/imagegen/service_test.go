@@ -722,6 +722,38 @@ func TestExecuteGenerationCompletesTextToImageAndPersistsOutput(t *testing.T) {
 	}
 }
 
+func TestExecuteGenerationRejectsMissingOutputHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	provider := &stubImageProvider{
+		generateFn: func(context.Context, imageprovider.GenerateRequest) (imageprovider.GenerateResult, error) {
+			t.Fatal("provider should not be called when output HTTP client is not configured")
+			return imageprovider.GenerateResult{}, nil
+		},
+	}
+	generationRepo := &stubGenerationReader{
+		generation: repository.ImageGeneration{
+			ID:     "22222222-2222-2222-2222-222222222222",
+			Status: "pending",
+		},
+	}
+	service := &Service{
+		blobs:          &stubBlobStore{},
+		provider:       provider,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return &stubWriteTx{}, nil },
+		generationRead: generationRepo,
+		assetRead:      stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), generationRepo.generation.ID)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "output HTTP client is not configured") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing.T) {
 	t.Parallel()
 
@@ -1348,6 +1380,65 @@ func TestResolveOutputImageDataRejectsOversizedInlineData(t *testing.T) {
 	}
 }
 
+func TestPrepareOutputAssetValidatesOutputImageBytes(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+
+	tests := []struct {
+		name      string
+		image     imageprovider.OutputImage
+		wantError string
+	}{
+		{
+			name: "rejects non image bytes",
+			image: imageprovider.OutputImage{
+				Data:      []byte("<html>not an image</html>"),
+				MediaType: "image/png",
+			},
+			wantError: "not a supported image",
+		},
+		{
+			name: "rejects declared type mismatch",
+			image: imageprovider.OutputImage{
+				Data:      testPNGData(),
+				MediaType: "image/jpeg",
+			},
+			wantError: `does not match image bytes "image/png"`,
+		},
+		{
+			name: "accepts octet stream when bytes decode",
+			image: imageprovider.OutputImage{
+				Data:      testPNGData(),
+				MediaType: "application/octet-stream",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			asset, err := service.prepareOutputAsset(context.Background(), tt.image)
+			if tt.wantError != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("err = %v, want substring %q", err, tt.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("prepareOutputAsset() error = %v", err)
+			}
+			if asset.MediaType != "image/png" || asset.Width == nil || asset.Height == nil {
+				t.Fatalf("asset = %+v", asset)
+			}
+		})
+	}
+}
+
 func TestResolveOutputImageDataDoesNotFollowRedirects(t *testing.T) {
 	t.Parallel()
 
@@ -1734,7 +1825,13 @@ func testPNGData() []byte {
 		0x00, 0x00, 0x00, 0x0d, 'I', 'H', 'D', 'R',
 		0x00, 0x00, 0x00, 0x01,
 		0x00, 0x00, 0x00, 0x01,
-		0x08, 0x02, 0x00, 0x00, 0x00,
+		0x08, 0x06, 0x00, 0x00, 0x00,
+		0x1f, 0x15, 0xc4, 0x89,
+		0x00, 0x00, 0x00, 0x0a, 'I', 'D', 'A', 'T',
+		0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02,
+		0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33,
+		0x00, 0x00, 0x00, 0x00, 'I', 'E', 'N', 'D',
+		0xae, 0x42, 0x60, 0x82,
 	}
 }
 

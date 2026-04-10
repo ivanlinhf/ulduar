@@ -310,6 +310,9 @@ func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) er
 	if s.blobs == nil {
 		return fmt.Errorf("blob store is not configured")
 	}
+	if s.outputHTTPClient == nil {
+		return fmt.Errorf("output HTTP client is not configured")
+	}
 	if s.beginWriteTxFn == nil || s.generationRead == nil || s.assetRead == nil {
 		return fmt.Errorf("image generation service is not configured")
 	}
@@ -542,17 +545,12 @@ func (s *Service) prepareOutputAsset(ctx context.Context, image imageprovider.Ou
 		return preparedAsset{}, err
 	}
 
-	mediaType = normalizeMediaType(mediaType)
-	detectedMediaType := normalizeMediaType(http.DetectContentType(data))
-	if mediaType == "" || mediaType == "application/octet-stream" {
-		mediaType = detectedMediaType
-	}
-	if _, ok := supportedOutputMediaTypes[mediaType]; !ok {
-		return preparedAsset{}, fmt.Errorf("unsupported output media type %q", mediaType)
+	mediaType, width, height, err := inspectOutputImage(data, mediaType)
+	if err != nil {
+		return preparedAsset{}, err
 	}
 
 	sum := sha256.Sum256(data)
-	width, height := detectImageDimensions(data)
 
 	return preparedAsset{
 		Filename:  outputFilename(mediaType),
@@ -602,6 +600,27 @@ func (s *Service) resolveOutputImageData(ctx context.Context, image imageprovide
 	}
 
 	return data, resp.Header.Get("Content-Type"), nil
+}
+
+func inspectOutputImage(data []byte, declaredMediaType string) (string, *int64, *int64, error) {
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("output image bytes are not a supported image")
+	}
+
+	mediaType := "image/" + format
+	if _, ok := supportedOutputMediaTypes[mediaType]; !ok {
+		return "", nil, nil, fmt.Errorf("unsupported output media type %q", mediaType)
+	}
+
+	declaredMediaType = normalizeMediaType(declaredMediaType)
+	if declaredMediaType != "" && declaredMediaType != "application/octet-stream" && declaredMediaType != mediaType {
+		return "", nil, nil, fmt.Errorf("output media type %q does not match image bytes %q", declaredMediaType, mediaType)
+	}
+
+	width := int64(config.Width)
+	height := int64(config.Height)
+	return mediaType, &width, &height, nil
 }
 
 func (s *Service) failGenerationWithCause(ctx context.Context, generation repository.ImageGeneration, action string, code string, cause error) error {
