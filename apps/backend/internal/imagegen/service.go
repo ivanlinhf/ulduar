@@ -533,12 +533,9 @@ func (s *Service) resolveOutputImageData(ctx context.Context, image imageprovide
 		return nil, "", fmt.Errorf("download output image: unexpected status %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxOutputImageBytes+1))
+	data, err := readBytesWithinLimit(resp.Body, maxOutputImageBytes)
 	if err != nil {
 		return nil, "", fmt.Errorf("read output image: %w", err)
-	}
-	if int64(len(data)) > maxOutputImageBytes {
-		return nil, "", fmt.Errorf("output image exceeds %d bytes", maxOutputImageBytes)
 	}
 
 	return data, resp.Header.Get("Content-Type"), nil
@@ -603,6 +600,18 @@ func providerErrorCode(err error) string {
 	}
 
 	return "provider_request_failed"
+}
+
+func readBytesWithinLimit(r io.Reader, maxBytes int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("content exceeds %d bytes", maxBytes)
+	}
+
+	return data, nil
 }
 
 type preparedAsset struct {
