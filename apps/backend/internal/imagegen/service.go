@@ -125,9 +125,7 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *S
 	if outputDownloadTimeout <= 0 {
 		outputDownloadTimeout = defaultOutputDownloadTimeout
 	}
-	if service.outputHTTPClient == nil {
-		service.outputHTTPClient = &http.Client{Timeout: outputDownloadTimeout}
-	}
+	service.outputHTTPClient = &http.Client{Timeout: outputDownloadTimeout}
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
 			tx, err := db.BeginTx(ctx, pgx.TxOptions{})
