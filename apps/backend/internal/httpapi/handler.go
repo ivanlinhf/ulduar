@@ -489,8 +489,7 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 		return
 	}
 
-	imageID := r.PathValue("imageId")
-	if err := imagegen.ValidateImageID(imageID); err != nil {
+	if err := imagegen.ValidateImageID(r.PathValue("imageId")); err != nil {
 		writeServiceError(r.Context(), w, err)
 		return
 	}
@@ -499,7 +498,7 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 		r.Context(),
 		r.PathValue("sessionId"),
 		r.PathValue("generationId"),
-		imageID,
+		r.PathValue("imageId"),
 	)
 	if err != nil {
 		writeServiceError(r.Context(), w, err)
