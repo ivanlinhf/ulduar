@@ -50,6 +50,7 @@ type imageGenerationService interface {
 	GetGeneration(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
 	ExecuteGeneration(ctx context.Context, generationID string) error
 	GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error)
+	GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error)
 }
 
 type errorResponse struct {
@@ -226,6 +227,7 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}", handler.getImageGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream", handler.streamImageGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content", handler.getImageGenerationAssetContentHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content", handler.getImageGenerationImageContentHandler)
 	mux.HandleFunc("/", notFoundHandler)
 
 	return withMiddleware(mux, requestIDMiddleware, recoverMiddleware, corsMiddleware, loggingMiddleware, handler.timeoutMiddleware)
@@ -479,17 +481,44 @@ func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r
 		return
 	}
 
+	writeAssetContent(r.Context(), w, content, "")
+}
+
+func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeImageGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	content, err := h.imageGenerationService.GetImageContent(
+		r.Context(),
+		r.PathValue("sessionId"),
+		r.PathValue("generationId"),
+		r.PathValue("imageId"),
+	)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writeAssetContent(r.Context(), w, content, "public, max-age=31536000, immutable")
+}
+
+func writeAssetContent(ctx context.Context, w http.ResponseWriter, content imagegen.AssetContent, cacheControl string) {
 	if content.MediaType != "" {
 		w.Header().Set("Content-Type", content.MediaType)
 	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
+	if cacheControl != "" {
+		w.Header().Set("Cache-Control", cacheControl)
+	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if content.Filename != "" {
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(content.Data); err != nil {
-		slog.ErrorContext(r.Context(), "write image generation asset content", logFields(r.Context(), "error", err)...)
+		slog.ErrorContext(ctx, "write image generation content", logFields(ctx, "error", err)...)
 	}
 }
 
@@ -919,7 +948,7 @@ func mapImageGenerationResponse(view imagegen.GenerationView) imageGenerationRes
 			CreatedAt: asset.CreatedAt,
 		}
 		if asset.Role == imagegen.AssetRoleOutput {
-			item.ContentURL = imageGenerationAssetContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
+			item.ContentURL = imageGenerationImageContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
 			outputAssets = append(outputAssets, item)
 			continue
 		}
@@ -961,13 +990,13 @@ func mapImageGenerationResolution(resolution imagegen.Resolution) imageGeneratio
 	}
 }
 
-func imageGenerationAssetContentURL(sessionID, generationID, assetID string) string {
+func imageGenerationImageContentURL(sessionID, generationID, imageID string) string {
 	return "/api/v1/sessions/" +
 		url.PathEscape(sessionID) +
 		"/image-generations/" +
 		url.PathEscape(generationID) +
-		"/assets/" +
-		url.PathEscape(assetID) +
+		"/images/" +
+		url.PathEscape(imageID) +
 		"/content"
 }
 
@@ -1145,13 +1174,14 @@ func shouldBypassTimeoutBuffering(r *http.Request) bool {
 		return false
 	}
 
+	resourceType := parts[imageGenerationAssetContentIndexAssets]
 	return parts[imageGenerationAssetContentIndexAPI] == "api" &&
 		parts[imageGenerationAssetContentIndexVersion] == "v1" &&
 		parts[imageGenerationAssetContentIndexSessions] == "sessions" &&
 		parts[imageGenerationAssetContentIndexSessionID] != "" &&
 		parts[imageGenerationAssetContentIndexGenerations] == "image-generations" &&
 		parts[imageGenerationAssetContentIndexGenerationID] != "" &&
-		parts[imageGenerationAssetContentIndexAssets] == "assets" &&
+		(resourceType == "assets" || resourceType == "images") &&
 		parts[imageGenerationAssetContentIndexAssetID] != "" &&
 		parts[imageGenerationAssetContentIndexContent] == "content"
 }
