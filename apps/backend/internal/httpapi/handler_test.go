@@ -1054,6 +1054,26 @@ func TestGetImageGenerationImageContentHandlerUnavailableWithoutService(t *testi
 	}
 }
 
+func TestGetImageGenerationImageContentHandlerInvalidImageID(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/not-a-uuid/content",
+		nil,
+	)
+
+	service := &fakeImageGenerationService{providerConfigured: true}
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "imageId") {
+		t.Fatalf("error response missing imageId field name: %s", body)
+	}
+}
+
 func TestStreamImageGenerationHandlerSuccessFlow(t *testing.T) {
 	getCalls := 0
 	service := &fakeImageGenerationService{

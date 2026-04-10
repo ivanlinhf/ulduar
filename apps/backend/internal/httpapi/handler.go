@@ -480,18 +480,7 @@ func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if content.MediaType != "" {
-		w.Header().Set("Content-Type", content.MediaType)
-	}
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if content.Filename != "" {
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
-	}
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(content.Data); err != nil {
-		slog.ErrorContext(r.Context(), "write image generation asset content", logFields(r.Context(), "error", err)...)
-	}
+	writeAssetContent(r.Context(), w, content, "")
 }
 
 func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r *http.Request) {
@@ -500,29 +489,41 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 		return
 	}
 
+	imageID := r.PathValue("imageId")
+	if err := imagegen.ValidateImageID(imageID); err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
 	content, err := h.imageGenerationService.GetAssetContent(
 		r.Context(),
 		r.PathValue("sessionId"),
 		r.PathValue("generationId"),
-		r.PathValue("imageId"),
+		imageID,
 	)
 	if err != nil {
 		writeServiceError(r.Context(), w, err)
 		return
 	}
 
+	writeAssetContent(r.Context(), w, content, "public, max-age=31536000, immutable")
+}
+
+func writeAssetContent(ctx context.Context, w http.ResponseWriter, content imagegen.AssetContent, cacheControl string) {
 	if content.MediaType != "" {
 		w.Header().Set("Content-Type", content.MediaType)
 	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if cacheControl != "" {
+		w.Header().Set("Cache-Control", cacheControl)
+	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if content.Filename != "" {
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
 	}
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(content.Data); err != nil {
-		slog.ErrorContext(r.Context(), "write image generation image content", logFields(r.Context(), "error", err)...)
+		slog.ErrorContext(ctx, "write image generation asset content", logFields(ctx, "error", err)...)
 	}
 }
 
@@ -952,7 +953,7 @@ func mapImageGenerationResponse(view imagegen.GenerationView) imageGenerationRes
 			CreatedAt: asset.CreatedAt,
 		}
 		if asset.Role == imagegen.AssetRoleOutput {
-			item.ContentURL = imageGenerationAssetContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
+			item.ContentURL = imageGenerationImageContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
 			outputAssets = append(outputAssets, item)
 			continue
 		}
@@ -994,13 +995,13 @@ func mapImageGenerationResolution(resolution imagegen.Resolution) imageGeneratio
 	}
 }
 
-func imageGenerationAssetContentURL(sessionID, generationID, assetID string) string {
+func imageGenerationImageContentURL(sessionID, generationID, imageID string) string {
 	return "/api/v1/sessions/" +
 		url.PathEscape(sessionID) +
 		"/image-generations/" +
 		url.PathEscape(generationID) +
 		"/images/" +
-		url.PathEscape(assetID) +
+		url.PathEscape(imageID) +
 		"/content"
 }
 
