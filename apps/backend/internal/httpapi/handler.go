@@ -695,6 +695,8 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 	if maxRequestBytes <= 0 {
 		maxRequestBytes = imagegen.DefaultMaxReferenceImageBytes * int64(imagegen.MaxReferenceImages)
 	}
+	// Allow a small buffer for multipart boundaries and form field metadata in
+	// addition to the raw reference image byte budget.
 	maxRequestBytes += 1 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 
