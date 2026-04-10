@@ -11,11 +11,10 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/http"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -28,7 +27,6 @@ var (
 		"image/png":  {},
 		"image/webp": {},
 	}
-	unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 
 type BlobStore interface {
@@ -73,10 +71,15 @@ type ServiceOptions struct {
 	MaxReferenceImageBytes int64
 }
 
-func NewService(db *pgxpool.Pool, blobs BlobStore, options ServiceOptions) *Service {
+func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *Service {
+	resolvedOptions := ServiceOptions{}
+	if len(options) > 0 {
+		resolvedOptions = options[0]
+	}
+
 	service := &Service{
 		blobs:                  blobs,
-		maxReferenceImageBytes: options.MaxReferenceImageBytes,
+		maxReferenceImageBytes: resolvedOptions.MaxReferenceImageBytes,
 	}
 	if service.maxReferenceImageBytes <= 0 {
 		service.maxReferenceImageBytes = DefaultMaxReferenceImageBytes
@@ -289,7 +292,7 @@ func validateCreateGenerationParams(params CreateGenerationParams, maxReferenceI
 }
 
 func prepareInputAsset(upload InputAssetUpload, maxReferenceImageBytes int64) (preparedAsset, error) {
-	filename := sanitizeFilename(upload.Filename)
+	filename := filenames.Sanitize(upload.Filename, defaultAssetFilename)
 	if len(upload.Data) == 0 {
 		return preparedAsset{}, ValidationError{
 			StatusCode: http.StatusBadRequest,
@@ -342,7 +345,7 @@ func buildOutputBlobPath(sessionID, generationID, filename string) string {
 		"sessions/%s/image-generations/%s/outputs/%s",
 		sessionID,
 		generationID,
-		sanitizeFilename(filename),
+		filenames.Sanitize(filename, defaultAssetFilename),
 	)
 }
 
@@ -363,21 +366,6 @@ func supportedResolutionKeys() string {
 	}
 
 	return strings.Join(keys, ", ")
-}
-
-func sanitizeFilename(filename string) string {
-	name := strings.TrimSpace(filepath.Base(filename))
-	if name == "" || name == "." || name == string(filepath.Separator) {
-		return defaultAssetFilename
-	}
-
-	safe := unsafeFilenameChars.ReplaceAllString(name, "-")
-	safe = strings.Trim(safe, "-.")
-	if safe == "" {
-		return defaultAssetFilename
-	}
-
-	return safe
 }
 
 func detectImageDimensions(data []byte) (*int64, *int64) {

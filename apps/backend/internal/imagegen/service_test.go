@@ -197,6 +197,20 @@ func TestValidateCreateGenerationParamsRejectsOversizedReferenceImage(t *testing
 	}
 }
 
+func TestNewServiceDefaultsAndOverridesOptions(t *testing.T) {
+	t.Parallel()
+
+	defaultService := NewService(nil, nil)
+	if defaultService.maxReferenceImageBytes != DefaultMaxReferenceImageBytes {
+		t.Fatalf("defaultService.maxReferenceImageBytes = %d, want %d", defaultService.maxReferenceImageBytes, DefaultMaxReferenceImageBytes)
+	}
+
+	configuredService := NewService(nil, nil, ServiceOptions{MaxReferenceImageBytes: 1234})
+	if configuredService.maxReferenceImageBytes != 1234 {
+		t.Fatalf("configuredService.maxReferenceImageBytes = %d, want 1234", configuredService.maxReferenceImageBytes)
+	}
+}
+
 func TestBuildBlobPaths(t *testing.T) {
 	t.Parallel()
 
