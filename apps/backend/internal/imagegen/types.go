@@ -72,6 +72,14 @@ type CreateGenerationParams struct {
 	ReferenceImages []InputAssetUpload
 }
 
+type Capabilities struct {
+	Modes              []Mode
+	Resolutions        []Resolution
+	MaxReferenceImages int
+	OutputImageCount   int
+	ProviderName       string
+}
+
 type Generation struct {
 	ID               string
 	SessionID        string
@@ -107,4 +115,10 @@ type Asset struct {
 type GenerationView struct {
 	Generation Generation
 	Assets     []Asset
+}
+
+type AssetContent struct {
+	Filename  string
+	MediaType string
+	Data      []byte
 }

@@ -10,23 +10,30 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
 type Handler struct {
-	chatService chatService
-	options     HandlerOptions
+	chatService            chatService
+	imageGenerationService imageGenerationService
+	options                HandlerOptions
 }
 
 type HandlerOptions struct {
-	RequestTimeout        time.Duration
-	MessageRequestTimeout time.Duration
+	RequestTimeout                        time.Duration
+	MessageRequestTimeout                 time.Duration
+	ImageGenerationPollInterval           time.Duration
+	ImageGenerationMaxReferenceImageBytes int64
+	ImageGenerationService                imageGenerationService
 }
 
 type chatService interface {
@@ -34,6 +41,14 @@ type chatService interface {
 	GetSession(ctx context.Context, sessionID string) (chat.SessionView, error)
 	CreateMessage(ctx context.Context, params chat.CreateMessageParams) (chat.MessageCreation, error)
 	StreamRun(ctx context.Context, sessionID, runID string, emit func(chat.RunStreamEvent) error) error
+}
+
+type imageGenerationService interface {
+	Capabilities() imagegen.Capabilities
+	CreatePendingGeneration(ctx context.Context, params imagegen.CreateGenerationParams) (imagegen.GenerationView, error)
+	GetGeneration(ctx context.Context, sessionID, generationID string) (imagegen.GenerationView, error)
+	ExecuteGeneration(ctx context.Context, generationID string) error
+	GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error)
 }
 
 type errorResponse struct {
@@ -96,18 +111,92 @@ type createMessageJSONRequest struct {
 	Message string `json:"message"`
 }
 
+type imageGenerationCapabilitiesResponse struct {
+	Modes              []string                    `json:"modes"`
+	Resolutions        []imageGenerationResolution `json:"resolutions"`
+	MaxReferenceImages int                         `json:"maxReferenceImages"`
+	OutputImageCount   int                         `json:"outputImageCount"`
+	ProviderName       string                      `json:"providerName,omitempty"`
+}
+
+type imageGenerationResolution struct {
+	Key    string `json:"key"`
+	Width  int64  `json:"width"`
+	Height int64  `json:"height"`
+}
+
+type createImageGenerationJSONRequest struct {
+	Mode       string `json:"mode"`
+	Prompt     string `json:"prompt"`
+	Resolution string `json:"resolution"`
+}
+
+type createImageGenerationResponse struct {
+	GenerationID string    `json:"generationId"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type imageGenerationResponse struct {
+	GenerationID     string                       `json:"generationId"`
+	SessionID        string                       `json:"sessionId"`
+	Mode             string                       `json:"mode"`
+	Status           string                       `json:"status"`
+	Prompt           string                       `json:"prompt"`
+	Resolution       imageGenerationResolution    `json:"resolution"`
+	OutputImageCount int64                        `json:"outputImageCount"`
+	ProviderName     string                       `json:"providerName,omitempty"`
+	ProviderModel    string                       `json:"providerModel,omitempty"`
+	ErrorCode        string                       `json:"errorCode,omitempty"`
+	ErrorMessage     string                       `json:"errorMessage,omitempty"`
+	CreatedAt        time.Time                    `json:"createdAt"`
+	CompletedAt      *time.Time                   `json:"completedAt,omitempty"`
+	InputAssets      []imageGenerationAssetResult `json:"inputAssets"`
+	OutputAssets     []imageGenerationAssetResult `json:"outputAssets"`
+}
+
+type imageGenerationAssetResult struct {
+	AssetID    string    `json:"assetId"`
+	Filename   string    `json:"filename"`
+	MediaType  string    `json:"mediaType"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	SHA256     string    `json:"sha256"`
+	Width      *int64    `json:"width,omitempty"`
+	Height     *int64    `json:"height,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	ContentURL string    `json:"contentUrl,omitempty"`
+}
+
 func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler {
 	handlerOptions := HandlerOptions{
-		RequestTimeout:        15 * time.Second,
-		MessageRequestTimeout: 90 * time.Second,
+		RequestTimeout:                        15 * time.Second,
+		MessageRequestTimeout:                 90 * time.Second,
+		ImageGenerationPollInterval:           time.Second,
+		ImageGenerationMaxReferenceImageBytes: imagegen.DefaultMaxReferenceImageBytes,
 	}
 	if len(options) > 0 {
-		handlerOptions = options[0]
+		provided := options[0]
+		if provided.RequestTimeout > 0 {
+			handlerOptions.RequestTimeout = provided.RequestTimeout
+		}
+		if provided.MessageRequestTimeout > 0 {
+			handlerOptions.MessageRequestTimeout = provided.MessageRequestTimeout
+		}
+		if provided.ImageGenerationPollInterval > 0 {
+			handlerOptions.ImageGenerationPollInterval = provided.ImageGenerationPollInterval
+		}
+		if provided.ImageGenerationMaxReferenceImageBytes > 0 {
+			handlerOptions.ImageGenerationMaxReferenceImageBytes = provided.ImageGenerationMaxReferenceImageBytes
+		}
+		if provided.ImageGenerationService != nil {
+			handlerOptions.ImageGenerationService = provided.ImageGenerationService
+		}
 	}
 
 	handler := &Handler{
-		chatService: chatService,
-		options:     handlerOptions,
+		chatService:            chatService,
+		imageGenerationService: handlerOptions.ImageGenerationService,
+		options:                handlerOptions,
 	}
 
 	mux := http.NewServeMux()
@@ -116,6 +205,11 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}", handler.getSessionHandler)
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/messages", handler.createMessageHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/runs/{runId}/stream", handler.streamRunHandler)
+	mux.HandleFunc("GET /api/v1/image-generations/capabilities", handler.imageGenerationCapabilitiesHandler)
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/image-generations", handler.createImageGenerationHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}", handler.getImageGenerationHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream", handler.streamImageGenerationHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content", handler.getImageGenerationAssetContentHandler)
 	mux.HandleFunc("/", notFoundHandler)
 
 	return withMiddleware(mux, requestIDMiddleware, recoverMiddleware, corsMiddleware, loggingMiddleware, handler.timeoutMiddleware)
@@ -294,6 +388,210 @@ func (h *Handler) createMessageHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapImageGenerationCapabilities(h.imageGenerationService.Capabilities()))
+}
+
+func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+
+	params, err := decodeCreateImageGenerationRequest(w, r, h.options.ImageGenerationMaxReferenceImageBytes)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	params.SessionID = r.PathValue("sessionId")
+
+	view, err := h.imageGenerationService.CreatePendingGeneration(r.Context(), params)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, createImageGenerationResponse{
+		GenerationID: view.Generation.ID,
+		Status:       string(view.Generation.Status),
+		CreatedAt:    view.Generation.CreatedAt,
+	})
+}
+
+func (h *Handler) getImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+
+	view, err := h.imageGenerationService.GetGeneration(r.Context(), r.PathValue("sessionId"), r.PathValue("generationId"))
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapImageGenerationResponse(view))
+}
+
+func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+
+	content, err := h.imageGenerationService.GetAssetContent(
+		r.Context(),
+		r.PathValue("sessionId"),
+		r.PathValue("generationId"),
+		r.PathValue("assetId"),
+	)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	if content.MediaType != "" {
+		w.Header().Set("Content-Type", content.MediaType)
+	}
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if content.Filename != "" {
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
+	}
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(content.Data); err != nil {
+		slog.ErrorContext(r.Context(), "write image generation asset content", logFields(r.Context(), "error", err)...)
+	}
+}
+
+func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(r.Context(), w, http.StatusInternalServerError, "streaming_unsupported", "streaming is not supported")
+		return
+	}
+
+	sessionID := r.PathValue("sessionId")
+	generationID := r.PathValue("generationId")
+	streamStarted := false
+	emit := func(eventName string, view imagegen.GenerationView) error {
+		if err := writeSSEEvent(w, eventName, mapImageGenerationResponse(view)); err != nil {
+			return err
+		}
+		streamStarted = true
+		flusher.Flush()
+		return nil
+	}
+
+	view, err := h.imageGenerationService.GetGeneration(r.Context(), sessionID, generationID)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if terminalEvent, done := imageGenerationTerminalEvent(view.Generation.Status); done {
+		if err := emit(terminalEvent, view); err != nil {
+			slog.ErrorContext(r.Context(), "write image generation terminal event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+		}
+		return
+	}
+
+	runningEmitted := false
+	if view.Generation.Status == imagegen.StatusPending {
+		if err := emit("image_generation.started", view); err != nil {
+			slog.ErrorContext(r.Context(), "write image generation started event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+	} else {
+		if err := emit("image_generation.running", view); err != nil {
+			slog.ErrorContext(r.Context(), "write image generation running event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+		runningEmitted = true
+	}
+
+	for {
+		execErr := h.imageGenerationService.ExecuteGeneration(r.Context(), generationID)
+		view, err = h.imageGenerationService.GetGeneration(r.Context(), sessionID, generationID)
+		if err != nil {
+			if !streamStarted {
+				writeServiceError(r.Context(), w, err)
+				return
+			}
+			slog.ErrorContext(r.Context(), "refresh image generation stream state", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+
+		if view.Generation.Status == imagegen.StatusFailed {
+			if err := emit("image_generation.failed", view); err != nil {
+				slog.ErrorContext(r.Context(), "write image generation failed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			}
+			return
+		}
+		if execErr != nil {
+			view.Generation.Status = imagegen.StatusFailed
+			if view.Generation.ErrorCode == "" {
+				view.Generation.ErrorCode = "execution_failed"
+			}
+			if view.Generation.ErrorMessage == "" {
+				view.Generation.ErrorMessage = execErr.Error()
+			}
+			if err := emit("image_generation.failed", view); err != nil {
+				slog.ErrorContext(r.Context(), "write image generation failed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			}
+			return
+		}
+
+		switch view.Generation.Status {
+		case imagegen.StatusPending:
+		case imagegen.StatusRunning:
+			if !runningEmitted {
+				if err := emit("image_generation.running", view); err != nil {
+					slog.ErrorContext(r.Context(), "write image generation running event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+					return
+				}
+				runningEmitted = true
+			}
+		case imagegen.StatusCompleted:
+			if err := emit("image_generation.completed", view); err != nil {
+				slog.ErrorContext(r.Context(), "write image generation completed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			}
+			return
+		default:
+			err := fmt.Errorf("unsupported image generation status %q", view.Generation.Status)
+			if !streamStarted {
+				writeServiceError(r.Context(), w, err)
+				return
+			}
+			slog.ErrorContext(r.Context(), "image generation stream failed", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+
+		timer := time.NewTimer(h.options.ImageGenerationPollInterval)
+		select {
+		case <-r.Context().Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
 func (h *Handler) streamRunHandler(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -392,6 +690,35 @@ func decodeCreateMessageRequest(w http.ResponseWriter, r *http.Request) (chat.Cr
 	}
 }
 
+func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, maxReferenceImageBytes int64) (imagegen.CreateGenerationParams, error) {
+	maxRequestBytes := maxReferenceImageBytes * int64(imagegen.MaxReferenceImages)
+	if maxRequestBytes <= 0 {
+		maxRequestBytes = imagegen.DefaultMaxReferenceImageBytes * int64(imagegen.MaxReferenceImages)
+	}
+	maxRequestBytes += 1 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return imagegen.CreateGenerationParams{}, imagegen.ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid Content-Type header",
+		}
+	}
+
+	switch {
+	case mediaType == "" || mediaType == "application/json":
+		return decodeCreateImageGenerationJSONRequest(r)
+	case mediaType == "multipart/form-data":
+		return decodeCreateImageGenerationMultipartRequest(r, maxRequestBytes)
+	default:
+		return imagegen.CreateGenerationParams{}, imagegen.ValidationError{
+			StatusCode: http.StatusUnsupportedMediaType,
+			Message:    "Content-Type must be application/json or multipart/form-data",
+		}
+	}
+}
+
 func decodeJSONMessageRequest(r *http.Request) (chat.CreateMessageParams, error) {
 	defer r.Body.Close()
 
@@ -405,6 +732,51 @@ func decodeJSONMessageRequest(r *http.Request) (chat.CreateMessageParams, error)
 
 	return chat.CreateMessageParams{
 		Text: coalesceText(body.Text, body.Message),
+	}, nil
+}
+
+func decodeCreateImageGenerationJSONRequest(r *http.Request) (imagegen.CreateGenerationParams, error) {
+	defer r.Body.Close()
+
+	var body createImageGenerationJSONRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&body); err != nil {
+		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
+	}
+
+	mode := imagegen.Mode(strings.TrimSpace(body.Mode))
+	if mode == imagegen.ModeImageEdit {
+		return imagegen.CreateGenerationParams{}, imagegen.ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "image_edit requests must use multipart/form-data",
+		}
+	}
+
+	return imagegen.CreateGenerationParams{
+		Mode:          mode,
+		Prompt:        body.Prompt,
+		ResolutionKey: body.Resolution,
+	}, nil
+}
+
+func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestBytes int64) (imagegen.CreateGenerationParams, error) {
+	if err := r.ParseMultipartForm(maxRequestBytes); err != nil {
+		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	referenceImages, err := readReferenceImages(r.MultipartForm.File["referenceImages"], r.MultipartForm.File["referenceImages[]"])
+	if err != nil {
+		return imagegen.CreateGenerationParams{}, err
+	}
+
+	return imagegen.CreateGenerationParams{
+		Mode:            imagegen.Mode(strings.TrimSpace(r.FormValue("mode"))),
+		Prompt:          r.FormValue("prompt"),
+		ResolutionKey:   r.FormValue("resolution"),
+		ReferenceImages: referenceImages,
 	}, nil
 }
 
@@ -425,6 +797,38 @@ func decodeMultipartMessageRequest(r *http.Request) (chat.CreateMessageParams, e
 	}, nil
 }
 
+func readReferenceImages(fileSets ...[]*multipart.FileHeader) ([]imagegen.InputAssetUpload, error) {
+	total := 0
+	for _, set := range fileSets {
+		total += len(set)
+	}
+
+	uploads := make([]imagegen.InputAssetUpload, 0, total)
+	for _, fileHeaders := range fileSets {
+		for _, header := range fileHeaders {
+			file, err := header.Open()
+			if err != nil {
+				return nil, err
+			}
+			data, readErr := io.ReadAll(file)
+			closeErr := file.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			if closeErr != nil {
+				return nil, closeErr
+			}
+
+			uploads = append(uploads, imagegen.InputAssetUpload{
+				Filename: header.Filename,
+				Data:     data,
+			})
+		}
+	}
+
+	return uploads, nil
+}
+
 func coalesceText(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -443,10 +847,109 @@ func tokenUsageField[T any](value *T, getter func(*T) *int64) *int64 {
 	return getter(value)
 }
 
+func mapImageGenerationCapabilities(capabilities imagegen.Capabilities) imageGenerationCapabilitiesResponse {
+	modes := make([]string, 0, len(capabilities.Modes))
+	for _, mode := range capabilities.Modes {
+		modes = append(modes, string(mode))
+	}
+
+	return imageGenerationCapabilitiesResponse{
+		Modes:              modes,
+		Resolutions:        mapImageGenerationResolutions(capabilities.Resolutions),
+		MaxReferenceImages: capabilities.MaxReferenceImages,
+		OutputImageCount:   capabilities.OutputImageCount,
+		ProviderName:       capabilities.ProviderName,
+	}
+}
+
+func mapImageGenerationResponse(view imagegen.GenerationView) imageGenerationResponse {
+	inputAssets := make([]imageGenerationAssetResult, 0, len(view.Assets))
+	outputAssets := make([]imageGenerationAssetResult, 0, len(view.Assets))
+	for _, asset := range view.Assets {
+		item := imageGenerationAssetResult{
+			AssetID:   asset.ID,
+			Filename:  asset.Filename,
+			MediaType: asset.MediaType,
+			SizeBytes: asset.SizeBytes,
+			SHA256:    asset.SHA256,
+			Width:     asset.Width,
+			Height:    asset.Height,
+			CreatedAt: asset.CreatedAt,
+		}
+		if asset.Role == imagegen.AssetRoleOutput {
+			item.ContentURL = imageGenerationAssetContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
+			outputAssets = append(outputAssets, item)
+			continue
+		}
+		inputAssets = append(inputAssets, item)
+	}
+
+	return imageGenerationResponse{
+		GenerationID:     view.Generation.ID,
+		SessionID:        view.Generation.SessionID,
+		Mode:             string(view.Generation.Mode),
+		Status:           string(view.Generation.Status),
+		Prompt:           view.Generation.Prompt,
+		Resolution:       mapImageGenerationResolution(view.Generation.Resolution),
+		OutputImageCount: view.Generation.OutputImageCount,
+		ProviderName:     view.Generation.ProviderName,
+		ProviderModel:    view.Generation.ProviderModel,
+		ErrorCode:        view.Generation.ErrorCode,
+		ErrorMessage:     view.Generation.ErrorMessage,
+		CreatedAt:        view.Generation.CreatedAt,
+		CompletedAt:      view.Generation.CompletedAt,
+		InputAssets:      inputAssets,
+		OutputAssets:     outputAssets,
+	}
+}
+
+func mapImageGenerationResolutions(resolutions []imagegen.Resolution) []imageGenerationResolution {
+	mapped := make([]imageGenerationResolution, 0, len(resolutions))
+	for _, resolution := range resolutions {
+		mapped = append(mapped, mapImageGenerationResolution(resolution))
+	}
+	return mapped
+}
+
+func mapImageGenerationResolution(resolution imagegen.Resolution) imageGenerationResolution {
+	return imageGenerationResolution{
+		Key:    resolution.Key,
+		Width:  resolution.Width,
+		Height: resolution.Height,
+	}
+}
+
+func imageGenerationAssetContentURL(sessionID, generationID, assetID string) string {
+	return "/api/v1/sessions/" +
+		url.PathEscape(sessionID) +
+		"/image-generations/" +
+		url.PathEscape(generationID) +
+		"/assets/" +
+		url.PathEscape(assetID) +
+		"/content"
+}
+
+func imageGenerationTerminalEvent(status imagegen.Status) (string, bool) {
+	switch status {
+	case imagegen.StatusCompleted:
+		return "image_generation.completed", true
+	case imagegen.StatusFailed:
+		return "image_generation.failed", true
+	default:
+		return "", false
+	}
+}
+
 func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 	var validationErr chat.ValidationError
 	if errors.As(err, &validationErr) {
 		writeJSONError(ctx, w, validationErr.StatusCode, errorCodeForStatus(validationErr.StatusCode), validationErr.Message)
+		return
+	}
+
+	var imageValidationErr imagegen.ValidationError
+	if errors.As(err, &imageValidationErr) {
+		writeJSONError(ctx, w, imageValidationErr.StatusCode, errorCodeForStatus(imageValidationErr.StatusCode), imageValidationErr.Message)
 		return
 	}
 
