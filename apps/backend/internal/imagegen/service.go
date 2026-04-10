@@ -609,6 +609,7 @@ func (s *Service) providerModel() string {
 // resolvedProviderMetadata preserves the metadata already persisted on the
 // generation when the current provider implementation does not expose
 // ProviderMetadata, keeping later running/completed/failed transitions stable.
+// Stored values are trimmed as a final normalization step before rewriting them.
 func (s *Service) resolvedProviderMetadata(generation repository.ImageGeneration) (string, string) {
 	providerName := s.providerName()
 	if providerName == "" {
@@ -633,8 +634,8 @@ func providerErrorCode(err error) string {
 		return fmt.Sprintf("provider_http_%d", apiErr.StatusCode)
 	}
 
-	// errors.As with a value target does not match a concrete *APIError, so check
-	// the pointer form as well to keep status-based error codes consistent.
+	// Check for pointer-type APIError as well, since the value-target check above
+	// handles imageprovider.APIError values but does not match *APIError pointers.
 	var apiErrPtr *imageprovider.APIError
 	if errors.As(err, &apiErrPtr) && apiErrPtr != nil {
 		return fmt.Sprintf("provider_http_%d", apiErrPtr.StatusCode)
