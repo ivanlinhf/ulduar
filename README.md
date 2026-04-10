@@ -6,7 +6,8 @@ Anonymous multimodal chat app with:
 - React frontend
 - PostgreSQL for sessions/messages/runs
 - Azure Blob Storage for uploaded files
-- Azure OpenAI Responses API for model execution
+- Azure OpenAI Responses API for chat
+- Pluggable image generation provider (Azure AI Foundry FLUX as the initial provider)
 
 ## Repo Layout
 
@@ -65,9 +66,9 @@ Backend app startup validates these:
 - `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES`
   Optional positive integer byte limit for each image-generation reference upload. Default `20971520` (20 MiB).
 - `AZURE_FOUNDRY_ENDPOINT`
-  Optional Azure AI Foundry base URL for the experimental FLUX adapter config. No backend routes use this yet.
+  Optional Azure AI Foundry base URL for the FLUX image generation provider. When set, image generation endpoints become active. Requires `AZURE_FOUNDRY_API_KEY`.
 - `AZURE_FOUNDRY_API_KEY`
-  Optional Azure AI Foundry API key. Required only when `AZURE_FOUNDRY_ENDPOINT` is set.
+  Optional Azure AI Foundry API key. Required when `AZURE_FOUNDRY_ENDPOINT` is set.
 - `AZURE_FOUNDRY_FLUX_API_VERSION`
   Optional. Default `preview`.
 - `AZURE_FOUNDRY_FLUX_MODEL`
@@ -75,7 +76,7 @@ Backend app startup validates these:
 - `AZURE_FOUNDRY_FLUX_MODEL_PATH`
   Optional. Default `flux-2-pro`.
 - `AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT`
-  Optional duration. Default `60s`.
+  Optional duration for FLUX generation requests. Default `60s`.
 
 Container/entrypoint and frontend build settings:
 
@@ -140,7 +141,8 @@ export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s
 export IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES=20971520
-# Optional Azure Foundry FLUX config for future image-generation wiring.
+# Optional Azure AI Foundry FLUX config for image generation.
+# When AZURE_FOUNDRY_ENDPOINT is set, image generation endpoints become active.
 # export AZURE_FOUNDRY_ENDPOINT=https://your-foundry-resource.services.ai.azure.com
 # export AZURE_FOUNDRY_API_KEY=replace-me
 # export AZURE_FOUNDRY_FLUX_API_VERSION=preview
@@ -177,6 +179,42 @@ Operational notes:
 - the model decides when to search; users do not need a special command
 - production rollout is still a separate manual config change
 - rollback is simply setting `AZURE_OPENAI_ENABLE_WEB_SEARCH=false` and restarting the backend
+
+### Optional image generation in dev/test
+
+Image generation is disabled by default. To enable it locally, set `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` before starting the backend.
+
+The image generation layer uses a pluggable provider interface. Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured provider, selected automatically when `AZURE_FOUNDRY_ENDPOINT` is set. Chat still uses Azure OpenAI Responses API; image generation uses the configured image provider independently.
+
+Supported v1 image generation modes:
+
+- `text_to_image` — generate an image from a text prompt only
+- `image_edit` — generate a modified image using a prompt and 1–4 reference images (up to 20 MiB each)
+
+Each generation always produces exactly 1 output image.
+
+Supported resolutions:
+
+| Key | Width | Height |
+|---|---|---|
+| `1024x1024` | 1024 | 1024 |
+| `1152x896` | 1152 | 896 |
+| `896x1152` | 896 | 1152 |
+| `1344x768` | 1344 | 768 |
+| `768x1344` | 768 | 1344 |
+| `1536x1024` | 1536 | 1024 |
+| `1024x1536` | 1024 | 1536 |
+
+Image generation endpoints (all scoped to a session):
+
+- `GET /api/v1/image-generations/capabilities` — returns available modes, resolutions, and provider info
+- `POST /api/v1/sessions/{sessionId}/image-generations` — submit a new generation request
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}` — poll generation status and asset list
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream` — SSE stream for generation progress
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content` — download a raw generation asset (input or output)
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content` — download a generation output image directly
+
+All image generation endpoints return `503 Service Unavailable` when no provider is configured.
 
 ### Option 2: Use `compose.yaml`
 

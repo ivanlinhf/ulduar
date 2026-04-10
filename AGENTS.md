@@ -37,10 +37,21 @@ Keep these behaviors unless the user explicitly asks to change them:
 
 Current main endpoints:
 
+Chat:
+
 - `POST /api/v1/sessions`
 - `GET /api/v1/sessions/{sessionId}`
 - `POST /api/v1/sessions/{sessionId}/messages`
 - `GET /api/v1/sessions/{sessionId}/runs/{runId}/stream`
+
+Image generation (active when `AZURE_FOUNDRY_ENDPOINT` is set; returns 503 otherwise):
+
+- `GET /api/v1/image-generations/capabilities`
+- `POST /api/v1/sessions/{sessionId}/image-generations`
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}`
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream`
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content`
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content`
 
 If you change request or response shapes, update backend, frontend, tests, and docs together.
 
