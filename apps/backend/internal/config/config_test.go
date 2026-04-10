@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
 )
 
 func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
@@ -44,6 +45,9 @@ func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
 	}
 	if cfg.AzureOpenAIWebSearch {
 		t.Fatal("cfg.AzureOpenAIWebSearch = true, want false by default")
+	}
+	if cfg.Image.MaxReferenceImageBytes != imagegen.DefaultMaxReferenceImageBytes {
+		t.Fatalf("cfg.Image.MaxReferenceImageBytes = %d, want %d", cfg.Image.MaxReferenceImageBytes, imagegen.DefaultMaxReferenceImageBytes)
 	}
 }
 
@@ -86,6 +90,17 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		t.Fatal("Load() error = nil, want boolean error")
 	}
 	if !strings.Contains(err.Error(), "azure openai enable web search") {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	t.Setenv("AZURE_OPENAI_ENABLE_WEB_SEARCH", "false")
+	t.Setenv("IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES", "bad")
+
+	_, err = Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want integer error")
+	}
+	if !strings.Contains(err.Error(), "image generation max reference image bytes") {
 		t.Fatalf("Load() error = %v", err)
 	}
 }
@@ -156,6 +171,29 @@ func TestLoadEnablesWebSearchWhenConfigured(t *testing.T) {
 
 	if !cfg.AzureOpenAIWebSearch {
 		t.Fatal("cfg.AzureOpenAIWebSearch = false, want true")
+	}
+}
+
+func TestLoadUsesConfiguredImageGenerationMaxReferenceImageBytes(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("BACKEND_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	t.Setenv("IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES", "1048576")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Image.MaxReferenceImageBytes != 1048576 {
+		t.Fatalf("cfg.Image.MaxReferenceImageBytes = %d, want 1048576", cfg.Image.MaxReferenceImageBytes)
 	}
 }
 

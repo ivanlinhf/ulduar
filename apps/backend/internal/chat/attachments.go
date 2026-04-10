@@ -7,9 +7,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"path/filepath"
-	"regexp"
-	"strings"
+
+	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
 )
 
 const (
@@ -26,7 +25,6 @@ var (
 		"image/png":       "image",
 		"image/webp":      "image",
 	}
-	unsafeFilenameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 
 type AttachmentUpload struct {
@@ -97,26 +95,11 @@ func readAttachment(header *multipart.FileHeader) (AttachmentUpload, error) {
 	sum := sha256.Sum256(data)
 
 	return AttachmentUpload{
-		Filename:  sanitizeFilename(header.Filename),
+		Filename:  filenames.Sanitize(header.Filename, "attachment"),
 		MediaType: mediaType,
 		Kind:      kind,
 		SizeBytes: int64(len(data)),
 		SHA256:    hex.EncodeToString(sum[:]),
 		Data:      data,
 	}, nil
-}
-
-func sanitizeFilename(filename string) string {
-	name := strings.TrimSpace(filepath.Base(filename))
-	if name == "" || name == "." || name == string(filepath.Separator) {
-		return "attachment"
-	}
-
-	safe := unsafeFilenameChars.ReplaceAllString(name, "-")
-	safe = strings.Trim(safe, "-.")
-	if safe == "" {
-		return "attachment"
-	}
-
-	return safe
 }
