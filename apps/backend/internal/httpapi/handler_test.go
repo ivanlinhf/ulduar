@@ -514,6 +514,38 @@ func TestRequestTimeoutReturnsStructuredError(t *testing.T) {
 	}
 }
 
+func TestShouldBypassTimeoutBuffering(t *testing.T) {
+	tests := []struct {
+		name string
+		req  *http.Request
+		want bool
+	}{
+		{
+			name: "image generation asset content",
+			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content", nil),
+			want: true,
+		},
+		{
+			name: "image generation detail",
+			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555", nil),
+			want: false,
+		},
+		{
+			name: "stream route",
+			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/stream", nil),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldBypassTimeoutBuffering(test.req); got != test.want {
+				t.Fatalf("shouldBypassTimeoutBuffering() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestImageGenerationCapabilitiesHandler(t *testing.T) {
 	service := &fakeImageGenerationService{
 		providerConfigured: true,
@@ -565,6 +597,17 @@ func TestImageGenerationCapabilitiesHandlerReturnsServiceUnavailableWithoutProvi
 	}
 	if payload.Error != "image generation is not configured" {
 		t.Fatalf("payload.Error = %q", payload.Error)
+	}
+}
+
+func TestImageGenerationCapabilitiesHandlerReturnsServiceUnavailableWithoutService(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/image-generations/capabilities", nil)
+
+	NewHandler(&fakeChatService{}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
 	}
 }
 
@@ -666,6 +709,22 @@ func TestCreateImageGenerationHandlerReturnsServiceUnavailableWithoutProvider(t 
 	NewHandler(&fakeChatService{}, HandlerOptions{
 		ImageGenerationService: &fakeImageGenerationService{},
 	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestCreateImageGenerationHandlerReturnsServiceUnavailableWithoutService(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations",
+		strings.NewReader(`{"mode":"text_to_image","prompt":"draw a fox","resolution":"1024x1024"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	NewHandler(&fakeChatService{}).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)

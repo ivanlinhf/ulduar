@@ -168,6 +168,8 @@ type imageGenerationAssetResult struct {
 	ContentURL string    `json:"contentUrl,omitempty"`
 }
 
+const imageGenerationMultipartMemoryBytes int64 = 1 << 20
+
 func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler {
 	handlerOptions := HandlerOptions{
 		RequestTimeout:                        15 * time.Second,
@@ -391,11 +393,11 @@ func (h *Handler) createMessageHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
-		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 	if !h.imageGenerationService.ProviderConfigured() {
-		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -404,11 +406,11 @@ func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *h
 
 func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
-		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 	if !h.imageGenerationService.ProviderConfigured() {
-		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -434,7 +436,7 @@ func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Re
 
 func (h *Handler) getImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
-		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -449,7 +451,7 @@ func (h *Handler) getImageGenerationHandler(w http.ResponseWriter, r *http.Reque
 
 func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
-		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -480,7 +482,7 @@ func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r
 
 func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
-		writeServiceError(r.Context(), w, fmt.Errorf("image generation service is not configured"))
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -509,7 +511,7 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	if _, done := imageGenerationTerminalEvent(view.Generation.Status); !done && !h.imageGenerationService.ProviderConfigured() {
-		writeJSONError(r.Context(), w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+		writeImageGenerationUnavailable(r.Context(), w)
 		return
 	}
 
@@ -538,6 +540,9 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 		}
 		runningEmitted = true
 	}
+
+	ticker := time.NewTicker(h.options.ImageGenerationPollInterval)
+	defer ticker.Stop()
 
 	for {
 		execErr := h.imageGenerationService.ExecuteGeneration(r.Context(), generationID)
@@ -587,12 +592,10 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		timer := time.NewTimer(h.options.ImageGenerationPollInterval)
 		select {
 		case <-r.Context().Done():
-			timer.Stop()
 			return
-		case <-timer.C:
+		case <-ticker.C:
 		}
 	}
 }
@@ -787,7 +790,11 @@ func decodeCreateImageGenerationJSONRequest(r *http.Request) (imagegen.CreateGen
 }
 
 func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestBytes int64) (imagegen.CreateGenerationParams, error) {
-	if err := r.ParseMultipartForm(maxRequestBytes); err != nil {
+	maxMemory := maxRequestBytes
+	if maxMemory > imageGenerationMultipartMemoryBytes {
+		maxMemory = imageGenerationMultipartMemoryBytes
+	}
+	if err := r.ParseMultipartForm(maxMemory); err != nil {
 		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
 	}
 	defer r.MultipartForm.RemoveAll()
@@ -965,6 +972,10 @@ func imageGenerationTerminalEvent(status imagegen.Status) (string, bool) {
 	}
 }
 
+func writeImageGenerationUnavailable(ctx context.Context, w http.ResponseWriter) {
+	writeJSONError(ctx, w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+}
+
 func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 	var validationErr chat.ValidationError
 	if errors.As(err, &validationErr) {
@@ -1092,6 +1103,11 @@ func (h *Handler) timeoutMiddleware(next http.Handler) http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 
+		if shouldBypassTimeoutBuffering(r) {
+			next.ServeHTTP(w, r.Clone(ctx))
+			return
+		}
+
 		recorder := newBufferingResponseWriter()
 		done := make(chan struct{})
 
@@ -1107,6 +1123,13 @@ func (h *Handler) timeoutMiddleware(next http.Handler) http.Handler {
 			writeJSONError(r.Context(), w, http.StatusGatewayTimeout, "request_timeout", "request timed out")
 		}
 	})
+}
+
+func shouldBypassTimeoutBuffering(r *http.Request) bool {
+	return r.Method == http.MethodGet &&
+		strings.Contains(r.URL.Path, "/image-generations/") &&
+		strings.Contains(r.URL.Path, "/assets/") &&
+		strings.HasSuffix(r.URL.Path, "/content")
 }
 
 func (h *Handler) timeoutForRequest(r *http.Request) time.Duration {
