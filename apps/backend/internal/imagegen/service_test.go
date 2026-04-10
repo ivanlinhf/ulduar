@@ -211,6 +211,18 @@ func TestNewServiceDefaultsAndOverridesOptions(t *testing.T) {
 	}
 }
 
+func TestNewServicePanicsOnMultipleOptions(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected panic, got nil")
+		}
+	}()
+
+	_ = NewService(nil, nil, ServiceOptions{}, ServiceOptions{})
+}
+
 func TestBuildBlobPaths(t *testing.T) {
 	t.Parallel()
 

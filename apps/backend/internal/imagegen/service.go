@@ -74,6 +74,10 @@ type ServiceOptions struct {
 // NewService accepts zero or one ServiceOptions value.
 // When options are omitted, defaults are applied.
 func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *Service {
+	if len(options) > 1 {
+		panic("imagegen.NewService accepts at most one ServiceOptions value")
+	}
+
 	resolvedOptions := ServiceOptions{}
 	if len(options) > 0 {
 		resolvedOptions = options[0]
