@@ -803,10 +803,7 @@ func decodeCreateImageGenerationJSONRequest(r *http.Request) (imagegen.CreateGen
 }
 
 func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestBytes int64) (imagegen.CreateGenerationParams, error) {
-	multipartMemoryLimit := maxRequestBytes
-	if multipartMemoryLimit > imageGenerationMultipartMemoryBytes {
-		multipartMemoryLimit = imageGenerationMultipartMemoryBytes
-	}
+	multipartMemoryLimit := min(maxRequestBytes, imageGenerationMultipartMemoryBytes)
 	if err := r.ParseMultipartForm(multipartMemoryLimit); err != nil {
 		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
 	}
@@ -1144,8 +1141,11 @@ func shouldBypassTimeoutBuffering(r *http.Request) bool {
 	}
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	return len(parts) == imageGenerationAssetContentPathSegmentCount &&
-		parts[imageGenerationAssetContentIndexAPI] == "api" &&
+	if len(parts) != imageGenerationAssetContentPathSegmentCount {
+		return false
+	}
+
+	return parts[imageGenerationAssetContentIndexAPI] == "api" &&
 		parts[imageGenerationAssetContentIndexVersion] == "v1" &&
 		parts[imageGenerationAssetContentIndexSessions] == "sessions" &&
 		parts[imageGenerationAssetContentIndexSessionID] != "" &&
