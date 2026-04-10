@@ -28,6 +28,7 @@ const (
 	DefaultModel         = "FLUX.2-pro"
 	DefaultModelPath     = "flux-2-pro"
 	DefaultTimeout       = 60 * time.Second
+	ProviderName         = "azure_foundry"
 	providerPathPrefix   = "/providers/blackforestlabs/v1"
 	maxResponseBodyBytes = 16 * 1024 * 1024 // 16 MiB
 )
@@ -116,6 +117,12 @@ func (c *Client) Endpoint() string { return c.endpoint }
 // Model returns the model name used in generation requests.
 func (c *Client) Model() string { return c.model }
 
+// ProviderName returns the stable provider identifier for persistence/debugging.
+func (c *Client) ProviderName() string { return ProviderName }
+
+// ProviderModel returns the configured provider model name for persistence/debugging.
+func (c *Client) ProviderModel() string { return c.model }
+
 // generateURL returns the full generation URL.
 func (c *Client) generateURL() string {
 	return c.operationURL(c.modelPath)
@@ -190,15 +197,8 @@ type pollResult struct {
 	Sample string `json:"sample"`
 }
 
-// APIError represents an HTTP error returned by the Azure Foundry API.
-type APIError struct {
-	StatusCode int
-	Message    string
-}
-
-func (e APIError) Error() string {
-	return fmt.Sprintf("azure foundry api returned status %d: %s", e.StatusCode, e.Message)
-}
+// APIError is kept as an alias for backwards compatibility in package tests.
+type APIError = imageprovider.APIError
 
 // ---- Generate ----
 
@@ -245,7 +245,7 @@ func (c *Client) Generate(ctx context.Context, req imageprovider.GenerateRequest
 	case http.StatusAccepted:
 		return c.normalizeAsyncResponse(rawBody)
 	default:
-		return imageprovider.GenerateResult{}, APIError{
+		return imageprovider.GenerateResult{}, imageprovider.APIError{
 			StatusCode: resp.StatusCode,
 			Message:    strings.TrimSpace(string(rawBody)),
 		}
@@ -282,7 +282,7 @@ func (c *Client) Poll(ctx context.Context, job imageprovider.ProviderJob) (image
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return imageprovider.PollResult{}, APIError{
+		return imageprovider.PollResult{}, imageprovider.APIError{
 			StatusCode: resp.StatusCode,
 			Message:    strings.TrimSpace(string(rawBody)),
 		}

@@ -47,6 +47,8 @@ type CreateImageGenerationParams struct {
 }
 
 type UpdateImageGenerationStateParams struct {
+	ProviderName  string
+	ProviderModel string
 	ID            string
 	ProviderJobID string
 	Status        string
@@ -181,6 +183,8 @@ func (r *ImageGenerationRepository) UpdateState(ctx context.Context, params Upda
 	}
 
 	rowsAffected, err := r.queries.UpdateImageGenerationState(ctx, dbsqlc.UpdateImageGenerationStateParams{
+		ProviderName:  params.ProviderName,
+		ProviderModel: params.ProviderModel,
 		ID:            id,
 		ProviderJobID: textValue(params.ProviderJobID),
 		Status:        params.Status,

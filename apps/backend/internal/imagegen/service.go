@@ -10,11 +10,16 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
+	"mime"
 	"net/http"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -27,11 +32,24 @@ var (
 		"image/png":  {},
 		"image/webp": {},
 	}
+	supportedOutputMediaTypes = map[string]struct{}{
+		"image/jpeg": {},
+		"image/png":  {},
+		"image/webp": {},
+	}
+)
+
+const (
+	defaultOutputFormat                = "png"
+	defaultOutputFilenamePrefix        = "output"
+	defaultOutputDownloadTimeout       = 30 * time.Second
+	maxOutputImageBytes          int64 = 32 << 20
 )
 
 type BlobStore interface {
 	Upload(ctx context.Context, blobPath string, data []byte, contentType string) error
 	Delete(ctx context.Context, blobPath string) error
+	Download(ctx context.Context, blobPath string) ([]byte, error)
 }
 
 type ValidationError struct {
@@ -47,20 +65,30 @@ type writeTx interface {
 	GetSession(ctx context.Context, sessionID string) (repository.Session, error)
 	CreateGeneration(ctx context.Context, params repository.CreateImageGenerationParams) (repository.ImageGeneration, error)
 	CreateGenerationAsset(ctx context.Context, params repository.CreateImageGenerationAssetParams) (repository.ImageGenerationAsset, error)
+	UpdateGenerationState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
 }
 
 type generationReader interface {
+	GetByID(ctx context.Context, generationID string) (repository.ImageGeneration, error)
 	GetByIDAndSession(ctx context.Context, generationID string, sessionID string) (repository.ImageGeneration, error)
+	UpdateState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error
 }
 
 type assetReader interface {
+	ListByGeneration(ctx context.Context, generationID string) ([]repository.ImageGenerationAsset, error)
 	ListByGenerationAndSession(ctx context.Context, generationID string, sessionID string) ([]repository.ImageGenerationAsset, error)
+}
+
+type httpDoer interface {
+	Do(req *http.Request) (*http.Response, error)
 }
 
 type Service struct {
 	blobs                  BlobStore
+	provider               imageprovider.ImageProvider
+	outputHTTPClient       httpDoer
 	maxReferenceImageBytes int64
 	beginWriteTxFn         func(ctx context.Context) (writeTx, error)
 	generationRead         generationReader
@@ -69,6 +97,8 @@ type Service struct {
 
 type ServiceOptions struct {
 	MaxReferenceImageBytes int64
+	Provider               imageprovider.ImageProvider
+	OutputDownloadTimeout  time.Duration
 }
 
 // NewService accepts zero or one ServiceOptions value.
@@ -85,10 +115,18 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *S
 
 	service := &Service{
 		blobs:                  blobs,
+		provider:               resolvedOptions.Provider,
 		maxReferenceImageBytes: resolvedOptions.MaxReferenceImageBytes,
 	}
 	if service.maxReferenceImageBytes <= 0 {
 		service.maxReferenceImageBytes = DefaultMaxReferenceImageBytes
+	}
+	outputDownloadTimeout := resolvedOptions.OutputDownloadTimeout
+	if outputDownloadTimeout <= 0 {
+		outputDownloadTimeout = defaultOutputDownloadTimeout
+	}
+	if service.outputHTTPClient == nil {
+		service.outputHTTPClient = &http.Client{Timeout: outputDownloadTimeout}
 	}
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
@@ -228,6 +266,345 @@ func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID str
 	}, nil
 }
 
+func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) error {
+	if err := validateUUID(generationID, "generationId"); err != nil {
+		return err
+	}
+	if s.provider == nil {
+		return fmt.Errorf("image generation provider is not configured")
+	}
+	if s.blobs == nil {
+		return fmt.Errorf("blob store is not configured")
+	}
+	if s.beginWriteTxFn == nil || s.generationRead == nil || s.assetRead == nil {
+		return fmt.Errorf("image generation service is not configured")
+	}
+
+	generation, err := s.generationRead.GetByID(ctx, generationID)
+	if err != nil {
+		return mapRepositoryError(err, "image generation not found")
+	}
+
+	switch Status(generation.Status) {
+	case StatusPending:
+		return s.executePendingGeneration(ctx, generation)
+	case StatusRunning:
+		return s.executeRunningGeneration(ctx, generation)
+	case StatusCompleted, StatusFailed:
+		return nil
+	default:
+		return fmt.Errorf("unsupported image generation status %q", generation.Status)
+	}
+}
+
+func (s *Service) executePendingGeneration(ctx context.Context, generation repository.ImageGeneration) error {
+	inputAssets, err := s.assetRead.ListByGeneration(ctx, generation.ID)
+	if err != nil {
+		return fmt.Errorf("list image generation assets: %w", err)
+	}
+
+	inputImages, err := s.loadInputImages(ctx, inputAssets)
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "load input images", "input_asset_read_failed", err)
+	}
+
+	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
+		ID:            generation.ID,
+		ProviderName:  s.providerName(),
+		ProviderModel: s.providerModel(),
+		Status:        string(StatusRunning),
+	}); err != nil {
+		return fmt.Errorf("mark image generation running: %w", err)
+	}
+
+	result, err := s.provider.Generate(ctx, buildGenerateRequest(generation, inputImages))
+	if err != nil {
+		generation.Status = string(StatusRunning)
+		return s.failGenerationWithCause(ctx, generation, "generate image", providerErrorCode(err), err)
+	}
+
+	if result.Completed() {
+		generation.Status = string(StatusRunning)
+		return s.completeGeneration(ctx, generation, result.Images)
+	}
+	if result.Job == nil {
+		generation.Status = string(StatusRunning)
+		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", "provider returned neither output images nor a job")
+	}
+
+	jobID := strings.TrimSpace(result.Job.JobID)
+	if jobID == "" {
+		generation.Status = string(StatusRunning)
+		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", "provider returned an async job without a job id")
+	}
+
+	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
+		ID:            generation.ID,
+		ProviderName:  s.providerName(),
+		ProviderModel: s.providerModel(),
+		ProviderJobID: jobID,
+		Status:        string(StatusRunning),
+	}); err != nil {
+		return fmt.Errorf("persist image generation job metadata: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) executeRunningGeneration(ctx context.Context, generation repository.ImageGeneration) error {
+	jobID := strings.TrimSpace(generation.ProviderJobID)
+	if jobID == "" {
+		return s.failGenerationWithMessage(ctx, generation, "invalid_generation_state", "running image generation is missing provider job id")
+	}
+
+	pollResult, err := s.provider.Poll(ctx, imageprovider.ProviderJob{JobID: jobID})
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "poll image generation", providerErrorCode(err), err)
+	}
+
+	switch pollResult.Status {
+	case imageprovider.PollStatusPending:
+		return nil
+	case imageprovider.PollStatusCompleted:
+		return s.completeGeneration(ctx, generation, pollResult.Images)
+	case imageprovider.PollStatusFailed:
+		message := strings.TrimSpace(pollResult.Err)
+		if message == "" {
+			message = "provider job failed"
+		}
+		return s.failGenerationWithMessage(ctx, generation, "provider_job_failed", message)
+	default:
+		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", fmt.Sprintf("unsupported provider poll status %q", pollResult.Status))
+	}
+}
+
+func (s *Service) completeGeneration(ctx context.Context, generation repository.ImageGeneration, images []imageprovider.OutputImage) error {
+	if len(images) != 1 {
+		return s.failGenerationWithMessage(ctx, generation, "invalid_provider_output", fmt.Sprintf("provider returned %d output images; expected exactly 1", len(images)))
+	}
+
+	outputAsset, err := s.prepareOutputAsset(ctx, images[0])
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "prepare output image", "invalid_provider_output", err)
+	}
+
+	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
+	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
+		return s.failGenerationWithCause(ctx, generation, "store output image", "store_output_failed", err)
+	}
+
+	tx, err := s.beginWriteTxFn(ctx)
+	if err != nil {
+		s.cleanupBlobs([]string{blobPath})
+		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
+	}
+	rollbackAndCleanup := func() {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs([]string{blobPath})
+	}
+
+	if _, err := tx.CreateGenerationAsset(ctx, repository.CreateImageGenerationAssetParams{
+		GenerationID: generation.ID,
+		Role:         string(AssetRoleOutput),
+		SortOrder:    0,
+		BlobPath:     blobPath,
+		MediaType:    outputAsset.MediaType,
+		Filename:     outputAsset.Filename,
+		SizeBytes:    outputAsset.SizeBytes,
+		Sha256:       outputAsset.SHA256,
+		Width:        outputAsset.Width,
+		Height:       outputAsset.Height,
+	}); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "persist output asset", "persist_output_failed", err)
+	}
+
+	completedAt := time.Now().UTC()
+	if err := tx.UpdateGenerationState(ctx, repository.UpdateImageGenerationStateParams{
+		ID:            generation.ID,
+		ProviderName:  s.providerName(),
+		ProviderModel: s.providerModel(),
+		ProviderJobID: generation.ProviderJobID,
+		Status:        string(StatusCompleted),
+		CompletedAt:   &completedAt,
+	}); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "mark image generation completed", "persist_output_failed", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "commit output persistence transaction", "persist_output_failed", err)
+	}
+
+	return nil
+}
+
+func (s *Service) loadInputImages(ctx context.Context, assets []repository.ImageGenerationAsset) ([][]byte, error) {
+	inputAssets := make([]repository.ImageGenerationAsset, 0, len(assets))
+	for _, asset := range assets {
+		if AssetRole(asset.Role) == AssetRoleInput {
+			inputAssets = append(inputAssets, asset)
+		}
+	}
+
+	sort.Slice(inputAssets, func(i, j int) bool {
+		if inputAssets[i].SortOrder == inputAssets[j].SortOrder {
+			return inputAssets[i].ID < inputAssets[j].ID
+		}
+		return inputAssets[i].SortOrder < inputAssets[j].SortOrder
+	})
+
+	images := make([][]byte, 0, len(inputAssets))
+	for _, asset := range inputAssets {
+		data, err := s.blobs.Download(ctx, asset.BlobPath)
+		if err != nil {
+			return nil, fmt.Errorf("download input asset %q: %w", asset.Filename, err)
+		}
+		images = append(images, data)
+	}
+
+	return images, nil
+}
+
+func buildGenerateRequest(generation repository.ImageGeneration, inputImages [][]byte) imageprovider.GenerateRequest {
+	return imageprovider.GenerateRequest{
+		Mode:         imageprovider.Mode(generation.Mode),
+		Prompt:       generation.Prompt,
+		Width:        int(generation.Width),
+		Height:       int(generation.Height),
+		OutputFormat: defaultOutputFormat,
+		NumImages:    int(generation.RequestedImageCount),
+		InputImages:  inputImages,
+	}
+}
+
+func (s *Service) prepareOutputAsset(ctx context.Context, image imageprovider.OutputImage) (preparedAsset, error) {
+	data, mediaType, err := s.resolveOutputImageData(ctx, image)
+	if err != nil {
+		return preparedAsset{}, err
+	}
+
+	mediaType = normalizeMediaType(mediaType)
+	detectedMediaType := normalizeMediaType(http.DetectContentType(data))
+	if mediaType == "" || mediaType == "application/octet-stream" {
+		mediaType = detectedMediaType
+	}
+	if _, ok := supportedOutputMediaTypes[mediaType]; !ok {
+		return preparedAsset{}, fmt.Errorf("unsupported output media type %q", mediaType)
+	}
+
+	sum := sha256.Sum256(data)
+	width, height := detectImageDimensions(data)
+
+	return preparedAsset{
+		Filename:  outputFilename(mediaType),
+		MediaType: mediaType,
+		SizeBytes: int64(len(data)),
+		SHA256:    hex.EncodeToString(sum[:]),
+		Width:     width,
+		Height:    height,
+		Data:      data,
+	}, nil
+}
+
+func (s *Service) resolveOutputImageData(ctx context.Context, image imageprovider.OutputImage) ([]byte, string, error) {
+	if len(image.Data) > 0 {
+		return slices.Clone(image.Data), image.MediaType, nil
+	}
+
+	rawURL := strings.TrimSpace(image.URL)
+	if rawURL == "" {
+		return nil, "", errors.New("provider output is missing image data and URL")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("create output download request: %w", err)
+	}
+
+	resp, err := s.outputHTTPClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download output image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download output image: unexpected status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxOutputImageBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read output image: %w", err)
+	}
+	if int64(len(data)) > maxOutputImageBytes {
+		return nil, "", fmt.Errorf("output image exceeds %d bytes", maxOutputImageBytes)
+	}
+
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+func (s *Service) failGenerationWithCause(ctx context.Context, generation repository.ImageGeneration, action string, code string, cause error) error {
+	if failErr := s.persistGenerationFailure(ctx, generation, code, cause.Error()); failErr != nil {
+		return fmt.Errorf("%s: %w (also failed to persist image generation failure: %v)", action, cause, failErr)
+	}
+
+	return fmt.Errorf("%s: %w", action, cause)
+}
+
+func (s *Service) failGenerationWithMessage(ctx context.Context, generation repository.ImageGeneration, code string, message string) error {
+	if err := s.persistGenerationFailure(ctx, generation, code, message); err != nil {
+		return err
+	}
+
+	return fmt.Errorf("%s", strings.TrimSpace(message))
+}
+
+func (s *Service) persistGenerationFailure(ctx context.Context, generation repository.ImageGeneration, code string, message string) error {
+	completedAt := time.Now().UTC()
+	if err := s.generationRead.UpdateState(ctx, repository.UpdateImageGenerationStateParams{
+		ID:            generation.ID,
+		ProviderName:  s.providerName(),
+		ProviderModel: s.providerModel(),
+		ProviderJobID: generation.ProviderJobID,
+		Status:        string(StatusFailed),
+		ErrorCode:     strings.TrimSpace(code),
+		ErrorMessage:  strings.TrimSpace(message),
+		CompletedAt:   &completedAt,
+	}); err != nil {
+		return fmt.Errorf("mark image generation failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) providerName() string {
+	if metadata, ok := s.provider.(imageprovider.ProviderMetadata); ok {
+		return strings.TrimSpace(metadata.ProviderName())
+	}
+	return ""
+}
+
+func (s *Service) providerModel() string {
+	if metadata, ok := s.provider.(imageprovider.ProviderMetadata); ok {
+		return strings.TrimSpace(metadata.ProviderModel())
+	}
+	return ""
+}
+
+func providerErrorCode(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "provider_timeout"
+	}
+
+	var apiErr imageprovider.APIError
+	if errors.As(err, &apiErr) {
+		return fmt.Sprintf("provider_http_%d", apiErr.StatusCode)
+	}
+
+	return "provider_request_failed"
+}
+
 type preparedAsset struct {
 	Filename  string
 	MediaType string
@@ -353,6 +730,36 @@ func buildOutputBlobPath(sessionID, generationID, filename string) string {
 		generationID,
 		filenames.Sanitize(filename, defaultAssetFilename),
 	)
+}
+
+func outputFilename(mediaType string) string {
+	switch mediaType {
+	case "image/png":
+		return defaultOutputFilenamePrefix + ".png"
+	case "image/jpeg":
+		return defaultOutputFilenamePrefix + ".jpg"
+	case "image/webp":
+		return defaultOutputFilenamePrefix + ".webp"
+	}
+
+	extensions, _ := mime.ExtensionsByType(mediaType)
+	if len(extensions) == 0 {
+		return defaultOutputFilenamePrefix
+	}
+
+	return defaultOutputFilenamePrefix + extensions[0]
+}
+
+func normalizeMediaType(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if idx := strings.Index(value, ";"); idx >= 0 {
+		value = value[:idx]
+	}
+
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func resolutionByKey(key string) (Resolution, bool) {
@@ -481,6 +888,10 @@ func (t repositoryWriteTx) CreateGeneration(ctx context.Context, params reposito
 
 func (t repositoryWriteTx) CreateGenerationAsset(ctx context.Context, params repository.CreateImageGenerationAssetParams) (repository.ImageGenerationAsset, error) {
 	return repository.NewImageGenerationAssetRepository(t.tx).Create(ctx, params)
+}
+
+func (t repositoryWriteTx) UpdateGenerationState(ctx context.Context, params repository.UpdateImageGenerationStateParams) error {
+	return repository.NewImageGenerationRepository(t.tx).UpdateState(ctx, params)
 }
 
 func (t repositoryWriteTx) Commit(ctx context.Context) error {

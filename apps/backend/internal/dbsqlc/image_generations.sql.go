@@ -278,16 +278,20 @@ func (q *Queries) ListImageGenerationsBySession(ctx context.Context, sessionID p
 
 const updateImageGenerationState = `-- name: UpdateImageGenerationState :execrows
 UPDATE image_generations
-SET provider_job_id = $2,
-    status = $3,
-    error_code = $4,
-    error_message = $5,
-    completed_at = $6
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = $4,
+    status = $5,
+    error_code = $6,
+    error_message = $7,
+    completed_at = $8
 WHERE id = $1
 `
 
 type UpdateImageGenerationStateParams struct {
 	ID            pgtype.UUID        `json:"id"`
+	ProviderName  string             `json:"provider_name"`
+	ProviderModel string             `json:"provider_model"`
 	ProviderJobID pgtype.Text        `json:"provider_job_id"`
 	Status        string             `json:"status"`
 	ErrorCode     pgtype.Text        `json:"error_code"`
@@ -298,6 +302,8 @@ type UpdateImageGenerationStateParams struct {
 func (q *Queries) UpdateImageGenerationState(ctx context.Context, arg UpdateImageGenerationStateParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateImageGenerationState,
 		arg.ID,
+		arg.ProviderName,
+		arg.ProviderModel,
 		arg.ProviderJobID,
 		arg.Status,
 		arg.ErrorCode,
