@@ -769,6 +769,9 @@ func validateOutputImageURL(raw string) (*url.URL, error) {
 	if !strings.EqualFold(parsed.Scheme, "https") {
 		return nil, fmt.Errorf("provider output URL must use HTTPS")
 	}
+	if parsed.User != nil {
+		return nil, fmt.Errorf("provider output URL is invalid")
+	}
 
 	hostname := parsed.Hostname()
 	if hostname == "" {

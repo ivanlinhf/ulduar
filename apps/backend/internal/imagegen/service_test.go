@@ -308,6 +308,11 @@ func TestValidateOutputImageURL(t *testing.T) {
 			wantErr: "must use HTTPS",
 		},
 		{
+			name:    "rejects userinfo",
+			raw:     "https://user:pass@cdn.example.com/output.png",
+			wantErr: "invalid",
+		},
+		{
 			name:    "rejects localhost",
 			raw:     "https://localhost/output.png",
 			wantErr: "host is not allowed",

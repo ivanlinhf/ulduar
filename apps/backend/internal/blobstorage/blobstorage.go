@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -82,11 +83,7 @@ func (c *Client) download(ctx context.Context, blobPath string, maxBytes int64) 
 	}
 	defer resp.Body.Close()
 
-	reader := io.Reader(resp.Body)
-	if maxBytes > 0 {
-		reader = io.LimitReader(resp.Body, maxBytes+1)
-	}
-	data, err := io.ReadAll(reader)
+	data, err := io.ReadAll(limitedDownloadReader(resp.Body, maxBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read blob %s: %w", blobPath, err)
 	}
@@ -95,4 +92,15 @@ func (c *Client) download(ctx context.Context, blobPath string, maxBytes int64) 
 	}
 
 	return data, nil
+}
+
+func limitedDownloadReader(r io.Reader, maxBytes int64) io.Reader {
+	if maxBytes <= 0 {
+		return r
+	}
+	limit := maxBytes
+	if maxBytes < math.MaxInt64 {
+		limit = maxBytes + 1
+	}
+	return io.LimitReader(r, limit)
 }
