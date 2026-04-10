@@ -12,7 +12,9 @@ import (
 	_ "image/png"
 	"io"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -125,7 +127,7 @@ func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *S
 	if outputDownloadTimeout <= 0 {
 		outputDownloadTimeout = defaultOutputDownloadTimeout
 	}
-	service.outputHTTPClient = &http.Client{Timeout: outputDownloadTimeout}
+	service.outputHTTPClient = newOutputHTTPClient(outputDownloadTimeout)
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
 			tx, err := db.BeginTx(ctx, pgx.TxOptions{})
@@ -508,15 +510,18 @@ func (s *Service) prepareOutputAsset(ctx context.Context, image imageprovider.Ou
 
 func (s *Service) resolveOutputImageData(ctx context.Context, image imageprovider.OutputImage) ([]byte, string, error) {
 	if len(image.Data) > 0 {
+		if int64(len(image.Data)) > maxOutputImageBytes {
+			return nil, "", fmt.Errorf("inline output image exceeds %d bytes", maxOutputImageBytes)
+		}
 		return slices.Clone(image.Data), image.MediaType, nil
 	}
 
-	rawURL := strings.TrimSpace(image.URL)
-	if rawURL == "" {
-		return nil, "", errors.New("provider output is missing image data and URL")
+	outputURL, err := validateOutputImageURL(image.URL)
+	if err != nil {
+		return nil, "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, outputURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("create output download request: %w", err)
 	}
@@ -610,6 +615,43 @@ func readBytesWithinLimit(r io.Reader, maxBytes int64) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func newOutputHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func validateOutputImageURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil {
+		return "", fmt.Errorf("provider output URL is invalid")
+	}
+	if !parsed.IsAbs() || parsed.Host == "" {
+		return "", fmt.Errorf("provider output URL must be an absolute HTTPS URL")
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return "", fmt.Errorf("provider output URL must use HTTPS")
+	}
+
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return "", fmt.Errorf("provider output URL must include a host")
+	}
+	if strings.EqualFold(hostname, "localhost") {
+		return "", fmt.Errorf("provider output URL host is not allowed")
+	}
+	if ip := net.ParseIP(hostname); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
+			return "", fmt.Errorf("provider output URL host is not allowed")
+		}
+	}
+
+	return parsed.String(), nil
 }
 
 type preparedAsset struct {

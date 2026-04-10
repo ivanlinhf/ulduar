@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -284,6 +284,67 @@ func TestReadBytesWithinLimit(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+}
+
+func TestValidateOutputImageURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "accepts https url",
+			raw:  "https://cdn.example.com/output.png",
+			want: "https://cdn.example.com/output.png",
+		},
+		{
+			name:    "rejects non https",
+			raw:     "http://cdn.example.com/output.png",
+			wantErr: "must use HTTPS",
+		},
+		{
+			name:    "rejects localhost",
+			raw:     "https://localhost/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
+			name:    "rejects link local ip",
+			raw:     "https://169.254.169.254/output.png",
+			wantErr: "host is not allowed",
+		},
+		{
+			name:    "rejects relative url",
+			raw:     "/output.png",
+			wantErr: "absolute HTTPS URL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := validateOutputImageURL(tt.raw)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("validateOutputImageURL() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("validateOutputImageURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestCreatePendingGenerationPersistsGenerationAndUploadsInputs(t *testing.T) {
@@ -572,12 +633,6 @@ func TestExecuteGenerationCompletesTextToImageAndPersistsOutput(t *testing.T) {
 func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing.T) {
 	t.Parallel()
 
-	outputServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(testPNGData())
-	}))
-	defer outputServer.Close()
-
 	provider := &stubImageProvider{
 		name:  "azure_foundry",
 		model: "FLUX.2-pro",
@@ -590,7 +645,7 @@ func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing
 			return imageprovider.PollResult{
 				Status: imageprovider.PollStatusCompleted,
 				Images: []imageprovider.OutputImage{{
-					URL: outputServer.URL + "/output.png",
+					URL: "https://cdn.example.com/output.png",
 				}},
 			}, nil
 		},
@@ -616,11 +671,16 @@ func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing
 	}
 	tx := &stubWriteTx{}
 	service := &Service{
-		blobs:            blobStore,
-		provider:         provider,
-		outputHTTPClient: outputServer.Client(),
-		beginWriteTxFn:   func(context.Context) (writeTx, error) { return tx, nil },
-		generationRead:   generationRepo,
+		blobs:    blobStore,
+		provider: provider,
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://cdn.example.com/output.png" {
+				t.Fatalf("req.URL.String() = %q", req.URL.String())
+			}
+			return newHTTPResponse(http.StatusOK, "image/png", testPNGData()), nil
+		}},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: generationRepo,
 		assetRead: stubAssetReader{
 			assets: []repository.ImageGenerationAsset{{
 				ID:           "asset-input",
@@ -784,6 +844,42 @@ func TestExecuteGenerationCleansUpOutputBlobWhenPersistenceFails(t *testing.T) {
 	}
 }
 
+func TestResolveOutputImageDataRejectsOversizedInlineData(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+
+	_, _, err := service.resolveOutputImageData(context.Background(), imageprovider.OutputImage{
+		Data: make([]byte, int(maxOutputImageBytes)+1),
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "inline output image exceeds") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveOutputImageDataDoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		outputHTTPClient: stubHTTPDoer{do: func(req *http.Request) (*http.Response, error) {
+			return newHTTPResponse(http.StatusFound, "", nil), nil
+		}},
+	}
+
+	_, _, err := service.resolveOutputImageData(context.Background(), imageprovider.OutputImage{
+		URL: "https://cdn.example.com/source.png",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected status 302") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 type stubBlobStore struct {
 	uploads      []stubBlobUpload
 	deletedPaths []string
@@ -793,6 +889,27 @@ type stubBlobStore struct {
 type stubBlobUpload struct {
 	blobPath    string
 	contentType string
+}
+
+type stubHTTPDoer struct {
+	do func(req *http.Request) (*http.Response, error)
+}
+
+func (s stubHTTPDoer) Do(req *http.Request) (*http.Response, error) {
+	return s.do(req)
+}
+
+func newHTTPResponse(statusCode int, contentType string, data []byte) *http.Response {
+	header := make(http.Header)
+	if contentType != "" {
+		header.Set("Content-Type", contentType)
+	}
+
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     header,
+		Body:       io.NopCloser(bytes.NewReader(data)),
+	}
 }
 
 func (s *stubBlobStore) Upload(ctx context.Context, blobPath string, data []byte, contentType string) error {
