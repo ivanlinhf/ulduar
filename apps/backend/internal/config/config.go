@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
+	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
 )
 
 const (
@@ -56,7 +57,8 @@ type Config struct {
 // ImageConfig groups all image-generation provider settings.
 // Each nested struct corresponds to one concrete provider adapter.
 type ImageConfig struct {
-	AzureFoundry FluxConfig
+	MaxReferenceImageBytes int64
+	AzureFoundry           FluxConfig
 }
 
 // FluxConfig holds settings for the Azure Foundry FLUX adapter.
@@ -101,6 +103,7 @@ func Load() (Config, error) {
 		AzureOpenAISystemPrompt: envOrDefaultUnlessSet("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
 		AzureOpenAIWebSearch:    webSearchEnabled,
 		Image: ImageConfig{
+			MaxReferenceImageBytes: int64EnvOrDefault("IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES", imagegen.DefaultMaxReferenceImageBytes),
 			AzureFoundry: FluxConfig{
 				Endpoint:       strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_ENDPOINT")),
 				APIKey:         strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_API_KEY")),
@@ -157,6 +160,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := validatePositiveDuration(c.RunFinalizationTimeout, "chat run finalization timeout"); err != nil {
+		return err
+	}
+	if err := validatePositiveInt64(c.Image.MaxReferenceImageBytes, "image generation max reference image bytes"); err != nil {
 		return err
 	}
 
@@ -266,9 +272,31 @@ func boolEnvOrDefault(key string, fallback bool) (bool, error) {
 	return parsed, nil
 }
 
+func int64EnvOrDefault(key string, fallback int64) int64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return -1
+	}
+
+	return parsed
+}
+
 func validatePositiveDuration(value time.Duration, name string) error {
 	if value <= 0 {
 		return fmt.Errorf("%s must be a positive duration", name)
+	}
+
+	return nil
+}
+
+func validatePositiveInt64(value int64, name string) error {
+	if value <= 0 {
+		return fmt.Errorf("%s must be a positive integer", name)
 	}
 
 	return nil

@@ -62,15 +62,24 @@ type assetReader interface {
 }
 
 type Service struct {
-	blobs          BlobStore
-	beginWriteTxFn func(ctx context.Context) (writeTx, error)
-	generationRead generationReader
-	assetRead      assetReader
+	blobs                  BlobStore
+	maxReferenceImageBytes int64
+	beginWriteTxFn         func(ctx context.Context) (writeTx, error)
+	generationRead         generationReader
+	assetRead              assetReader
 }
 
-func NewService(db *pgxpool.Pool, blobs BlobStore) *Service {
+type ServiceOptions struct {
+	MaxReferenceImageBytes int64
+}
+
+func NewService(db *pgxpool.Pool, blobs BlobStore, options ServiceOptions) *Service {
 	service := &Service{
-		blobs: blobs,
+		blobs:                  blobs,
+		maxReferenceImageBytes: options.MaxReferenceImageBytes,
+	}
+	if service.maxReferenceImageBytes <= 0 {
+		service.maxReferenceImageBytes = DefaultMaxReferenceImageBytes
 	}
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
@@ -93,7 +102,12 @@ func (s *Service) CreatePendingGeneration(ctx context.Context, params CreateGene
 		return GenerationView{}, err
 	}
 
-	resolution, preparedAssets, prompt, err := validateCreateGenerationParams(params)
+	maxReferenceImageBytes := s.maxReferenceImageBytes
+	if maxReferenceImageBytes <= 0 {
+		maxReferenceImageBytes = DefaultMaxReferenceImageBytes
+	}
+
+	resolution, preparedAssets, prompt, err := validateCreateGenerationParams(params, maxReferenceImageBytes)
 	if err != nil {
 		return GenerationView{}, err
 	}
@@ -215,7 +229,7 @@ type preparedAsset struct {
 	Data      []byte
 }
 
-func validateCreateGenerationParams(params CreateGenerationParams) (Resolution, []preparedAsset, string, error) {
+func validateCreateGenerationParams(params CreateGenerationParams, maxReferenceImageBytes int64) (Resolution, []preparedAsset, string, error) {
 	prompt := strings.TrimSpace(params.Prompt)
 	if prompt == "" {
 		return Resolution{}, nil, "", ValidationError{
@@ -263,7 +277,7 @@ func validateCreateGenerationParams(params CreateGenerationParams) (Resolution, 
 
 	preparedAssets := make([]preparedAsset, 0, len(params.ReferenceImages))
 	for _, upload := range params.ReferenceImages {
-		asset, err := prepareInputAsset(upload)
+		asset, err := prepareInputAsset(upload, maxReferenceImageBytes)
 		if err != nil {
 			return Resolution{}, nil, "", err
 		}
@@ -274,11 +288,19 @@ func validateCreateGenerationParams(params CreateGenerationParams) (Resolution, 
 	return resolution, preparedAssets, prompt, nil
 }
 
-func prepareInputAsset(upload InputAssetUpload) (preparedAsset, error) {
+func prepareInputAsset(upload InputAssetUpload, maxReferenceImageBytes int64) (preparedAsset, error) {
+	filename := sanitizeFilename(upload.Filename)
 	if len(upload.Data) == 0 {
 		return preparedAsset{}, ValidationError{
 			StatusCode: http.StatusBadRequest,
-			Message:    fmt.Sprintf("reference image %q is empty", sanitizeFilename(upload.Filename)),
+			Message:    fmt.Sprintf("reference image %q is empty", filename),
+		}
+	}
+
+	if maxReferenceImageBytes > 0 && int64(len(upload.Data)) > maxReferenceImageBytes {
+		return preparedAsset{}, ValidationError{
+			StatusCode: http.StatusRequestEntityTooLarge,
+			Message:    fmt.Sprintf("reference image %q exceeds %d bytes", filename, maxReferenceImageBytes),
 		}
 	}
 
@@ -286,7 +308,7 @@ func prepareInputAsset(upload InputAssetUpload) (preparedAsset, error) {
 	if _, ok := supportedInputMediaTypes[mediaType]; !ok {
 		return preparedAsset{}, ValidationError{
 			StatusCode: http.StatusUnsupportedMediaType,
-			Message:    fmt.Sprintf("reference image %q has unsupported media type %q", sanitizeFilename(upload.Filename), mediaType),
+			Message:    fmt.Sprintf("reference image %q has unsupported media type %q", filename, mediaType),
 		}
 	}
 
@@ -294,7 +316,7 @@ func prepareInputAsset(upload InputAssetUpload) (preparedAsset, error) {
 	width, height := detectImageDimensions(upload.Data)
 
 	return preparedAsset{
-		Filename:  sanitizeFilename(upload.Filename),
+		Filename:  filename,
 		MediaType: mediaType,
 		SizeBytes: int64(len(upload.Data)),
 		SHA256:    hex.EncodeToString(sum[:]),

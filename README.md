@@ -62,6 +62,8 @@ Backend app startup validates these:
   Optional duration for streamed Responses API calls. Default `10m`.
 - `CHAT_RUN_FINALIZATION_TIMEOUT`
   Optional duration for persisting final run/message state after provider completion or failure. Default `15s`.
+- `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES`
+  Optional positive integer byte limit for each image-generation reference upload. Default `20971520` (20 MiB).
 - `AZURE_FOUNDRY_ENDPOINT`
   Optional Azure AI Foundry base URL for the experimental FLUX adapter config. No backend routes use this yet.
 - `AZURE_FOUNDRY_API_KEY`
@@ -137,6 +139,7 @@ export AZURE_OPENAI_ENABLE_WEB_SEARCH=false
 export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s
+export IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES=20971520
 # Optional Azure Foundry FLUX config for future image-generation wiring.
 # export AZURE_FOUNDRY_ENDPOINT=https://your-foundry-resource.services.ai.azure.com
 # export AZURE_FOUNDRY_API_KEY=replace-me

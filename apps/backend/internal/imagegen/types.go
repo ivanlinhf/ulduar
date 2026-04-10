@@ -30,9 +30,10 @@ const (
 )
 
 const (
-	MaxReferenceImages   = 4
-	OutputImageCountV1   = 1
-	defaultAssetFilename = "image"
+	MaxReferenceImages                  = 4
+	OutputImageCountV1                  = 1
+	DefaultMaxReferenceImageBytes int64 = 20 << 20
+	defaultAssetFilename                = "image"
 )
 
 type Resolution struct {

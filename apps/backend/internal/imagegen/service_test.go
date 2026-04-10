@@ -143,7 +143,7 @@ func TestValidateCreateGenerationParams(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, _, _, err := validateCreateGenerationParams(tt.params)
+			_, _, _, err := validateCreateGenerationParams(tt.params, DefaultMaxReferenceImageBytes)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -159,6 +159,41 @@ func TestValidateCreateGenerationParams(t *testing.T) {
 				t.Fatalf("validationErr.Message = %q, want substring %q", validationErr.Message, tt.wantSubstr)
 			}
 		})
+	}
+}
+
+func TestValidateCreateGenerationParamsRejectsOversizedReferenceImage(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, err := validateCreateGenerationParams(CreateGenerationParams{
+		SessionID:     "11111111-1111-1111-1111-111111111111",
+		Mode:          ModeImageEdit,
+		Prompt:        "draw",
+		ResolutionKey: "1024x1024",
+		ReferenceImages: []InputAssetUpload{{
+			Filename: "ref.png",
+			Data: []byte{
+				0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n',
+				0x00, 0x00, 0x00, 0x0d, 'I', 'H', 'D', 'R',
+				0x00, 0x00, 0x00, 0x01,
+				0x00, 0x00, 0x00, 0x01,
+				0x08, 0x02, 0x00, 0x00, 0x00,
+			},
+		}},
+	}, 8)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	validationErr, ok := err.(ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if validationErr.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("validationErr.StatusCode = %d, want %d", validationErr.StatusCode, http.StatusRequestEntityTooLarge)
+	}
+	if !strings.Contains(validationErr.Message, "exceeds 8 bytes") {
+		t.Fatalf("validationErr.Message = %q", validationErr.Message)
 	}
 }
 
