@@ -74,13 +74,14 @@ func NewClient(endpoint, apiKey string, opts ...ClientOptions) (*Client, error) 
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(apiKey) == "" {
+	trimmedKey := strings.TrimSpace(apiKey)
+	if trimmedKey == "" {
 		return nil, fmt.Errorf("azure foundry api key must not be empty")
 	}
 
 	c := &Client{
 		endpoint:   normalized,
-		apiKey:     apiKey,
+		apiKey:     trimmedKey,
 		apiVersion: defaultAPIVersion,
 		model:      defaultModel,
 		modelPath:  defaultModelPath,
@@ -122,10 +123,15 @@ func (c *Client) generateURL() string {
 }
 
 // jobURL returns the polling URL for an async job.
-// It prefers job.PollingURL when present, otherwise constructs one from JobID.
+// It prefers job.PollingURL when it is a valid absolute http/https URL,
+// otherwise constructs one from JobID.
 func (c *Client) jobURL(job imageprovider.ProviderJob) string {
 	if job.PollingURL != "" {
-		return job.PollingURL
+		parsed, err := url.Parse(job.PollingURL)
+		if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
+			return job.PollingURL
+		}
+		// Invalid polling URL — fall back to constructed URL.
 	}
 	u, _ := url.JoinPath(c.endpoint, providerPathPrefix, c.modelPath, job.JobID)
 	return u + "?api-version=" + url.QueryEscape(c.apiVersion)

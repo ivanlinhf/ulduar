@@ -68,7 +68,7 @@ func main() {
 	})
 
 	if cfg.Image.AzureFoundry.Endpoint != "" {
-		fluxClient, err := azurefoundry.NewClient(
+		if _, err := azurefoundry.NewClient(
 			cfg.Image.AzureFoundry.Endpoint,
 			cfg.Image.AzureFoundry.APIKey,
 			azurefoundry.ClientOptions{
@@ -77,17 +77,15 @@ func main() {
 				ModelPath:      cfg.Image.AzureFoundry.ModelPath,
 				RequestTimeout: cfg.Image.AzureFoundry.RequestTimeout,
 			},
-		)
-		if err != nil {
+		); err != nil {
 			slog.Error("connect azure foundry flux", "error", err)
 			return
 		}
 		slog.Info("image provider ready",
 			"provider", "flux",
 			"model", cfg.Image.AzureFoundry.Model,
-			"endpoint", fluxClient.Endpoint(),
+			"endpoint", cfg.Image.AzureFoundry.Endpoint,
 		)
-		_ = fluxClient // reserved for future image generation handlers
 	}
 
 	server := &http.Server{
