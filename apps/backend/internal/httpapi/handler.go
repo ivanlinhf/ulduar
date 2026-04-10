@@ -170,6 +170,19 @@ type imageGenerationAssetResult struct {
 
 const imageGenerationMultipartMemoryBytes int64 = 1 << 20
 
+const (
+	imageGenerationAssetContentPathSegmentCount  = 9
+	imageGenerationAssetContentIndexAPI          = 0
+	imageGenerationAssetContentIndexVersion      = 1
+	imageGenerationAssetContentIndexSessions     = 2
+	imageGenerationAssetContentIndexSessionID    = 3
+	imageGenerationAssetContentIndexGenerations  = 4
+	imageGenerationAssetContentIndexGenerationID = 5
+	imageGenerationAssetContentIndexAssets       = 6
+	imageGenerationAssetContentIndexAssetID      = 7
+	imageGenerationAssetContentIndexContent      = 8
+)
+
 func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler {
 	handlerOptions := HandlerOptions{
 		RequestTimeout:                        15 * time.Second,
@@ -790,11 +803,11 @@ func decodeCreateImageGenerationJSONRequest(r *http.Request) (imagegen.CreateGen
 }
 
 func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestBytes int64) (imagegen.CreateGenerationParams, error) {
-	inMemoryLimit := maxRequestBytes
-	if inMemoryLimit > imageGenerationMultipartMemoryBytes {
-		inMemoryLimit = imageGenerationMultipartMemoryBytes
+	multipartMemoryLimit := maxRequestBytes
+	if multipartMemoryLimit > imageGenerationMultipartMemoryBytes {
+		multipartMemoryLimit = imageGenerationMultipartMemoryBytes
 	}
-	if err := r.ParseMultipartForm(inMemoryLimit); err != nil {
+	if err := r.ParseMultipartForm(multipartMemoryLimit); err != nil {
 		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
 	}
 	defer r.MultipartForm.RemoveAll()
@@ -1131,16 +1144,16 @@ func shouldBypassTimeoutBuffering(r *http.Request) bool {
 	}
 
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	return len(parts) == 9 &&
-		parts[0] == "api" &&
-		parts[1] == "v1" &&
-		parts[2] == "sessions" &&
-		parts[3] != "" &&
-		parts[4] == "image-generations" &&
-		parts[5] != "" &&
-		parts[6] == "assets" &&
-		parts[7] != "" &&
-		parts[8] == "content"
+	return len(parts) == imageGenerationAssetContentPathSegmentCount &&
+		parts[imageGenerationAssetContentIndexAPI] == "api" &&
+		parts[imageGenerationAssetContentIndexVersion] == "v1" &&
+		parts[imageGenerationAssetContentIndexSessions] == "sessions" &&
+		parts[imageGenerationAssetContentIndexSessionID] != "" &&
+		parts[imageGenerationAssetContentIndexGenerations] == "image-generations" &&
+		parts[imageGenerationAssetContentIndexGenerationID] != "" &&
+		parts[imageGenerationAssetContentIndexAssets] == "assets" &&
+		parts[imageGenerationAssetContentIndexAssetID] != "" &&
+		parts[imageGenerationAssetContentIndexContent] == "content"
 }
 
 func (h *Handler) timeoutForRequest(r *http.Request) time.Duration {
