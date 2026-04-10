@@ -226,6 +226,7 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}", handler.getImageGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream", handler.streamImageGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content", handler.getImageGenerationAssetContentHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content", handler.getImageGenerationImageContentHandler)
 	mux.HandleFunc("/", notFoundHandler)
 
 	return withMiddleware(mux, requestIDMiddleware, recoverMiddleware, corsMiddleware, loggingMiddleware, handler.timeoutMiddleware)
@@ -490,6 +491,38 @@ func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(content.Data); err != nil {
 		slog.ErrorContext(r.Context(), "write image generation asset content", logFields(r.Context(), "error", err)...)
+	}
+}
+
+func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r *http.Request) {
+	if h.imageGenerationService == nil {
+		writeImageGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	content, err := h.imageGenerationService.GetAssetContent(
+		r.Context(),
+		r.PathValue("sessionId"),
+		r.PathValue("generationId"),
+		r.PathValue("imageId"),
+	)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	if content.MediaType != "" {
+		w.Header().Set("Content-Type", content.MediaType)
+	}
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if content.Filename != "" {
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
+	}
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(content.Data); err != nil {
+		slog.ErrorContext(r.Context(), "write image generation image content", logFields(r.Context(), "error", err)...)
 	}
 }
 
@@ -966,7 +999,7 @@ func imageGenerationAssetContentURL(sessionID, generationID, assetID string) str
 		url.PathEscape(sessionID) +
 		"/image-generations/" +
 		url.PathEscape(generationID) +
-		"/assets/" +
+		"/images/" +
 		url.PathEscape(assetID) +
 		"/content"
 }

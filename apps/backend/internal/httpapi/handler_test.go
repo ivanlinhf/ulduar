@@ -895,7 +895,7 @@ func TestGetImageGenerationHandlerIncludesScopedOutputContentURL(t *testing.T) {
 	if len(payload.OutputAssets) != 1 {
 		t.Fatalf("len(payload.OutputAssets) = %d", len(payload.OutputAssets))
 	}
-	wantURL := "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content"
+	wantURL := "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content"
 	if payload.OutputAssets[0].ContentURL != wantURL {
 		t.Fatalf("payload.OutputAssets[0].ContentURL = %q, want %q", payload.OutputAssets[0].ContentURL, wantURL)
 	}
@@ -942,6 +942,115 @@ func TestGetImageGenerationAssetContentHandler(t *testing.T) {
 	}
 	if !bytes.Equal(recorder.Body.Bytes(), testPNGData()) {
 		t.Fatalf("body bytes mismatch")
+	}
+}
+
+func TestGetImageGenerationImageContentHandlerSuccess(t *testing.T) {
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		getAssetContentFn: func(_ context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error) {
+			if sessionID != "11111111-1111-1111-1111-111111111111" {
+				t.Fatalf("sessionID = %q", sessionID)
+			}
+			if generationID != "55555555-5555-5555-5555-555555555555" {
+				t.Fatalf("generationID = %q", generationID)
+			}
+			if assetID != "77777777-7777-7777-7777-777777777777" {
+				t.Fatalf("assetID = %q", assetID)
+			}
+			return imagegen.AssetContent{
+				Filename:  "output.png",
+				MediaType: "image/png",
+				Data:      testPNGData(),
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
+	if got := recorder.Header().Get("Content-Disposition"); !strings.Contains(got, "output.png") {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), testPNGData()) {
+		t.Fatalf("body bytes mismatch")
+	}
+}
+
+func TestGetImageGenerationImageContentHandlerNotFound(t *testing.T) {
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		getAssetContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
+			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image generation asset not found"}
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/99999999-9999-9999-9999-999999999999/content",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+}
+
+func TestGetImageGenerationImageContentHandlerMismatchedIDs(t *testing.T) {
+	service := &fakeImageGenerationService{
+		providerConfigured: true,
+		getAssetContentFn: func(_ context.Context, _, _, _ string) (imagegen.AssetContent, error) {
+			return imagegen.AssetContent{}, imagegen.ValidationError{StatusCode: http.StatusNotFound, Message: "image generation asset not found"}
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{ImageGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetImageGenerationImageContentHandlerUnavailableWithoutService(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
 	}
 }
 
@@ -998,7 +1107,7 @@ func TestStreamImageGenerationHandlerSuccessFlow(t *testing.T) {
 		"event: image_generation.running",
 		"event: image_generation.completed",
 		`"generationId":"55555555-5555-5555-5555-555555555555"`,
-		`"contentUrl":"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content"`,
+		`"contentUrl":"/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content"`,
 	} {
 		if !strings.Contains(body, fragment) {
 			t.Fatalf("stream body missing %q:\n%s", fragment, body)
