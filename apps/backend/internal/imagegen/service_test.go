@@ -348,22 +348,55 @@ func TestValidateOutputImageURL(t *testing.T) {
 	}
 }
 
-func TestValidateOutputImageHostRejectsResolvedPrivateAddress(t *testing.T) {
+func TestValidateOutputImageHostRejectsResolvedRestrictedAddress(t *testing.T) {
 	t.Parallel()
 
-	err := validateOutputImageHost(context.Background(), stubHostnameResolver{
-		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
-			if host != "cdn.example.com" {
-				t.Fatalf("host = %q", host)
-			}
-			return []net.IPAddr{{IP: net.ParseIP("10.0.0.7")}}, nil
-		},
-	}, "cdn.example.com")
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	tests := []struct {
+		name string
+		ip   string
+	}{
+		{name: "private", ip: "10.0.0.7"},
+		{name: "loopback", ip: "127.0.0.1"},
+		{name: "link local unicast", ip: "169.254.1.10"},
+		{name: "multicast", ip: "224.0.0.1"},
+		{name: "unspecified", ip: "0.0.0.0"},
 	}
-	if !strings.Contains(err.Error(), "host is not allowed") {
-		t.Fatalf("err = %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOutputImageHost(context.Background(), stubHostnameResolver{
+				lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+					if host != "cdn.example.com" {
+						t.Fatalf("host = %q", host)
+					}
+					return []net.IPAddr{{IP: net.ParseIP(tt.ip)}}, nil
+				},
+			}, "cdn.example.com")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), "host is not allowed") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestEffectiveOutputResolver(t *testing.T) {
+	t.Parallel()
+
+	custom := stubHostnameResolver{
+		lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			return nil, nil
+		},
+	}
+	if _, ok := effectiveOutputResolver(custom).(stubHostnameResolver); !ok {
+		t.Fatalf("effectiveOutputResolver(custom) did not return the provided resolver type")
+	}
+	if got := effectiveOutputResolver(nil); got != net.DefaultResolver {
+		t.Fatalf("effectiveOutputResolver(nil) = %#v, want net.DefaultResolver", got)
 	}
 }
 
@@ -690,10 +723,12 @@ func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing
 		},
 	}
 	tx := &stubWriteTx{}
+	resolverCalled := false
 	service := &Service{
 		blobs:    blobStore,
 		provider: provider,
 		outputResolver: stubHostnameResolver{lookupIPAddr: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+			resolverCalled = true
 			if host != "cdn.example.com" {
 				t.Fatalf("host = %q", host)
 			}
@@ -757,6 +792,9 @@ func TestExecuteGenerationBuildsImageEditRequestAndCompletesAsyncPoll(t *testing
 	}
 	if tx.updatedStates[0].ProviderJobID != "job-123" {
 		t.Fatalf("completed state provider job id = %q", tx.updatedStates[0].ProviderJobID)
+	}
+	if !resolverCalled {
+		t.Fatal("expected output hostname resolver to be called")
 	}
 }
 
