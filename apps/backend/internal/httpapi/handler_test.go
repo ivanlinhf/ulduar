@@ -535,6 +535,11 @@ func TestShouldBypassTimeoutBuffering(t *testing.T) {
 			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/stream", nil),
 			want: false,
 		},
+		{
+			name: "asset content prefix only",
+			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content/other", nil),
+			want: false,
+		},
 	}
 
 	for _, test := range tests {

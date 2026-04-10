@@ -790,11 +790,11 @@ func decodeCreateImageGenerationJSONRequest(r *http.Request) (imagegen.CreateGen
 }
 
 func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestBytes int64) (imagegen.CreateGenerationParams, error) {
-	maxMemory := maxRequestBytes
-	if maxMemory > imageGenerationMultipartMemoryBytes {
-		maxMemory = imageGenerationMultipartMemoryBytes
+	inMemoryLimit := maxRequestBytes
+	if inMemoryLimit > imageGenerationMultipartMemoryBytes {
+		inMemoryLimit = imageGenerationMultipartMemoryBytes
 	}
-	if err := r.ParseMultipartForm(maxMemory); err != nil {
+	if err := r.ParseMultipartForm(inMemoryLimit); err != nil {
 		return imagegen.CreateGenerationParams{}, classifyDecodeError(err)
 	}
 	defer r.MultipartForm.RemoveAll()
@@ -1126,10 +1126,21 @@ func (h *Handler) timeoutMiddleware(next http.Handler) http.Handler {
 }
 
 func shouldBypassTimeoutBuffering(r *http.Request) bool {
-	return r.Method == http.MethodGet &&
-		strings.Contains(r.URL.Path, "/image-generations/") &&
-		strings.Contains(r.URL.Path, "/assets/") &&
-		strings.HasSuffix(r.URL.Path, "/content")
+	if r.Method != http.MethodGet {
+		return false
+	}
+
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	return len(parts) == 9 &&
+		parts[0] == "api" &&
+		parts[1] == "v1" &&
+		parts[2] == "sessions" &&
+		parts[3] != "" &&
+		parts[4] == "image-generations" &&
+		parts[5] != "" &&
+		parts[6] == "assets" &&
+		parts[7] != "" &&
+		parts[8] == "content"
 }
 
 func (h *Handler) timeoutForRequest(r *http.Request) time.Duration {
