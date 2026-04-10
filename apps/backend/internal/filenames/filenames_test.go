@@ -12,6 +12,7 @@ func TestSanitize(t *testing.T) {
 		want     string
 	}{
 		{name: "basename and replace unsafe chars", input: "../ref image.png", fallback: "file", want: "ref-image.png"},
+		{name: "collapse consecutive unsafe chars", input: "ref@@@###image.png", fallback: "file", want: "ref-image.png"},
 		{name: "trim empty to fallback", input: "   ", fallback: "file", want: "file"},
 		{name: "trim unsafe-only to fallback", input: "???", fallback: "file", want: "file"},
 	}

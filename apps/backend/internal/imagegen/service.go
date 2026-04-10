@@ -71,6 +71,8 @@ type ServiceOptions struct {
 	MaxReferenceImageBytes int64
 }
 
+// NewService accepts zero or one ServiceOptions value.
+// When options are omitted, defaults are applied.
 func NewService(db *pgxpool.Pool, blobs BlobStore, options ...ServiceOptions) *Service {
 	resolvedOptions := ServiceOptions{}
 	if len(options) > 0 {
