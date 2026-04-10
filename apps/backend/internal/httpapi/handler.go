@@ -715,6 +715,8 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 
 	switch {
 	case mediaType == "" || mediaType == "application/json":
+		// Missing Content-Type defaults to JSON to match the existing chat create
+		// handler behavior and keep simple POST clients working without headers.
 		return decodeCreateImageGenerationJSONRequest(r)
 	case mediaType == "multipart/form-data":
 		return decodeCreateImageGenerationMultipartRequest(r, maxRequestBytes)
@@ -726,6 +728,8 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// optionalRequestMediaType parses Content-Type when present and returns an empty
+// media type for missing headers so callers can apply their own defaults.
 func optionalRequestMediaType(header string) (string, error) {
 	header = strings.TrimSpace(header)
 	if header == "" {
