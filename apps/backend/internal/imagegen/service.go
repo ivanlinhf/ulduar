@@ -766,7 +766,7 @@ func normalizeMediaType(value string) string {
 		value = value[:idx]
 	}
 
-	return strings.ToLower(strings.TrimSpace(value))
+	return strings.ToLower(value)
 }
 
 func resolutionByKey(key string) (Resolution, bool) {

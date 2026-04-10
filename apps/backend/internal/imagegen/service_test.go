@@ -1,6 +1,7 @@
 package imagegen
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -243,6 +244,46 @@ func TestBuildBlobPaths(t *testing.T) {
 	if outputPath != "sessions/session-1/image-generations/generation-1/outputs/output.png" {
 		t.Fatalf("outputPath = %q", outputPath)
 	}
+}
+
+func TestReadBytesWithinLimit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("within limit", func(t *testing.T) {
+		t.Parallel()
+
+		data, err := readBytesWithinLimit(bytes.NewBufferString("abc"), 3)
+		if err != nil {
+			t.Fatalf("readBytesWithinLimit() error = %v", err)
+		}
+		if string(data) != "abc" {
+			t.Fatalf("string(data) = %q, want %q", string(data), "abc")
+		}
+	})
+
+	t.Run("exceeds limit", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readBytesWithinLimit(bytes.NewBufferString("abcd"), 3)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "content exceeds 3 bytes") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+
+	t.Run("reader error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readBytesWithinLimit(errorReader{}, 3)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "read failed") {
+			t.Fatalf("err = %v", err)
+		}
+	})
 }
 
 func TestCreatePendingGenerationPersistsGenerationAndUploadsInputs(t *testing.T) {
@@ -935,4 +976,10 @@ func testPNGData() []byte {
 		0x00, 0x00, 0x00, 0x01,
 		0x08, 0x02, 0x00, 0x00, 0x00,
 	}
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("read failed")
 }
