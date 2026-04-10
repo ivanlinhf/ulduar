@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	defaultAPIVersion    = "preview"
-	defaultModel         = "FLUX.2-pro"
-	defaultModelPath     = "flux-2-pro"
-	defaultTimeout       = 60 * time.Second
+	DefaultAPIVersion    = "preview"
+	DefaultModel         = "FLUX.2-pro"
+	DefaultModelPath     = "flux-2-pro"
+	DefaultTimeout       = 60 * time.Second
 	providerPathPrefix   = "/providers/blackforestlabs/v1"
 	maxResponseBodyBytes = 16 * 1024 * 1024 // 16 MiB
 )
@@ -82,22 +82,22 @@ func NewClient(endpoint, apiKey string, opts ...ClientOptions) (*Client, error) 
 	c := &Client{
 		endpoint:   normalized,
 		apiKey:     trimmedKey,
-		apiVersion: defaultAPIVersion,
-		model:      defaultModel,
-		modelPath:  defaultModelPath,
-		httpClient: &http.Client{Timeout: defaultTimeout},
+		apiVersion: DefaultAPIVersion,
+		model:      DefaultModel,
+		modelPath:  DefaultModelPath,
+		httpClient: &http.Client{Timeout: DefaultTimeout},
 	}
 
 	if len(opts) > 0 {
 		o := opts[0]
-		if o.APIVersion != "" {
-			c.apiVersion = o.APIVersion
+		if apiVersion := strings.TrimSpace(o.APIVersion); apiVersion != "" {
+			c.apiVersion = apiVersion
 		}
-		if o.Model != "" {
-			c.model = o.Model
+		if model := strings.TrimSpace(o.Model); model != "" {
+			c.model = model
 		}
-		if o.ModelPath != "" {
-			c.modelPath = o.ModelPath
+		if modelPath := strings.TrimSpace(o.ModelPath); modelPath != "" {
+			c.modelPath = modelPath
 		}
 		if o.RequestTimeout > 0 {
 			c.httpClient = &http.Client{Timeout: o.RequestTimeout}
@@ -118,23 +118,23 @@ func (c *Client) Model() string { return c.model }
 
 // generateURL returns the full generation URL.
 func (c *Client) generateURL() string {
-	u, _ := url.JoinPath(c.endpoint, providerPathPrefix, c.modelPath)
-	return u + "?api-version=" + url.QueryEscape(c.apiVersion)
+	return c.operationURL(c.modelPath)
 }
 
 // jobURL returns the polling URL for an async job.
-// It prefers job.PollingURL when it is a valid absolute http/https URL,
-// otherwise constructs one from JobID.
-func (c *Client) jobURL(job imageprovider.ProviderJob) string {
-	if job.PollingURL != "" {
-		parsed, err := url.Parse(job.PollingURL)
-		if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" {
-			return job.PollingURL
-		}
-		// Invalid polling URL — fall back to constructed URL.
+// It prefers a validated job.PollingURL when present, otherwise constructs one
+// from JobID.
+func (c *Client) jobURL(job imageprovider.ProviderJob) (string, error) {
+	if pollingURL := c.validatedPollingURL(job.PollingURL); pollingURL != "" {
+		return pollingURL, nil
 	}
-	u, _ := url.JoinPath(c.endpoint, providerPathPrefix, c.modelPath, job.JobID)
-	return u + "?api-version=" + url.QueryEscape(c.apiVersion)
+
+	jobID := strings.TrimSpace(job.JobID)
+	if jobID == "" {
+		return "", fmt.Errorf("provider job must include a job id when polling URL is absent or invalid")
+	}
+
+	return c.operationURL(c.modelPath, jobID), nil
 }
 
 // ---- provider-side JSON types ----
@@ -256,7 +256,12 @@ func (c *Client) Generate(ctx context.Context, req imageprovider.GenerateRequest
 
 // Poll implements imageprovider.ImageProvider.
 func (c *Client) Poll(ctx context.Context, job imageprovider.ProviderJob) (imageprovider.PollResult, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.jobURL(job), nil)
+	pollURL, err := c.jobURL(job)
+	if err != nil {
+		return imageprovider.PollResult{}, fmt.Errorf("resolve poll URL: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, pollURL, nil)
 	if err != nil {
 		return imageprovider.PollResult{}, fmt.Errorf("create poll request: %w", err)
 	}
@@ -314,6 +319,51 @@ func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+}
+
+func (c *Client) operationURL(pathSegments ...string) string {
+	base := c.endpoint + providerPathPrefix
+	for _, segment := range pathSegments {
+		base += "/" + url.PathEscape(strings.TrimSpace(segment))
+	}
+
+	parsed, _ := url.Parse(base)
+	query := parsed.Query()
+	query.Set("api-version", c.apiVersion)
+	parsed.RawQuery = query.Encode()
+
+	return parsed.String()
+}
+
+func (c *Client) validatedPollingURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	pollURL, err := url.Parse(raw)
+	if err != nil || !pollURL.IsAbs() {
+		return ""
+	}
+	if pollURL.Scheme != "http" && pollURL.Scheme != "https" {
+		return ""
+	}
+	if pollURL.Host == "" || pollURL.User != nil {
+		return ""
+	}
+
+	endpointURL, err := url.Parse(c.endpoint)
+	if err != nil || !endpointURL.IsAbs() {
+		return ""
+	}
+	if !strings.EqualFold(pollURL.Scheme, endpointURL.Scheme) {
+		return ""
+	}
+	if !strings.EqualFold(pollURL.Host, endpointURL.Host) {
+		return ""
+	}
+
+	return pollURL.String()
 }
 
 func (c *Client) buildTextToImagePayload(req imageprovider.GenerateRequest) textToImageRequest {

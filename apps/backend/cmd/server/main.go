@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
@@ -66,27 +65,6 @@ func main() {
 		FinalizationTimeout: cfg.RunFinalizationTimeout,
 		EnableWebSearch:     cfg.AzureOpenAIWebSearch,
 	})
-
-	if cfg.Image.AzureFoundry.Endpoint != "" {
-		if _, err := azurefoundry.NewClient(
-			cfg.Image.AzureFoundry.Endpoint,
-			cfg.Image.AzureFoundry.APIKey,
-			azurefoundry.ClientOptions{
-				APIVersion:     cfg.Image.AzureFoundry.APIVersion,
-				Model:          cfg.Image.AzureFoundry.Model,
-				ModelPath:      cfg.Image.AzureFoundry.ModelPath,
-				RequestTimeout: cfg.Image.AzureFoundry.RequestTimeout,
-			},
-		); err != nil {
-			slog.Error("connect azure foundry flux", "error", err)
-			return
-		}
-		slog.Info("image provider ready",
-			"provider", "flux",
-			"model", cfg.Image.AzureFoundry.Model,
-			"endpoint", cfg.Image.AzureFoundry.Endpoint,
-		)
-	}
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),

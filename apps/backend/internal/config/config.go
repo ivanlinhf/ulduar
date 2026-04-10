@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
 )
 
 const (
@@ -23,11 +25,6 @@ const (
 	defaultOpenAIStreamTimeout   = 10 * time.Minute
 	defaultFinalizationTimeout   = 15 * time.Second
 	defaultOpenAISystemPrompt    = "Format responses in Markdown when it improves readability. Use plain paragraphs for simple replies. Use lists, tables, and fenced code blocks only when helpful. Do not use raw HTML. If the user asks for plain text or a machine-readable format such as JSON, follow that request instead."
-
-	defaultFluxAPIVersion     = "preview"
-	defaultFluxModel          = "FLUX.2-pro"
-	defaultFluxModelPath      = "flux-2-pro"
-	defaultFluxRequestTimeout = 60 * time.Second
 )
 
 type Config struct {
@@ -107,10 +104,10 @@ func Load() (Config, error) {
 			AzureFoundry: FluxConfig{
 				Endpoint:       strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_ENDPOINT")),
 				APIKey:         strings.TrimSpace(os.Getenv("AZURE_FOUNDRY_API_KEY")),
-				APIVersion:     envOrDefault("AZURE_FOUNDRY_FLUX_API_VERSION", defaultFluxAPIVersion),
-				Model:          envOrDefault("AZURE_FOUNDRY_FLUX_MODEL", defaultFluxModel),
-				ModelPath:      envOrDefault("AZURE_FOUNDRY_FLUX_MODEL_PATH", defaultFluxModelPath),
-				RequestTimeout: durationEnvOrDefault("AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT", defaultFluxRequestTimeout),
+				APIVersion:     envOrDefault("AZURE_FOUNDRY_FLUX_API_VERSION", azurefoundry.DefaultAPIVersion),
+				Model:          envOrDefault("AZURE_FOUNDRY_FLUX_MODEL", azurefoundry.DefaultModel),
+				ModelPath:      envOrDefault("AZURE_FOUNDRY_FLUX_MODEL_PATH", azurefoundry.DefaultModelPath),
+				RequestTimeout: durationEnvOrDefault("AZURE_FOUNDRY_FLUX_REQUEST_TIMEOUT", azurefoundry.DefaultTimeout),
 			},
 		},
 	}

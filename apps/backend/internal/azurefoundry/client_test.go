@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -62,14 +63,14 @@ func TestNewClientAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-	if c.apiVersion != defaultAPIVersion {
-		t.Errorf("apiVersion = %q, want %q", c.apiVersion, defaultAPIVersion)
+	if c.apiVersion != DefaultAPIVersion {
+		t.Errorf("apiVersion = %q, want %q", c.apiVersion, DefaultAPIVersion)
 	}
-	if c.model != defaultModel {
-		t.Errorf("model = %q, want %q", c.model, defaultModel)
+	if c.model != DefaultModel {
+		t.Errorf("model = %q, want %q", c.model, DefaultModel)
 	}
-	if c.modelPath != defaultModelPath {
-		t.Errorf("modelPath = %q, want %q", c.modelPath, defaultModelPath)
+	if c.modelPath != DefaultModelPath {
+		t.Errorf("modelPath = %q, want %q", c.modelPath, DefaultModelPath)
 	}
 }
 
@@ -100,6 +101,22 @@ func TestNewClientAppliesOptions(t *testing.T) {
 	}
 }
 
+func TestNewClientHTTPClientTakesPrecedenceOverRequestTimeout(t *testing.T) {
+	t.Parallel()
+
+	custom := &stubHTTPDoer{}
+	c, err := NewClient("https://foundry.example.com", "key", ClientOptions{
+		RequestTimeout: 30 * time.Second,
+		HTTPClient:     custom,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	if c.httpClient != custom {
+		t.Fatal("httpClient = default client, want explicit HTTPClient to take precedence")
+	}
+}
+
 // ---- URL construction ----
 
 func TestGenerateURLShape(t *testing.T) {
@@ -117,15 +134,33 @@ func TestGenerateURLShape(t *testing.T) {
 	}
 }
 
+func TestGenerateURLEscapesModelPathAndAPIVersion(t *testing.T) {
+	t.Parallel()
+
+	c, _ := NewClient("https://foundry.example.com/base", "key", ClientOptions{
+		APIVersion: "preview/2026?",
+		ModelPath:  "flux 2/pro",
+	})
+
+	got := c.generateURL()
+	want := "https://foundry.example.com/base/providers/blackforestlabs/v1/flux%202%2Fpro?api-version=preview%2F2026%3F"
+	if got != want {
+		t.Errorf("generateURL() = %q, want %q", got, want)
+	}
+}
+
 func TestJobURLUsesExplicitPollingURL(t *testing.T) {
 	t.Parallel()
 
 	c, _ := NewClient("https://foundry.example.com", "key")
 	job := imageprovider.ProviderJob{
 		JobID:      "job_abc",
-		PollingURL: "https://poll.example.com/result?id=job_abc",
+		PollingURL: "https://foundry.example.com/result?id=job_abc",
 	}
-	got := c.jobURL(job)
+	got, err := c.jobURL(job)
+	if err != nil {
+		t.Fatalf("jobURL() error = %v", err)
+	}
 	if got != job.PollingURL {
 		t.Errorf("jobURL() = %q, want explicit polling URL %q", got, job.PollingURL)
 	}
@@ -139,10 +174,43 @@ func TestJobURLFallsBackToConstructedURL(t *testing.T) {
 		ModelPath:  "flux-2-pro",
 	})
 	job := imageprovider.ProviderJob{JobID: "job_xyz"}
-	got := c.jobURL(job)
+	got, err := c.jobURL(job)
+	if err != nil {
+		t.Fatalf("jobURL() error = %v", err)
+	}
 	want := "https://foundry.example.com/providers/blackforestlabs/v1/flux-2-pro/job_xyz?api-version=preview"
 	if got != want {
 		t.Errorf("jobURL() = %q, want %q", got, want)
+	}
+}
+
+func TestJobURLRejectsCrossHostPollingURL(t *testing.T) {
+	t.Parallel()
+
+	c, _ := NewClient("https://foundry.example.com", "key")
+	got, err := c.jobURL(imageprovider.ProviderJob{
+		JobID:      "job_xyz",
+		PollingURL: "https://poll.example.com/result?id=job_xyz",
+	})
+	if err != nil {
+		t.Fatalf("jobURL() error = %v", err)
+	}
+
+	want := "https://foundry.example.com/providers/blackforestlabs/v1/flux-2-pro/job_xyz?api-version=preview"
+	if got != want {
+		t.Errorf("jobURL() = %q, want %q", got, want)
+	}
+}
+
+func TestJobURLRequiresJobIDWhenPollingURLIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	c, _ := NewClient("https://foundry.example.com", "key")
+	_, err := c.jobURL(imageprovider.ProviderJob{
+		PollingURL: "https://poll.example.com/result?id=job_xyz",
+	})
+	if err == nil {
+		t.Fatal("jobURL() error = nil, want error when polling URL is invalid and job id is empty")
 	}
 }
 
@@ -706,6 +774,12 @@ func TestBuildImageEditPayloadDefaultsNumImagesToOne(t *testing.T) {
 	if p.NumImages != 1 {
 		t.Errorf("NumImages = %d, want 1 when not specified", p.NumImages)
 	}
+}
+
+type stubHTTPDoer struct{}
+
+func (d *stubHTTPDoer) Do(req *http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("unexpected request: %s %s", req.Method, req.URL.String())
 }
 
 // isAPIError is a helper because errors.As needs a pointer to the target type.

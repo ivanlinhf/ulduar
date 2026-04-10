@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ivanlin/ulduar/apps/backend/internal/azurefoundry"
 )
 
 func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
@@ -179,17 +181,17 @@ func TestLoadAppliesFluxDefaults(t *testing.T) {
 	if flux.Endpoint != "" {
 		t.Fatalf("flux.Endpoint = %q, want empty", flux.Endpoint)
 	}
-	if flux.APIVersion != defaultFluxAPIVersion {
-		t.Fatalf("flux.APIVersion = %q, want %q", flux.APIVersion, defaultFluxAPIVersion)
+	if flux.APIVersion != azurefoundry.DefaultAPIVersion {
+		t.Fatalf("flux.APIVersion = %q, want %q", flux.APIVersion, azurefoundry.DefaultAPIVersion)
 	}
-	if flux.Model != defaultFluxModel {
-		t.Fatalf("flux.Model = %q, want %q", flux.Model, defaultFluxModel)
+	if flux.Model != azurefoundry.DefaultModel {
+		t.Fatalf("flux.Model = %q, want %q", flux.Model, azurefoundry.DefaultModel)
 	}
-	if flux.ModelPath != defaultFluxModelPath {
-		t.Fatalf("flux.ModelPath = %q, want %q", flux.ModelPath, defaultFluxModelPath)
+	if flux.ModelPath != azurefoundry.DefaultModelPath {
+		t.Fatalf("flux.ModelPath = %q, want %q", flux.ModelPath, azurefoundry.DefaultModelPath)
 	}
-	if flux.RequestTimeout != defaultFluxRequestTimeout {
-		t.Fatalf("flux.RequestTimeout = %v, want %v", flux.RequestTimeout, defaultFluxRequestTimeout)
+	if flux.RequestTimeout != azurefoundry.DefaultTimeout {
+		t.Fatalf("flux.RequestTimeout = %v, want %v", flux.RequestTimeout, azurefoundry.DefaultTimeout)
 	}
 }
 
@@ -267,4 +269,3 @@ func TestLoadValidatesFluxConfigWhenEndpointIsSet(t *testing.T) {
 		}
 	})
 }
-
