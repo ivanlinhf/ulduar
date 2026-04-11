@@ -1,25 +1,41 @@
+import { useState } from "react";
+
 import { ActionTooltip } from "./features/chat/components/ActionTooltip";
+import { NewMenu } from "./features/chat/components/NewMenu";
 import { attachmentInputAccept } from "./features/chat/constants";
-import { IconInfo, IconNewChat, IconReload } from "./features/chat/components/icons";
+import { IconInfo, IconReload } from "./features/chat/components/icons";
 import { ChatComposer } from "./features/chat/components/ChatComposer";
 import { ExpandedComposerDialog } from "./features/chat/components/ExpandedComposerDialog";
 import { MessageList } from "./features/chat/components/MessageList";
 import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfirmationDialog";
 import { useChatApp } from "./features/chat/useChatApp";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
+import { isImageGenerationEnabled } from "./lib/config";
+
+export type WorkspaceMode = "chat" | "image";
 
 export default function App() {
+  const [workspace, setWorkspace] = useState<WorkspaceMode>("chat");
   const chat = useChatApp();
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
   const update = useFrontendUpdate(turnCount);
   const isAnyDialogOpen = chat.isExpandedComposerOpen || update.isReloadConfirmationOpen;
+
+  function handleNewChat() {
+    setWorkspace("chat");
+    chat.startNewChat();
+  }
+
+  function handleNewImage() {
+    setWorkspace("image");
+  }
 
   return (
     <div className="app-shell">
       <div className="app-backdrop app-backdrop-left" />
       <div className="app-backdrop app-backdrop-right" />
 
-      <main className="app-frame" ref={chat.appFrameRef} aria-hidden={isAnyDialogOpen ? "true" : undefined}>
+      <main className="app-frame" ref={chat.appFrameRef} aria-hidden={isAnyDialogOpen ? "true" : undefined} data-workspace={workspace}>
         <section className="chat-panel">
           <header className="chat-header">
             <p className="chat-subtitle">{chat.chatSubtitle}</p>
@@ -51,16 +67,13 @@ export default function App() {
                 </button>
               </ActionTooltip>
 
-              <ActionTooltip align="right" content={<span className="action-tooltip-label">New chat</span>}>
-                <button
-                  aria-label="New chat"
-                  className="secondary-button icon-only-button new-chat-button"
-                  onClick={chat.startNewChat}
-                  type="button"
-                >
-                  <IconNewChat />
-                </button>
-              </ActionTooltip>
+              <NewMenu
+                isImageGenerationEnabled={isImageGenerationEnabled}
+                // isImageGenerationAvailable remains false until runtime capability is wired in (#76)
+                isImageGenerationAvailable={false}
+                onNewChat={handleNewChat}
+                onNewImage={handleNewImage}
+              />
             </div>
           </header>
 
