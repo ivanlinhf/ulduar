@@ -6,6 +6,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
         VITE_APP_VERSION: ${VITE_APP_VERSION:-compose-local}
+        VITE_IMAGE_GENERATION_ENABLED: ${VITE_IMAGE_GENERATION_ENABLED:-false}
     depends_on:
       - backend
     environment:
