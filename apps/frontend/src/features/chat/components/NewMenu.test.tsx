@@ -183,6 +183,15 @@ describe("NewMenu", () => {
     expect(onNewImage).not.toHaveBeenCalled();
   });
 
+  it("renders New image item as disabled when the handler is missing", async () => {
+    renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true, onNewImage: undefined });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const item = screen.getByRole("menuitem", { name: "New image" });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAttribute("tabindex", "-1");
+  });
+
   it("skips disabled items in arrow-key navigation", async () => {
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: false });
 

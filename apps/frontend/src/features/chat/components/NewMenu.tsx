@@ -26,15 +26,16 @@ export function NewMenu({
   // Tracks which item holds tabIndex=0 in the roving tabindex scheme.
   const [activeKey, setActiveKey] = useState<MenuItemKey | null>(null);
   const focusLastOnOpenRef = useRef(false);
+  const canCreateImage = isImageGenerationEnabled && isImageGenerationAvailable && typeof onNewImage === "function";
 
   // Returns the ordered list of enabled item keys (disabled items excluded).
   const getEnabledKeys = useCallback((): MenuItemKey[] => {
     const keys: MenuItemKey[] = ["new-chat"];
-    if (isImageGenerationEnabled && isImageGenerationAvailable) {
+    if (canCreateImage) {
       keys.push("new-image");
     }
     return keys;
-  }, [isImageGenerationEnabled, isImageGenerationAvailable]);
+  }, [canCreateImage]);
 
   function focusItem(key: MenuItemKey) {
     setActiveKey(key);
@@ -214,9 +215,9 @@ export function NewMenu({
             role="menuitem"
             type="button"
             className="new-menu-item"
-            tabIndex={isImageGenerationAvailable && activeKey === "new-image" ? 0 : -1}
-            disabled={!isImageGenerationAvailable}
-            aria-disabled={!isImageGenerationAvailable ? "true" : undefined}
+            tabIndex={canCreateImage && activeKey === "new-image" ? 0 : -1}
+            disabled={!canCreateImage}
+            aria-disabled={!canCreateImage ? "true" : undefined}
             onClick={() => {
               triggerRef.current?.focus();
               onNewImage?.();
