@@ -119,9 +119,7 @@ export function NewMenu({
     const keys = getEnabledKeys();
     const keyToActivate = focusLastOnOpenRef.current ? keys[keys.length - 1] : keys[0];
     focusLastOnOpenRef.current = false;
-    setActiveKey(keyToActivate);
-    if (keyToActivate === "new-chat") newChatRef.current?.focus();
-    else if (keyToActivate === "new-image") newImageRef.current?.focus();
+    focusItem(keyToActivate);
   }, [isOpen, getEnabledKeys]);
 
   // Close when focus leaves the entire widget
