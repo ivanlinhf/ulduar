@@ -91,12 +91,19 @@ export function registerNewMenuSuite(context: AppTestContext) {
     expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
   });
 
-  it("does not show New image item when image generation is disabled by default", async () => {
+  it("shows New image item only when image generation is enabled in the test environment", async () => {
     context.renderApp();
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    // VITE_IMAGE_GENERATION_ENABLED is not set in test env, so New image item is absent
-    expect(screen.queryByRole("menuitem", { name: "New image" })).not.toBeInTheDocument();
+
+    const newImageItem = screen.queryByRole("menuitem", { name: "New image" });
+    const isImageGenerationEnabled = import.meta.env.VITE_IMAGE_GENERATION_ENABLED === "true";
+
+    if (isImageGenerationEnabled) {
+      expect(newImageItem).toBeInTheDocument();
+    } else {
+      expect(newImageItem).not.toBeInTheDocument();
+    }
   });
 }
