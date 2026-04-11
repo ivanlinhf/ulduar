@@ -224,7 +224,9 @@ export async function createImageGeneration(input: {
   const { sessionId, mode, prompt, resolution, referenceImages = [] } = input;
   const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/image-generations`;
 
-  if (referenceImages.length === 0) {
+  validateCreateImageGenerationInput(mode, referenceImages);
+
+  if (mode === "text_to_image") {
     return requestJSON<CreateImageGenerationResponse>(path, {
       method: "POST",
       headers: {
@@ -374,4 +376,14 @@ async function readErrorMessage(response: Response): Promise<string> {
 function parsePayload<T>(event: Event): T {
   const message = event as MessageEvent<string>;
   return JSON.parse(message.data) as T;
+}
+
+function validateCreateImageGenerationInput(mode: ImageGenerationMode, referenceImages: File[]) {
+  if (mode === "image_edit" && referenceImages.length === 0) {
+    throw new Error("image_edit requires at least one reference image");
+  }
+
+  if (mode === "text_to_image" && referenceImages.length > 0) {
+    throw new Error("referenceImages are only supported for image_edit");
+  }
 }

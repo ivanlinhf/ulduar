@@ -58,4 +58,18 @@ describe("useImageGenerationBootstrap", () => {
       });
     });
   });
+
+  it("maps non-503 failures to generic-error", async () => {
+    mockedGetImageGenerationCapabilities.mockRejectedValue(new Error("network unavailable"));
+
+    const { result } = renderHook(() => useImageGenerationBootstrap(true));
+
+    expect(result.current).toEqual({ status: "bootstrap-loading" });
+    await waitFor(() => {
+      expect(result.current).toEqual({
+        status: "generic-error",
+        errorMessage: "network unavailable",
+      });
+    });
+  });
 });
