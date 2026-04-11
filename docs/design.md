@@ -327,12 +327,17 @@ Returns the provider's available modes, supported resolutions, reference image l
 
 #### `POST /api/v1/sessions/{sessionId}/image-generations`
 
-Accepts a multipart form with:
+Accepts different request formats depending on `mode`:
 
-- `mode` — `text_to_image` or `image_edit`
-- `prompt` — required text instruction
-- `resolution` — one of the supported resolution keys
-- `reference_image` — one or more image files (required for `image_edit`, forbidden for `text_to_image`)
+- `text_to_image`
+  - Supports `application/json`; if `Content-Type` is omitted, the backend defaults to JSON
+  - JSON fields: `mode`, `prompt`, `resolution`
+  - Reference image uploads are forbidden
+
+- `image_edit`
+  - Must use `multipart/form-data`; JSON requests are rejected with `400`
+  - Multipart fields: `mode`, `prompt`, `resolution`, and one or more image files under `referenceImages` (or `referenceImages[]` for repeated parts)
+  - `referenceImages` is required for `image_edit`
 
 Returns `202 Accepted` with a `generationId` and initial `status`.
 
