@@ -1,6 +1,7 @@
 import { describe, vi } from "vitest";
 
 import { registerComposerSuite } from "./features/chat/test/registerComposerSuite";
+import { registerNewMenuSuite } from "./features/chat/test/registerNewMenuSuite";
 import { registerRenderingSuite } from "./features/chat/test/registerRenderingSuite";
 import { registerSessionSuite } from "./features/chat/test/registerSessionSuite";
 import { registerUpdateSuite } from "./features/chat/test/registerUpdateSuite";
@@ -20,4 +21,5 @@ describe("App", () => {
   registerRenderingSuite(context);
   registerComposerSuite(context);
   registerUpdateSuite(context);
+  registerNewMenuSuite(context);
 });

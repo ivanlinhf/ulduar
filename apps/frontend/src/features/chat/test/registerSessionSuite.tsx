@@ -12,7 +12,7 @@ export function registerSessionSuite(context: AppTestContext) {
     expect(await screen.findByText("Ready for the next turn.")).toBeInTheDocument();
     const sessionDetailsButton = screen.getByRole("button", { name: "Session details" });
     expect(sessionDetailsButton).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
     await userEvent.hover(sessionDetailsButton);
     const tooltip = getSessionDetailsTooltip();
     expect(within(tooltip).getByText("11111111-1111-1111-1111-111111111111")).toBeInTheDocument();
