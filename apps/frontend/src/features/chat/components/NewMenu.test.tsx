@@ -43,6 +43,18 @@ describe("NewMenu", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("closes the menu via Enter on the trigger when focus has returned to the trigger", async () => {
+    renderNewMenu();
+    const trigger = screen.getByRole("button", { name: "New" });
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    // Return focus to trigger (e.g. via Shift+Tab) while menu stays open.
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("closes on Escape and returns focus to the trigger", async () => {
     renderNewMenu();
     const trigger = screen.getByRole("button", { name: "New" });
@@ -77,6 +89,42 @@ describe("NewMenu", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     const items = screen.getAllByRole("menuitem");
     expect(items[items.length - 1]).toHaveFocus();
+  });
+
+  it("focuses the first item via ArrowDown on the trigger when the menu is already open", async () => {
+    renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const items = screen.getAllByRole("menuitem");
+
+    // Return focus to trigger while menu stays open, then press ArrowDown.
+    screen.getByRole("button", { name: "New" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(items[0]).toHaveFocus();
+  });
+
+  it("focuses the last item via ArrowUp on the trigger when the menu is already open", async () => {
+    renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const items = screen.getAllByRole("menuitem");
+
+    screen.getByRole("button", { name: "New" }).focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(items[items.length - 1]).toHaveFocus();
+  });
+
+  it("applies roving tabindex: focused item has tabIndex=0, others and disabled items have tabIndex=-1", async () => {
+    renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: false });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+
+    const newChatItem = screen.getByRole("menuitem", { name: "New chat" });
+    const newImageItem = screen.getByRole("menuitem", { name: "New image" });
+
+    // New chat is the focused (active) item; New image is disabled — always tabIndex=-1.
+    expect(newChatItem).toHaveAttribute("tabindex", "0");
+    expect(newImageItem).toHaveAttribute("tabindex", "-1");
   });
 
   it("wraps focus at the start and end of the menu", async () => {

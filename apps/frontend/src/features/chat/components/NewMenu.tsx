@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } f
 
 import { IconNewChat } from "./icons";
 
+type MenuItemKey = "new-chat" | "new-image";
+
 type NewMenuProps = {
   isImageGenerationEnabled: boolean;
   isImageGenerationAvailable?: boolean;
@@ -18,8 +20,27 @@ export function NewMenu({
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const newChatRef = useRef<HTMLButtonElement>(null);
+  const newImageRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+  // Tracks which item holds tabIndex=0 in the roving tabindex scheme.
+  const [activeKey, setActiveKey] = useState<MenuItemKey | null>(null);
   const focusLastOnOpenRef = useRef(false);
+
+  // Returns the ordered list of enabled item keys (disabled items excluded).
+  const getEnabledKeys = useCallback((): MenuItemKey[] => {
+    const keys: MenuItemKey[] = ["new-chat"];
+    if (isImageGenerationEnabled && isImageGenerationAvailable) {
+      keys.push("new-image");
+    }
+    return keys;
+  }, [isImageGenerationEnabled, isImageGenerationAvailable]);
+
+  function focusItem(key: MenuItemKey) {
+    setActiveKey(key);
+    if (key === "new-chat") newChatRef.current?.focus();
+    else if (key === "new-image") newImageRef.current?.focus();
+  }
 
   function open() {
     setIsOpen(true);
@@ -27,14 +48,8 @@ export function NewMenu({
 
   function close() {
     setIsOpen(false);
+    setActiveKey(null);
   }
-
-  const getMenuItems = useCallback((): HTMLElement[] => {
-    if (!menuRef.current) return [];
-    return Array.from(
-      menuRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])'),
-    );
-  }, []);
 
   function handleTriggerClick() {
     if (isOpen) {
@@ -45,20 +60,37 @@ export function NewMenu({
   }
 
   function handleTriggerKeyDown(event: KeyboardEvent) {
-    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+    if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      open();
+      if (isOpen) {
+        close();
+      } else {
+        open();
+      }
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (isOpen) {
+        // Menu already open: move focus to the first enabled item.
+        focusItem(getEnabledKeys()[0]);
+      } else {
+        open();
+      }
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      focusLastOnOpenRef.current = true;
-      open();
+      if (isOpen) {
+        // Menu already open: move focus to the last enabled item.
+        const keys = getEnabledKeys();
+        focusItem(keys[keys.length - 1]);
+      } else {
+        focusLastOnOpenRef.current = true;
+        open();
+      }
     }
   }
 
   function handleMenuKeyDown(event: KeyboardEvent) {
-    const items = getMenuItems();
-    const focused = document.activeElement as HTMLElement;
-    const index = items.indexOf(focused);
+    const keys = getEnabledKeys();
+    const index = activeKey !== null ? keys.indexOf(activeKey) : 0;
 
     if (event.key === "Escape") {
       event.preventDefault();
@@ -66,33 +98,31 @@ export function NewMenu({
       triggerRef.current?.focus();
     } else if (event.key === "ArrowDown") {
       event.preventDefault();
-      items[(index + 1) % items.length]?.focus();
+      focusItem(keys[(index + 1) % keys.length]);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      items[(index - 1 + items.length) % items.length]?.focus();
+      focusItem(keys[(index - 1 + keys.length) % keys.length]);
     } else if (event.key === "Home") {
       event.preventDefault();
-      items[0]?.focus();
+      focusItem(keys[0]);
     } else if (event.key === "End") {
       event.preventDefault();
-      items[items.length - 1]?.focus();
+      focusItem(keys[keys.length - 1]);
     } else if (event.key === "Tab") {
       close();
     }
   }
 
-  // Focus first (or last) enabled menu item when the menu opens
+  // Focus first (or last) enabled menu item when the menu opens.
   useEffect(() => {
-    if (isOpen) {
-      const items = getMenuItems();
-      if (focusLastOnOpenRef.current) {
-        focusLastOnOpenRef.current = false;
-        items[items.length - 1]?.focus();
-      } else {
-        items[0]?.focus();
-      }
-    }
-  }, [isOpen, getMenuItems]);
+    if (!isOpen) return;
+    const keys = getEnabledKeys();
+    const keyToActivate = focusLastOnOpenRef.current ? keys[keys.length - 1] : keys[0];
+    focusLastOnOpenRef.current = false;
+    setActiveKey(keyToActivate);
+    if (keyToActivate === "new-chat") newChatRef.current?.focus();
+    else if (keyToActivate === "new-image") newImageRef.current?.focus();
+  }, [isOpen, getEnabledKeys]);
 
   // Close when focus leaves the entire widget
   useEffect(() => {
@@ -161,10 +191,11 @@ export function NewMenu({
         onKeyDown={handleMenuKeyDown}
       >
         <button
+          ref={newChatRef}
           role="menuitem"
           type="button"
           className="new-menu-item"
-          tabIndex={isOpen ? 0 : -1}
+          tabIndex={activeKey === "new-chat" ? 0 : -1}
           onClick={() => {
             triggerRef.current?.focus();
             onNewChat();
@@ -176,10 +207,11 @@ export function NewMenu({
 
         {isImageGenerationEnabled && (
           <button
+            ref={newImageRef}
             role="menuitem"
             type="button"
             className="new-menu-item"
-            tabIndex={isOpen ? 0 : -1}
+            tabIndex={isImageGenerationAvailable && activeKey === "new-image" ? 0 : -1}
             aria-disabled={!isImageGenerationAvailable ? "true" : undefined}
             onClick={() => {
               if (!isImageGenerationAvailable) return;
