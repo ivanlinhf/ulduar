@@ -30,15 +30,17 @@ describe("NewMenu", () => {
     expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
   });
 
-  it("calls onNewChat and closes menu when New chat item is clicked", async () => {
+  it("calls onNewChat and closes menu when New chat item is clicked, returning focus to trigger", async () => {
     const onNewChat = vi.fn();
     renderNewMenu({ onNewChat });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "New chat" }));
 
+    const trigger = screen.getByRole("button", { name: "New" });
     expect(onNewChat).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "New" })).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
   });
 
   it("closes on Escape and returns focus to the trigger", async () => {
@@ -63,6 +65,18 @@ describe("NewMenu", () => {
 
     await userEvent.keyboard("{ArrowUp}");
     expect(items[0]).toHaveFocus();
+  });
+
+  it("opens the menu via ArrowUp on the trigger and focuses the last enabled item", async () => {
+    renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true });
+
+    const trigger = screen.getByRole("button", { name: "New" });
+    trigger.focus();
+    await userEvent.keyboard("{ArrowUp}");
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const items = screen.getAllByRole("menuitem");
+    expect(items[items.length - 1]).toHaveFocus();
   });
 
   it("wraps focus at the start and end of the menu", async () => {

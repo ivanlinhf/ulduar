@@ -19,6 +19,7 @@ export function NewMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+  const focusLastOnOpenRef = useRef(false);
 
   function open() {
     setIsOpen(true);
@@ -46,6 +47,10 @@ export function NewMenu({
   function handleTriggerKeyDown(event: KeyboardEvent) {
     if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
       event.preventDefault();
+      open();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      focusLastOnOpenRef.current = true;
       open();
     }
   }
@@ -76,11 +81,16 @@ export function NewMenu({
     }
   }
 
-  // Focus first enabled menu item when the menu opens
+  // Focus first (or last) enabled menu item when the menu opens
   useEffect(() => {
     if (isOpen) {
       const items = getMenuItems();
-      items[0]?.focus();
+      if (focusLastOnOpenRef.current) {
+        focusLastOnOpenRef.current = false;
+        items[items.length - 1]?.focus();
+      } else {
+        items[0]?.focus();
+      }
     }
   }, [isOpen, getMenuItems]);
 
@@ -156,6 +166,7 @@ export function NewMenu({
           className="new-menu-item"
           tabIndex={isOpen ? 0 : -1}
           onClick={() => {
+            triggerRef.current?.focus();
             onNewChat();
             close();
           }}
@@ -172,6 +183,7 @@ export function NewMenu({
             aria-disabled={!isImageGenerationAvailable ? "true" : undefined}
             onClick={() => {
               if (!isImageGenerationAvailable) return;
+              triggerRef.current?.focus();
               onNewImage?.();
               close();
             }}
