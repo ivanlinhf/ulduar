@@ -86,6 +86,8 @@ Container/entrypoint and frontend build settings:
   Frontend API base URL. Manual local example: `http://localhost:8080`
 - `VITE_APP_VERSION`
   Optional frontend build version identifier used for update detection. Manual local dev defaults to a fresh dev-server version when unset. Container and CI builds should set this explicitly.
+- `VITE_IMAGE_GENERATION_ENABLED`
+  Optional frontend-owned rollout flag for image-generation UI. Default `false`.
 
 Reference files:
 
@@ -158,6 +160,7 @@ go run ./cmd/server
 cd apps/frontend
 export VITE_API_BASE_URL=http://localhost:8080
 export VITE_APP_VERSION=local-dev
+export VITE_IMAGE_GENERATION_ENABLED=false
 npm install
 npm run dev
 ```
@@ -243,7 +246,7 @@ If you want an env file for compose-oriented values, start from:
 cp .env.compose.example .env.compose
 ```
 
-The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
+The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs, plus `VITE_IMAGE_GENERATION_ENABLED`, which keeps image-generation UI rollout default-off unless you opt in. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
 
 Then start the stack with that env file:
 

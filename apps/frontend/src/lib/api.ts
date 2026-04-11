@@ -1,3 +1,5 @@
+import { apiBaseURL } from "./config";
+
 export type SessionResponse = {
   sessionId: string;
   status: string;
@@ -82,8 +84,6 @@ type StreamHandlers = {
   onRunFailed?: (payload: StreamEventPayload) => void;
   onTransportError?: (message: string) => void;
 };
-
-const apiBaseURL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 export async function createSession(): Promise<SessionResponse> {
   return requestJSON<SessionResponse>("/api/v1/sessions", {
