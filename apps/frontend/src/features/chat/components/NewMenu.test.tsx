@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
 
 import { NewMenu } from "./NewMenu";
 
-function renderNewMenu(props: Partial<React.ComponentProps<typeof NewMenu>> = {}) {
+function renderNewMenu(props: Partial<ComponentProps<typeof NewMenu>> = {}) {
   const defaults = {
     isImageGenerationEnabled: false,
     isImageGenerationAvailable: false,

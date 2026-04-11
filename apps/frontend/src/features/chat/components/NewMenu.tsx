@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { IconNewChat } from "./icons";
 
@@ -43,14 +43,14 @@ export function NewMenu({
     }
   }
 
-  function handleTriggerKeyDown(event: React.KeyboardEvent) {
+  function handleTriggerKeyDown(event: KeyboardEvent) {
     if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       open();
     }
   }
 
-  function handleMenuKeyDown(event: React.KeyboardEvent) {
+  function handleMenuKeyDown(event: KeyboardEvent) {
     const items = getMenuItems();
     const focused = document.activeElement as HTMLElement;
     const index = items.indexOf(focused);
