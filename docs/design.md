@@ -6,9 +6,10 @@ Ulduar v1 is a monorepo web chat application with:
 
 - A stateless Go backend
 - A React + TypeScript single-page frontend
-- Azure OpenAI as the model provider
-- PostgreSQL for durable chat persistence
-- Azure Blob Storage for attachment storage
+- Azure OpenAI as the chat model provider
+- A pluggable image generation provider layer (Azure AI Foundry FLUX as the initial provider)
+- PostgreSQL for durable chat and image generation persistence
+- Azure Blob Storage for attachment and generated image storage
 
 The system must support multiple concurrent anonymous users. Each browser instance creates and holds a `sessionId` only in frontend memory. If the user refreshes or reopens the browser, the SPA creates a new session. Previous sessions remain stored indefinitely but are not discoverable in v1 because there is no authentication, session restore flow, or chat history UI.
 
@@ -61,16 +62,17 @@ No rollout-notes document is required.
 - Go HTTP API
 - Fully stateless between requests
 - Loads all session state from Postgres and Blob Storage as needed
-- Calls Azure OpenAI Responses API
+- Calls Azure OpenAI Responses API for chat
 - Streams assistant output to the SPA via SSE
 - Can optionally attach Azure-native `web_search` behind backend configuration, disabled by default for manual rollout
+- Supports a pluggable image generation provider; Azure AI Foundry FLUX is the initial configured adapter, enabled when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set
 
 ### Storage
 
 - Azure Database for PostgreSQL Flexible Server
-  - Stores session, message, run, and attachment metadata
+  - Stores session, message, run, attachment, and image generation metadata
 - Azure Blob Storage
-  - Stores raw uploaded files
+  - Stores raw uploaded files and generated images
 
 ### Local Development
 
@@ -219,7 +221,7 @@ The attachment preparation logic should sit behind an internal interface so broa
 
 ## Model Integration
 
-### Provider
+### Chat provider
 
 - Azure OpenAI Responses API
 
@@ -238,6 +240,22 @@ Environment variables should cover:
 - System prompt or default assistant instruction
 - Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
 - Web-search runs must preserve the existing session model, API shape, and anonymous chat flow while persisting only final citation metadata
+
+### Image generation provider
+
+The backend exposes a provider-neutral `imageprovider.ImageProvider` interface. Concrete adapters implement this interface and keep all provider-specific details isolated from the domain layer.
+
+Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured adapter. It is configured only when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set. If `AZURE_FOUNDRY_ENDPOINT` is not set, image generation endpoints return `503 Service Unavailable` and the rest of the backend is unaffected.
+
+Future providers can be added by implementing the interface without changing the HTTP layer.
+
+#### V1 image generation constraints
+
+- Supported modes: `text_to_image` and `image_edit`
+- `image_edit` requires 1–4 reference images; `text_to_image` accepts none
+- Reference image size limit per upload: 20 MiB (configurable via `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES`)
+- Output count is fixed at 1 image per generation
+- Supported resolutions: `1024x1024`, `1152x896`, `896x1152`, `1344x768`, `768x1344`, `1536x1024`, `1024x1536`
 
 ### SDK choice
 
@@ -298,6 +316,46 @@ Suggested event types:
 - `run.failed`
 
 When available, `run.completed` includes optional numeric `inputTokens`, `outputTokens`, and `totalTokens` fields from the provider response usage.
+
+### Image generation endpoints
+
+Provider-dependent endpoints return `503 Service Unavailable` when no image generation provider is configured. This applies to `GET /api/v1/image-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/image-generations`, and the stream endpoint while a generation is still non-terminal. Read-only retrieval endpoints for existing completed generations, including the generation record and stored asset/image content, remain available without an active provider.
+
+#### `GET /api/v1/image-generations/capabilities`
+
+Returns the provider's available modes, supported resolutions, reference image limit, output image count, and provider name.
+
+#### `POST /api/v1/sessions/{sessionId}/image-generations`
+
+Accepts different request formats depending on `mode`:
+
+- `text_to_image`
+  - Supports `application/json`; if `Content-Type` is omitted, the backend defaults to JSON
+  - JSON fields: `mode`, `prompt`, `resolution`
+  - Reference image uploads are forbidden
+
+- `image_edit`
+  - Must use `multipart/form-data`; JSON requests are rejected with `400`
+  - Multipart fields: `mode`, `prompt`, `resolution`, and one or more image files under `referenceImages` (or `referenceImages[]` for repeated parts)
+  - `referenceImages` is required for `image_edit`
+
+Returns `202 Accepted` with a `generationId` and initial `status`.
+
+#### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}`
+
+Returns the generation record and its asset list (input reference images and output images).
+
+#### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream`
+
+Streams generation progress via SSE. Events include status transitions and, on completion, the output asset identifiers.
+
+#### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content`
+
+Returns the raw bytes of an output-role generation asset.
+
+#### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content`
+
+Returns the raw bytes of an output-role generation image. Served with a long-lived immutable cache header.
 
 ## Frontend Behavior
 
