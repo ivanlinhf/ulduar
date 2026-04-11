@@ -217,9 +217,9 @@ export function NewMenu({
             type="button"
             className="new-menu-item"
             tabIndex={isImageGenerationAvailable && activeKey === "new-image" ? 0 : -1}
+            disabled={!isImageGenerationAvailable}
             aria-disabled={!isImageGenerationAvailable ? "true" : undefined}
             onClick={() => {
-              if (!isImageGenerationAvailable) return;
               triggerRef.current?.focus();
               onNewImage?.();
               close();

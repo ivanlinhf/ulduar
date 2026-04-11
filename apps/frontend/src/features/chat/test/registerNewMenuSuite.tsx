@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 
+import { isImageGenerationEnabled } from "../../../lib/config";
 import type { AppTestContext } from "./testContext";
 
 export function registerNewMenuSuite(context: AppTestContext) {
@@ -98,7 +99,6 @@ export function registerNewMenuSuite(context: AppTestContext) {
     await userEvent.click(screen.getByRole("button", { name: "New" }));
 
     const newImageItem = screen.queryByRole("menuitem", { name: "New image" });
-    const isImageGenerationEnabled = import.meta.env.VITE_IMAGE_GENERATION_ENABLED === "true";
 
     if (isImageGenerationEnabled) {
       expect(newImageItem).toBeInTheDocument();
