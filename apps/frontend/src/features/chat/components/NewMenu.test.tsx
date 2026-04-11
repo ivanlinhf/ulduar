@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -60,6 +60,19 @@ describe("NewMenu", () => {
     const trigger = screen.getByRole("button", { name: "New" });
     await userEvent.click(trigger);
     await userEvent.keyboard("{Escape}");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("restores focus to the trigger when the menu is closed by an outside pointerdown while focus is on a menuitem", async () => {
+    renderNewMenu();
+    const trigger = screen.getByRole("button", { name: "New" });
+    await userEvent.click(trigger);
+    expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
+
+    // Simulate an outside pointerdown on a non-focusable element (e.g. body).
+    fireEvent.pointerDown(document.body);
+
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(trigger).toHaveFocus();
   });

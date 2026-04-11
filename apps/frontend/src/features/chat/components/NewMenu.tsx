@@ -156,6 +156,11 @@ export function NewMenu({
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        // If focus is currently inside the menu panel, return it to the trigger
+        // before closing so it is never left on an aria-hidden element.
+        if (menuRef.current?.contains(document.activeElement)) {
+          triggerRef.current?.focus();
+        }
         close();
       }
     }
