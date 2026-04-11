@@ -189,7 +189,7 @@ The image generation layer uses a pluggable provider interface. Azure AI Foundry
 Supported v1 image generation modes:
 
 - `text_to_image` — generate an image from a text prompt only
-- `image_edit` — generate a modified image using a prompt and 1–4 reference images (up to 20 MiB each)
+- `image_edit` — generate a modified image using a prompt and 1–4 reference images (up to `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES` (default 20 MiB) each)
 
 Each generation always produces exactly 1 output image.
 
