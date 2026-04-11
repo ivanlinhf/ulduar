@@ -1,5 +1,15 @@
 import { apiBaseURL } from "./config";
 
+export class APIError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "APIError";
+    this.status = status;
+  }
+}
+
 export type SessionResponse = {
   sessionId: string;
   status: string;
@@ -60,6 +70,68 @@ export type SessionDetailResponse = {
   messages: MessageResponse[];
 };
 
+export type ImageGenerationMode = "text_to_image" | "image_edit";
+
+export type ImageGenerationStatus = "pending" | "running" | "completed" | "failed";
+
+export type ImageGenerationResolutionResponse = {
+  key: string;
+  width: number;
+  height: number;
+};
+
+export type ImageGenerationCapabilitiesResponse = {
+  modes: ImageGenerationMode[];
+  resolutions: ImageGenerationResolutionResponse[];
+  maxReferenceImages: number;
+  outputImageCount: number;
+  providerName?: string;
+};
+
+export type CreateImageGenerationResponse = {
+  generationId: string;
+  status: ImageGenerationStatus;
+  createdAt: string;
+};
+
+export type ImageGenerationAssetResponse = {
+  assetId: string;
+  filename: string;
+  mediaType: string;
+  sizeBytes: number;
+  sha256: string;
+  width?: number;
+  height?: number;
+  createdAt: string;
+  contentUrl?: string;
+};
+
+export type ImageGenerationResponse = {
+  generationId: string;
+  sessionId: string;
+  mode: ImageGenerationMode;
+  status: ImageGenerationStatus;
+  prompt: string;
+  resolution: ImageGenerationResolutionResponse;
+  outputImageCount: number;
+  providerName?: string;
+  providerModel?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: string;
+  completedAt?: string;
+  inputAssets: ImageGenerationAssetResponse[];
+  outputAssets: ImageGenerationAssetResponse[];
+};
+
+export type ImageGenerationStreamEventName =
+  | "image_generation.started"
+  | "image_generation.running"
+  | "image_generation.completed"
+  | "image_generation.failed";
+
+export type ImageGenerationStreamEventPayload = ImageGenerationResponse;
+
 export type StreamEventPayload = {
   runId: string;
   messageId: string;
@@ -85,6 +157,14 @@ type StreamHandlers = {
   onTransportError?: (message: string) => void;
 };
 
+export type ImageGenerationStreamHandlers = {
+  onStarted?: (payload: ImageGenerationStreamEventPayload) => void;
+  onRunning?: (payload: ImageGenerationStreamEventPayload) => void;
+  onCompleted?: (payload: ImageGenerationStreamEventPayload) => void;
+  onFailed?: (payload: ImageGenerationStreamEventPayload) => void;
+  onTransportError?: (message: string) => void;
+};
+
 export async function createSession(): Promise<SessionResponse> {
   return requestJSON<SessionResponse>("/api/v1/sessions", {
     method: "POST",
@@ -93,6 +173,12 @@ export async function createSession(): Promise<SessionResponse> {
 
 export async function getSession(sessionId: string): Promise<SessionDetailResponse> {
   return requestJSON<SessionDetailResponse>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "GET",
+  });
+}
+
+export async function getImageGenerationCapabilities(): Promise<ImageGenerationCapabilitiesResponse> {
+  return requestJSON<ImageGenerationCapabilitiesResponse>("/api/v1/image-generations/capabilities", {
     method: "GET",
   });
 }
@@ -128,6 +214,49 @@ export async function createMessage(input: {
   });
 }
 
+export async function createImageGeneration(input: {
+  sessionId: string;
+  mode: ImageGenerationMode;
+  prompt: string;
+  resolution: string;
+  referenceImages?: File[];
+}): Promise<CreateImageGenerationResponse> {
+  const { sessionId, mode, prompt, resolution, referenceImages = [] } = input;
+  const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/image-generations`;
+
+  if (referenceImages.length === 0) {
+    return requestJSON<CreateImageGenerationResponse>(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mode, prompt, resolution }),
+    });
+  }
+
+  const formData = new FormData();
+  formData.set("mode", mode);
+  formData.set("prompt", prompt);
+  formData.set("resolution", resolution);
+  for (const file of referenceImages) {
+    formData.append("referenceImages", file);
+  }
+
+  return requestJSON<CreateImageGenerationResponse>(path, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function getImageGeneration(sessionId: string, generationId: string): Promise<ImageGenerationResponse> {
+  return requestJSON<ImageGenerationResponse>(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/image-generations/${encodeURIComponent(generationId)}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
 export function streamRun(sessionId: string, runId: string, handlers: StreamHandlers): () => void {
   const url = `${apiBaseURL}/api/v1/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/stream`;
   const source = new EventSource(url);
@@ -135,26 +264,72 @@ export function streamRun(sessionId: string, runId: string, handlers: StreamHand
   let terminal = false;
 
   source.addEventListener("run.started", (event) => {
-    handlers.onRunStarted?.(parsePayload(event));
+    handlers.onRunStarted?.(parsePayload<StreamEventPayload>(event));
   });
 
   source.addEventListener("tool.status", (event) => {
-    handlers.onToolStatus?.(parsePayload(event));
+    handlers.onToolStatus?.(parsePayload<StreamEventPayload>(event));
   });
 
   source.addEventListener("message.delta", (event) => {
-    handlers.onMessageDelta?.(parsePayload(event));
+    handlers.onMessageDelta?.(parsePayload<StreamEventPayload>(event));
   });
 
   source.addEventListener("run.completed", (event) => {
     terminal = true;
-    handlers.onRunCompleted?.(parsePayload(event));
+    handlers.onRunCompleted?.(parsePayload<StreamEventPayload>(event));
     source.close();
   });
 
   source.addEventListener("run.failed", (event) => {
     terminal = true;
-    handlers.onRunFailed?.(parsePayload(event));
+    handlers.onRunFailed?.(parsePayload<StreamEventPayload>(event));
+    source.close();
+  });
+
+  source.onerror = () => {
+    if (closed || terminal) {
+      return;
+    }
+
+    terminal = true;
+    handlers.onTransportError?.("Streaming connection closed before completion");
+    source.close();
+  };
+
+  return () => {
+    closed = true;
+    source.close();
+  };
+}
+
+export function streamImageGeneration(
+  sessionId: string,
+  generationId: string,
+  handlers: ImageGenerationStreamHandlers,
+): () => void {
+  const url = `${apiBaseURL}/api/v1/sessions/${encodeURIComponent(sessionId)}/image-generations/${encodeURIComponent(generationId)}/stream`;
+  const source = new EventSource(url);
+  let closed = false;
+  let terminal = false;
+
+  source.addEventListener("image_generation.started", (event) => {
+    handlers.onStarted?.(parsePayload<ImageGenerationStreamEventPayload>(event));
+  });
+
+  source.addEventListener("image_generation.running", (event) => {
+    handlers.onRunning?.(parsePayload<ImageGenerationStreamEventPayload>(event));
+  });
+
+  source.addEventListener("image_generation.completed", (event) => {
+    terminal = true;
+    handlers.onCompleted?.(parsePayload<ImageGenerationStreamEventPayload>(event));
+    source.close();
+  });
+
+  source.addEventListener("image_generation.failed", (event) => {
+    terminal = true;
+    handlers.onFailed?.(parsePayload<ImageGenerationStreamEventPayload>(event));
     source.close();
   });
 
@@ -177,7 +352,7 @@ export function streamRun(sessionId: string, runId: string, handlers: StreamHand
 async function requestJSON<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(apiBaseURL + path, init);
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new APIError(response.status, await readErrorMessage(response));
   }
 
   return (await response.json()) as T;
@@ -196,7 +371,7 @@ async function readErrorMessage(response: Response): Promise<string> {
   return `Request failed with ${response.status} ${response.statusText}`;
 }
 
-function parsePayload(event: Event): StreamEventPayload {
+function parsePayload<T>(event: Event): T {
   const message = event as MessageEvent<string>;
-  return JSON.parse(message.data) as StreamEventPayload;
+  return JSON.parse(message.data) as T;
 }

@@ -8,6 +8,7 @@ import * as api from "../../../lib/api";
 export function setupAppTestContext() {
   const mockedCreateSession = vi.mocked(api.createSession);
   const mockedGetSession = vi.mocked(api.getSession);
+  const mockedGetImageGenerationCapabilities = vi.mocked(api.getImageGenerationCapabilities);
   const mockedCreateMessage = vi.mocked(api.createMessage);
   const mockedStreamRun = vi.mocked(api.streamRun);
   const mockedFetch = vi.fn<typeof fetch>();
@@ -33,6 +34,13 @@ export function setupAppTestContext() {
       createdAt: "2026-03-31T10:00:00Z",
       lastMessageAt: "2026-03-31T10:01:00Z",
       messages: [],
+    });
+    mockedGetImageGenerationCapabilities.mockResolvedValue({
+      modes: ["text_to_image"],
+      resolutions: [{ key: "1024x1024", width: 1024, height: 1024 }],
+      maxReferenceImages: 4,
+      outputImageCount: 1,
+      providerName: "azure-foundry",
     });
     mockedStreamRun.mockImplementation((_sessionId, _runId, handlers) => {
       streamHandlers = handlers;
@@ -85,6 +93,7 @@ export function setupAppTestContext() {
     mockedCreateMessage,
     mockedCreateSession,
     mockedFetch,
+    mockedGetImageGenerationCapabilities,
     mockedGetSession,
     renderApp,
     requireStreamHandlers,

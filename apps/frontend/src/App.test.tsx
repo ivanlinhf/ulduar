@@ -10,6 +10,7 @@ import { setupAppTestContext } from "./features/chat/test/testContext";
 vi.mock("./lib/api", () => ({
   createSession: vi.fn(),
   getSession: vi.fn(),
+  getImageGenerationCapabilities: vi.fn(),
   createMessage: vi.fn(),
   streamRun: vi.fn(),
 }));
