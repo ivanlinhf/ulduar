@@ -65,7 +65,7 @@ No rollout-notes document is required.
 - Calls Azure OpenAI Responses API for chat
 - Streams assistant output to the SPA via SSE
 - Can optionally attach Azure-native `web_search` behind backend configuration, disabled by default for manual rollout
-- Supports a pluggable image generation provider; Azure AI Foundry FLUX is the initial configured adapter, enabled when `AZURE_FOUNDRY_ENDPOINT` is set
+- Supports a pluggable image generation provider; Azure AI Foundry FLUX is the initial configured adapter, enabled when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set
 
 ### Storage
 
@@ -245,7 +245,7 @@ Environment variables should cover:
 
 The backend exposes a provider-neutral `imageprovider.ImageProvider` interface. Concrete adapters implement this interface and keep all provider-specific details isolated from the domain layer.
 
-Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured adapter. It is activated by setting `AZURE_FOUNDRY_ENDPOINT`. If the endpoint is not set, image generation endpoints return `503 Service Unavailable` and the rest of the backend is unaffected.
+Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured adapter. It is configured only when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set. If `AZURE_FOUNDRY_ENDPOINT` is not set, image generation endpoints return `503 Service Unavailable` and the rest of the backend is unaffected.
 
 Future providers can be added by implementing the interface without changing the HTTP layer.
 
