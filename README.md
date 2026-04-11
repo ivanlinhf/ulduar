@@ -184,7 +184,7 @@ Operational notes:
 
 Image generation is disabled by default. To enable it locally, set `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` before starting the backend.
 
-The image generation layer uses a pluggable provider interface. Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured provider, selected automatically when `AZURE_FOUNDRY_ENDPOINT` is set. Chat still uses Azure OpenAI Responses API; image generation uses the configured image provider independently.
+The image generation layer uses a pluggable provider interface. Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured provider, selected automatically when `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set. Chat still uses Azure OpenAI Responses API; image generation uses the configured image provider independently.
 
 Supported v1 image generation modes:
 
