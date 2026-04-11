@@ -351,7 +351,7 @@ Streams generation progress via SSE. Events include status transitions and, on c
 
 #### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content`
 
-Returns the raw bytes of any generation asset (input or output role).
+Returns the raw bytes of an output-role generation asset.
 
 #### `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content`
 

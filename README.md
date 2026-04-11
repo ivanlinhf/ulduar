@@ -216,7 +216,7 @@ Session-scoped:
 - `POST /api/v1/sessions/{sessionId}/image-generations` — submit a new generation request
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}` — poll generation status and asset list
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream` — SSE stream for generation progress
-- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content` — download a raw generation asset (input or output)
+- `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content` — download a raw generation output asset
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content` — download a generation output image directly
 
 When no provider is configured, `GET /api/v1/image-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/image-generations`, and the stream endpoint for non-terminal generations return `503 Service Unavailable`. Read-only endpoints that fetch an existing generation record or download stored asset/image content remain available for already completed generations.
