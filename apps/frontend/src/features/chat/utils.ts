@@ -1,5 +1,6 @@
 import { allowedAttachmentTypes, maxAttachmentBytes, maxAttachmentCount } from "./constants";
 import type { ChatAttachment } from "./types";
+export { createLocalId, formatBytes, toErrorMessage } from "../../lib/utils";
 
 export function isScrolledToBottom(element: HTMLDivElement) {
   const scrollThreshold = 24;
@@ -24,10 +25,6 @@ export function validateAttachments(files: File[]) {
   }
 
   return "";
-}
-
-export function createLocalId(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 export function fileToAttachment(file: File): ChatAttachment {
@@ -66,23 +63,4 @@ export function compactMediaType(mediaType: string) {
   }
 
   return mediaType.replace("image/", "").toUpperCase();
-}
-
-export function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function toErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback;
 }

@@ -9,6 +9,7 @@ import { ExpandedComposerDialog } from "./features/chat/components/ExpandedCompo
 import { MessageList } from "./features/chat/components/MessageList";
 import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfirmationDialog";
 import { useChatApp } from "./features/chat/useChatApp";
+import { ImageWorkspace } from "./features/imagegen/components/ImageWorkspace";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 import { isImageGenerationEnabled } from "./lib/config";
 import { useImageGenerationBootstrap } from "./lib/imageGeneration";
@@ -17,6 +18,7 @@ export type WorkspaceMode = "chat" | "image";
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceMode>("chat");
+  const [newImageKey, setNewImageKey] = useState(0);
   const chat = useChatApp();
   const imageGeneration = useImageGenerationBootstrap(isImageGenerationEnabled);
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
@@ -30,7 +32,11 @@ export default function App() {
 
   function handleNewImage() {
     setWorkspace("image");
+    setNewImageKey((k) => k + 1);
   }
+
+  const imageCapabilities =
+    imageGeneration.status === "available" ? imageGeneration.capabilities : null;
 
   return (
     <div className="app-shell">
@@ -44,70 +50,81 @@ export default function App() {
         data-workspace={workspace}
         data-image-generation-bootstrap-state={imageGeneration.status}
       >
-        <section className="chat-panel">
-          <header className="chat-header">
-            <p className="chat-subtitle">{chat.chatSubtitle}</p>
+        {workspace === "image" && imageCapabilities ? (
+          <ImageWorkspace
+            key={newImageKey}
+            capabilities={imageCapabilities}
+            isImageGenerationEnabled={isImageGenerationEnabled}
+            isImageGenerationAvailable={imageGeneration.status === "available"}
+            onNewChat={handleNewChat}
+            onNewImage={handleNewImage}
+          />
+        ) : (
+          <section className="chat-panel">
+            <header className="chat-header">
+              <p className="chat-subtitle">{chat.chatSubtitle}</p>
 
-            <div className="chat-header-actions">
-              <ActionTooltip
-                align="right"
-                wrapperClassName="session-info"
-                tooltipClassName="session-info-tooltip"
-                content={
-                  <div className="session-info-tooltip-content">
-                    <div className="session-info-row">
-                      <span>Session ID</span>
-                      <strong>{chat.sessionId || "Pending"}</strong>
+              <div className="chat-header-actions">
+                <ActionTooltip
+                  align="right"
+                  wrapperClassName="session-info"
+                  tooltipClassName="session-info-tooltip"
+                  content={
+                    <div className="session-info-tooltip-content">
+                      <div className="session-info-row">
+                        <span>Session ID</span>
+                        <strong>{chat.sessionId || "Pending"}</strong>
+                      </div>
+                      <div className="session-info-row">
+                        <span>Turn count</span>
+                        <strong>{turnCount}</strong>
+                      </div>
                     </div>
-                    <div className="session-info-row">
-                      <span>Turn count</span>
-                      <strong>{turnCount}</strong>
-                    </div>
-                  </div>
-                }
-              >
-                <button
-                  aria-label="Session details"
-                  className="secondary-button icon-only-button info-button"
-                  type="button"
+                  }
                 >
-                  <IconInfo />
-                </button>
-              </ActionTooltip>
+                  <button
+                    aria-label="Session details"
+                    className="secondary-button icon-only-button info-button"
+                    type="button"
+                  >
+                    <IconInfo />
+                  </button>
+                </ActionTooltip>
 
-              <NewMenu
-                isImageGenerationEnabled={isImageGenerationEnabled}
-                isImageGenerationAvailable={imageGeneration.status === "available"}
-                onNewChat={handleNewChat}
-                onNewImage={handleNewImage}
-              />
-            </div>
-          </header>
+                <NewMenu
+                  isImageGenerationEnabled={isImageGenerationEnabled}
+                  isImageGenerationAvailable={imageGeneration.status === "available"}
+                  onNewChat={handleNewChat}
+                  onNewImage={handleNewImage}
+                />
+              </div>
+            </header>
 
-          <MessageList
-            messages={chat.messages}
-            messagesEndRef={chat.messagesEndRef}
-            onScroll={chat.handleMessageListScroll}
-            transientStatus={chat.transientStatus}
-          />
+            <MessageList
+              messages={chat.messages}
+              messagesEndRef={chat.messagesEndRef}
+              onScroll={chat.handleMessageListScroll}
+              transientStatus={chat.transientStatus}
+            />
 
-          <ChatComposer
-            busy={chat.busy}
-            canSubmit={chat.canSubmit}
-            composerText={chat.composerText}
-            inlineComposerRef={chat.inlineComposerRef}
-            onOpenExpandedComposer={chat.openExpandedComposer}
-            onOpenFilePicker={chat.openFilePicker}
-            onRemoveAttachment={chat.removeAttachment}
-            onSubmit={chat.handleSubmit}
-            onTextChange={chat.handleComposerTextChange}
-            onTextareaKeyDown={chat.handleInlineComposerKeyDown}
-            screenError={chat.screenError}
-            selectedFiles={chat.selectedFiles}
-            submissionState={chat.submissionState}
-            submitButtonLabel={chat.submitButtonLabel}
-          />
-        </section>
+            <ChatComposer
+              busy={chat.busy}
+              canSubmit={chat.canSubmit}
+              composerText={chat.composerText}
+              inlineComposerRef={chat.inlineComposerRef}
+              onOpenExpandedComposer={chat.openExpandedComposer}
+              onOpenFilePicker={chat.openFilePicker}
+              onRemoveAttachment={chat.removeAttachment}
+              onSubmit={chat.handleSubmit}
+              onTextChange={chat.handleComposerTextChange}
+              onTextareaKeyDown={chat.handleInlineComposerKeyDown}
+              screenError={chat.screenError}
+              selectedFiles={chat.selectedFiles}
+              submissionState={chat.submissionState}
+              submitButtonLabel={chat.submitButtonLabel}
+            />
+          </section>
+        )}
       </main>
 
       <ExpandedComposerDialog
