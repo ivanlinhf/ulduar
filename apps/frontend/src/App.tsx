@@ -11,12 +11,14 @@ import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfi
 import { useChatApp } from "./features/chat/useChatApp";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 import { isImageGenerationEnabled } from "./lib/config";
+import { useImageGenerationBootstrap } from "./lib/imageGeneration";
 
 export type WorkspaceMode = "chat" | "image";
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceMode>("chat");
   const chat = useChatApp();
+  const imageGeneration = useImageGenerationBootstrap(isImageGenerationEnabled);
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
   const update = useFrontendUpdate(turnCount);
   const isAnyDialogOpen = chat.isExpandedComposerOpen || update.isReloadConfirmationOpen;
@@ -35,7 +37,13 @@ export default function App() {
       <div className="app-backdrop app-backdrop-left" />
       <div className="app-backdrop app-backdrop-right" />
 
-      <main className="app-frame" ref={chat.appFrameRef} aria-hidden={isAnyDialogOpen ? "true" : undefined} data-workspace={workspace}>
+      <main
+        className="app-frame"
+        ref={chat.appFrameRef}
+        aria-hidden={isAnyDialogOpen ? "true" : undefined}
+        data-workspace={workspace}
+        data-image-generation-bootstrap-state={imageGeneration.status}
+      >
         <section className="chat-panel">
           <header className="chat-header">
             <p className="chat-subtitle">{chat.chatSubtitle}</p>
@@ -69,8 +77,7 @@ export default function App() {
 
               <NewMenu
                 isImageGenerationEnabled={isImageGenerationEnabled}
-                // isImageGenerationAvailable remains false until runtime capability is wired in (#76)
-                isImageGenerationAvailable={false}
+                isImageGenerationAvailable={imageGeneration.status === "available"}
                 onNewChat={handleNewChat}
                 onNewImage={handleNewImage}
               />
