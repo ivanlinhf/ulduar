@@ -390,9 +390,9 @@ No history sidebar is needed in v1.
 Image generation UI is controlled by two independent gates:
 
 - **Frontend flag** (`VITE_IMAGE_GENERATION_ENABLED`): when unset or `false`, the image workspace is invisible regardless of backend configuration. When `true`, the `New` dropdown exposes `New image` and the image workspace is accessible.
-- **Backend provider** (`AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`): when unset, the backend returns `503 Service Unavailable` from the capabilities and create endpoints.
+- **Backend provider** (`AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`): when unset, the backend returns `503 Service Unavailable` from `GET /api/v1/image-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/image-generations`.
 
-If the frontend flag is enabled but the backend provider is unavailable, the image workspace displays an error when it attempts to load generation capabilities. The chat workspace is unaffected. Setting the backend provider without enabling the frontend flag keeps image generation invisible in the UI.
+If the frontend flag is enabled but the backend provider is unavailable, the image workspace displays a `503 Service Unavailable` error when it attempts to load generation capabilities on startup. The chat workspace is unaffected. Setting the backend provider without enabling the frontend flag keeps image generation invisible in the UI.
 
 ### Image workspace
 
