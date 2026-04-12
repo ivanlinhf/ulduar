@@ -23,6 +23,18 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
   });
 
+  it("shows empty state in the timeline when no generations have been submitted", async () => {
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    expect(screen.getByText("No images yet.")).toBeInTheDocument();
+  });
+
   it("shows resolution selector with backend capabilities", async () => {
     context.renderApp();
     await context.waitForReady();
@@ -61,6 +73,155 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
         resolution: "1024x1024",
         referenceImages: [],
       });
+    });
+  });
+
+  it("adds a pending turn to the timeline after submitting", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await user.type(screen.getByLabelText("Image prompt"), "A sunset over the mountains");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("A sunset over the mountains")).toBeInTheDocument();
+    });
+  });
+
+  it("transitions turn status through streaming and shows completed state", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await user.type(screen.getByLabelText("Image prompt"), "A mountain scene");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("A mountain scene")).toBeInTheDocument();
+    });
+
+    const handlers = context.requireImageStreamHandlers();
+
+    act(() => {
+      handlers.onStarted?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "running",
+        prompt: "A mountain scene",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        inputAssets: [],
+        outputAssets: [],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("running")).toBeInTheDocument();
+    });
+
+    act(() => {
+      handlers.onCompleted?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "completed",
+        prompt: "A mountain scene",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        completedAt: "2026-03-31T10:01:05Z",
+        inputAssets: [],
+        outputAssets: [
+          {
+            assetId: "asset-001",
+            filename: "output.png",
+            mediaType: "image/png",
+            sizeBytes: 12345,
+            sha256: "abc123",
+            width: 1024,
+            height: 1024,
+            createdAt: "2026-03-31T10:01:05Z",
+            contentUrl: "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/assets/asset-001/content",
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("completed")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "output.png" })).toBeInTheDocument();
+    });
+
+    // Composer prompt should be cleared and ready for next turn
+    expect(screen.getByLabelText("Image prompt")).toHaveValue("");
+  });
+
+  it("shows a second turn when a new generation is submitted after the first completes", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    // First generation
+    await user.type(screen.getByLabelText("Image prompt"), "First image");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("First image")).toBeInTheDocument();
+    });
+
+    const handlers = context.requireImageStreamHandlers();
+    act(() => {
+      handlers.onCompleted?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "completed",
+        prompt: "First image",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        completedAt: "2026-03-31T10:01:05Z",
+        inputAssets: [],
+        outputAssets: [],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("completed")).toBeInTheDocument();
+    });
+
+    // Second generation
+    context.mockSuccessfulCreateImageGeneration({ generationId: "gen-55555555-5555-5555-5555-555555555555" });
+    await user.type(screen.getByLabelText("Image prompt"), "Second image");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("First image")).toBeInTheDocument();
+      expect(screen.getByText("Second image")).toBeInTheDocument();
     });
   });
 
@@ -218,7 +379,36 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     expect(screen.getByLabelText("Image prompt")).toHaveValue("");
   });
 
-  it("shows an error when generation fails and restores the prompt", async () => {
+  it("clears timeline turns when a new image session is started", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await userEvent.type(screen.getByLabelText("Image prompt"), "First turn prompt");
+    await userEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("First turn prompt")).toBeInTheDocument();
+    });
+
+    // Start a new image session
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    // Timeline should be empty
+    expect(screen.queryByText("First turn prompt")).not.toBeInTheDocument();
+    expect(screen.getByText("No images yet.")).toBeInTheDocument();
+  });
+
+  it("shows a failed turn in the timeline when generation fails and prompt is not restored", async () => {
     context.renderApp();
     await context.waitForReady();
 
@@ -234,10 +424,52 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     await waitFor(() => {
       expect(screen.getByText("Server error")).toBeInTheDocument();
+      expect(screen.getByText("A failing prompt")).toBeInTheDocument();
     });
 
-    // Prompt should be restored
-    expect(screen.getByLabelText("Image prompt")).toHaveValue("A failing prompt");
+    // Prompt should NOT be restored – error is shown in the timeline turn card
+    expect(screen.getByLabelText("Image prompt")).toHaveValue("");
+  });
+
+  it("shows a failed turn when stream onFailed fires", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await userEvent.type(screen.getByLabelText("Image prompt"), "A prompt that will fail");
+    await userEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("A prompt that will fail")).toBeInTheDocument();
+    });
+
+    const handlers = context.requireImageStreamHandlers();
+    act(() => {
+      handlers.onFailed?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "failed",
+        prompt: "A prompt that will fail",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        errorMessage: "Provider returned an error",
+        inputAssets: [],
+        outputAssets: [],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("failed")).toBeInTheDocument();
+      expect(screen.getByText("Provider returned an error")).toBeInTheDocument();
+    });
   });
 
   it("the reference image file input only accepts image types", async () => {

@@ -2,6 +2,7 @@ import { NewMenu } from "../../chat/components/NewMenu";
 import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
 import { useImageWorkspace } from "../useImageWorkspace";
 import { ImageComposer } from "./ImageComposer";
+import { ImageTimeline } from "./ImageTimeline";
 
 type ImageWorkspaceProps = {
   capabilities: ImageGenerationCapabilitiesResponse;
@@ -35,7 +36,7 @@ export function ImageWorkspace({
         </div>
       </header>
 
-      <div className="image-workspace-body" />
+      <ImageTimeline turns={workspace.turns} />
 
       <ImageComposer
         attachmentToast={workspace.attachmentToast}

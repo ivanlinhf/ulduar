@@ -16,7 +16,13 @@ import {
   type ImageGenerationMode,
 } from "../../lib/api";
 import { imageToastDurationMs } from "./constants";
-import type { ImageBootstrapState, ImageSubmissionState, SelectedReferenceImage } from "./types";
+import type {
+  ImageBootstrapState,
+  ImageSubmissionState,
+  ImageTurn,
+  ImageTurnOutputImage,
+  SelectedReferenceImage,
+} from "./types";
 import { createLocalId, toErrorMessage, validateReferenceImages } from "./utils";
 
 export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesResponse) {
@@ -30,6 +36,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const [referenceImages, setReferenceImages] = useState<SelectedReferenceImage[]>([]);
   const [screenError, setScreenError] = useState("");
   const [attachmentToast, setAttachmentToast] = useState("");
+  const [turns, setTurns] = useState<ImageTurn[]>([]);
 
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -92,6 +99,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setPrompt("");
     setReferenceImages([]);
     setSessionId("");
+    setTurns([]);
 
     try {
       const session = await createSession();
@@ -122,54 +130,93 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     const draftPrompt = prompt;
     const draftImages = referenceImages;
     const draftResolution = resolution;
+    const draftMode = mode;
+    const turnId = createLocalId("turn");
 
     setScreenError("");
     setSubmissionState("submitting");
     setPrompt("");
     setReferenceImages([]);
 
+    const pendingTurn: ImageTurn = {
+      id: turnId,
+      generationId: "",
+      prompt: draftPrompt,
+      mode: draftMode,
+      resolution: draftResolution,
+      referenceImages: draftImages,
+      status: "pending",
+      outputImages: [],
+    };
+    setTurns((prev) => [...prev, pendingTurn]);
+
     try {
       const created = await createImageGeneration({
         sessionId,
-        mode,
+        mode: draftMode,
         prompt: draftPrompt,
         resolution: draftResolution,
         referenceImages: draftImages.map((r) => r.file),
       });
 
+      setTurns((prev) =>
+        prev.map((t) => (t.id === turnId ? { ...t, generationId: created.generationId } : t)),
+      );
+
       setSubmissionState("streaming");
       closeStream();
       streamCleanupRef.current = streamImageGeneration(sessionId, created.generationId, {
         onStarted: () => {
-          // generation acknowledged
+          setTurns((prev) =>
+            prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
+          );
         },
         onRunning: () => {
-          // generation in progress
+          setTurns((prev) =>
+            prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
+          );
         },
-        onCompleted: () => {
+        onCompleted: (payload) => {
+          const outputImages: ImageTurnOutputImage[] = payload.outputAssets
+            .filter((a) => a.contentUrl)
+            .map((a) => ({
+              assetId: a.assetId,
+              contentUrl: a.contentUrl!,
+              mediaType: a.mediaType,
+              width: a.width,
+              height: a.height,
+              filename: a.filename,
+            }));
+          setTurns((prev) =>
+            prev.map((t) =>
+              t.id === turnId ? { ...t, status: "completed", outputImages } : t,
+            ),
+          );
           closeStream();
           setSubmissionState("idle");
         },
         onFailed: (payload) => {
+          const errorMessage = payload.errorMessage ?? "Image generation failed";
+          setTurns((prev) =>
+            prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage } : t)),
+          );
           closeStream();
           setSubmissionState("idle");
-          setPrompt(draftPrompt);
-          setReferenceImages(draftImages);
-          setScreenError(payload.errorMessage ?? "Image generation failed");
         },
         onTransportError: (message) => {
+          setTurns((prev) =>
+            prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage: message } : t)),
+          );
           closeStream();
           setSubmissionState("idle");
-          setPrompt(draftPrompt);
-          setReferenceImages(draftImages);
-          setScreenError(message);
         },
       });
     } catch (error) {
+      const errorMessage = toErrorMessage(error, "Failed to submit image generation");
+      setTurns((prev) =>
+        prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage } : t)),
+      );
       setSubmissionState("idle");
-      setPrompt(draftPrompt);
-      setReferenceImages(draftImages);
-      setScreenError(toErrorMessage(error, "Failed to submit image generation"));
     }
   }
 
@@ -288,6 +335,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     screenError,
     sessionId,
     submissionState,
+    turns,
     workspaceSubtitle,
   };
 }
