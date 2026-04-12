@@ -173,15 +173,15 @@ export function NewMenu({
       <button
         ref={triggerRef}
         aria-controls={menuId}
+        aria-label="New"
         aria-expanded={isOpen}
         aria-haspopup="menu"
-        className="secondary-button new-menu-trigger"
+        className="secondary-button icon-only-button new-menu-trigger"
         type="button"
         onClick={handleTriggerClick}
         onKeyDown={handleTriggerKeyDown}
       >
         <IconNewChat />
-        <span className="new-menu-trigger-label">New</span>
       </button>
 
       <div
