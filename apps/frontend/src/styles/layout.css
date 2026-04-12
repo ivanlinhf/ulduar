@@ -185,16 +185,7 @@
 .new-menu-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  width: auto;
-  min-width: 42px;
-}
-
-.new-menu-trigger-label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  justify-content: center;
 }
 
 .new-menu-panel {

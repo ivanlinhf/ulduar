@@ -21,6 +21,7 @@ describe("NewMenu", () => {
     const trigger = screen.getByRole("button", { name: "New" });
     expect(trigger).toHaveAttribute("aria-haspopup", "menu");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveTextContent("New");
   });
 
   it("opens the menu and focuses the first item on click", async () => {
