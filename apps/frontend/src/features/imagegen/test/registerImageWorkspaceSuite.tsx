@@ -176,10 +176,106 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
         "src",
         "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
       );
+      expect(
+        screen.getByRole("toolbar", { name: "Generated image actions for output.png" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Original 1024 x 1024")).toBeInTheDocument();
     });
 
     // Composer prompt should be cleared and ready for next turn
     expect(screen.getByLabelText("Image prompt")).toHaveValue("");
+  });
+
+  it("downloads the original generated image from the toolbar", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+    const generatedImageUrl =
+      "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content";
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    try {
+      context.mockedFetch.mockImplementation(async (input) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+        if (url === generatedImageUrl) {
+          return createImageContentResponse();
+        }
+
+        return new Response(JSON.stringify({ version: "test-version" }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+      });
+
+      context.renderApp();
+      await context.waitForReady();
+
+      await user.click(screen.getByRole("button", { name: "New" }));
+      await user.click(screen.getByRole("menuitem", { name: "New Image" }));
+
+      await context.waitForImageReady();
+
+      await user.type(screen.getByLabelText("Image prompt"), "Download this image");
+      await user.click(screen.getByRole("button", { name: "Generate" }));
+
+      await waitFor(() => {
+        expect(context.mockedCreateImageGeneration).toHaveBeenCalledTimes(1);
+      });
+
+      act(() => {
+        context.requireImageStreamHandlers().onCompleted?.({
+          generationId: "gen-44444444-4444-4444-4444-444444444444",
+          sessionId: "22222222-2222-2222-2222-222222222222",
+          mode: "text_to_image",
+          status: "completed",
+          prompt: "Download this image",
+          resolution: { key: "1024x1024", width: 1024, height: 1024 },
+          outputImageCount: 1,
+          createdAt: "2026-03-31T10:01:00Z",
+          completedAt: "2026-03-31T10:01:05Z",
+          inputAssets: [],
+          outputAssets: [
+            {
+              assetId: "asset-001",
+              filename: "download-me.png",
+              mediaType: "image/png",
+              sizeBytes: 12345,
+              sha256: "abc123",
+              width: 1024,
+              height: 1024,
+              createdAt: "2026-03-31T10:01:05Z",
+              contentUrl:
+                "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
+            },
+          ],
+        });
+      });
+
+      await user.click(
+        screen.getByRole("button", { name: "Download original generated image download-me.png" }),
+      );
+
+      await waitFor(() => {
+        const downloadBlob = vi.mocked(URL.createObjectURL).mock.calls[0]?.[0];
+        expect(context.mockedFetch).toHaveBeenCalledWith(generatedImageUrl);
+        expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+        expect(downloadBlob).toBeDefined();
+        expect(downloadBlob).toMatchObject({
+          size: 9,
+          type: "image/png",
+        });
+        expect(anchorClickSpy).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      anchorClickSpy.mockRestore();
+    }
   });
 
   it("shows a second turn when a new generation is submitted after the first completes", async () => {

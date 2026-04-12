@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { IconSpinner } from "../../chat/components/icons";
-import type { ImageTurn } from "../types";
+import { ActionTooltip } from "../../chat/components/ActionTooltip";
+import { IconDownload, IconSpinner } from "../../chat/components/icons";
+import type { ImageTurn, ImageTurnOutputImage } from "../types";
 
 type ImageTurnCardProps = {
   turn: ImageTurn;
@@ -68,14 +69,7 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
       {turn.status === "completed" && turn.outputImages.length > 0 ? (
         <div className="image-turn-outputs">
           {turn.outputImages.map((img) => (
-            <img
-              key={img.assetId}
-              className="image-turn-output"
-              src={img.contentUrl}
-              alt={img.filename}
-              loading="lazy"
-              decoding="async"
-            />
+            <ImageTurnOutputCard key={img.assetId} image={img} />
           ))}
         </div>
       ) : null}
@@ -85,4 +79,103 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
       ) : null}
     </article>
   );
+}
+
+type ImageTurnOutputCardProps = {
+  image: ImageTurnOutputImage;
+};
+
+function ImageTurnOutputCard({ image }: ImageTurnOutputCardProps) {
+  const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "failed">("idle");
+  const resolutionLabel = formatResolutionLabel(image);
+
+  async function handleDownload() {
+    if (downloadState === "downloading") {
+      return;
+    }
+
+    setDownloadState("downloading");
+
+    try {
+      const response = await fetch(image.contentUrl);
+      if (!response.ok) {
+        throw new Error(`download failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = image.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => {
+        URL.revokeObjectURL(downloadUrl);
+      }, 1000);
+      setDownloadState("idle");
+    } catch {
+      setDownloadState("failed");
+    }
+  }
+
+  return (
+    <figure className="image-turn-output-card">
+      <div className="image-turn-output-frame">
+        <img
+          className="image-turn-output"
+          src={image.contentUrl}
+          alt={image.filename}
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+      <div
+        className="image-turn-output-toolbar"
+        role="toolbar"
+        aria-label={`Generated image actions for ${image.filename}`}
+      >
+        <span className="image-turn-output-meta">{resolutionLabel}</span>
+        <div className="image-turn-output-actions">
+          {downloadState === "failed" ? (
+            <span className="image-turn-output-feedback" role="status">
+              Download failed
+            </span>
+          ) : null}
+          <ActionTooltip
+            tooltipClassName="message-action-tooltip"
+            content={
+              <span className="action-tooltip-label message-action-tooltip-label">
+                {downloadState === "downloading" ? "Downloading original" : "Download original"}
+              </span>
+            }
+          >
+            <button
+              type="button"
+              className="message-toolbar-button"
+              aria-label={
+                downloadState === "downloading"
+                  ? `Downloading original generated image ${image.filename}`
+                  : `Download original generated image ${image.filename}`
+              }
+              onClick={() => {
+                void handleDownload();
+              }}
+              disabled={downloadState === "downloading"}
+            >
+              {downloadState === "downloading" ? <IconSpinner /> : <IconDownload />}
+            </button>
+          </ActionTooltip>
+        </div>
+      </div>
+    </figure>
+  );
+}
+
+function formatResolutionLabel(image: ImageTurnOutputImage): string {
+  if (image.width && image.height) {
+    return `Original ${image.width} x ${image.height}`;
+  }
+
+  return image.filename;
 }

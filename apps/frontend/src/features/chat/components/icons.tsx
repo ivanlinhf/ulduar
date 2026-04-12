@@ -64,6 +64,16 @@ export function IconSpinner() {
   );
 }
 
+export function IconDownload() {
+  return (
+    <svg aria-hidden="true" className="button-icon" viewBox="0 0 24 24">
+      <path d="M12 4v10" />
+      <path d="m8 10 4 4 4-4" />
+      <path d="M5 18h14" />
+    </svg>
+  );
+}
+
 export function IconClose() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">

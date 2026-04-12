@@ -82,16 +82,66 @@
 }
 
 .image-turn-outputs {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.image-turn-output-card {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.image-turn-output-frame {
+  width: min(100%, 32rem);
+  max-width: 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(56, 44, 30, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 247, 239, 0.94)),
+    var(--surface-strong);
 }
 
 .image-turn-output {
-  max-width: 100%;
+  max-width: min(100%, 32rem);
+  max-height: min(32rem, 58vh);
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: 12px;
-  border: 1px solid rgba(56, 44, 30, 0.1);
   display: block;
+}
+
+.image-turn-output-toolbar {
+  width: min(100%, 32rem);
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.image-turn-output-meta {
+  font-size: 0.8rem;
+}
+
+.image-turn-output-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.image-turn-output-feedback {
+  font-size: 0.78rem;
+  color: var(--danger);
 }
 
 .image-turn-error {
