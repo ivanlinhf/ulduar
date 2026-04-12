@@ -48,6 +48,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
   const referenceImagesRef = useRef<SelectedReferenceImage[]>([]);
+  const reusingImageIdsRef = useRef<Set<string>>(new Set());
+  const draftVersionRef = useRef(0);
 
   const maxReferenceImages = capabilities.maxReferenceImages;
   const hasReferenceImages = referenceImages.length > 0;
@@ -55,7 +57,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const supportsTextToImage = capabilities.modes.includes("text_to_image");
   const mode: ImageGenerationMode =
     hasReferenceImages && supportsImageEdit ? "image_edit" : "text_to_image";
-  const busy = bootstrapState === "loading" || submissionState !== "idle";
+  const busy =
+    bootstrapState === "loading" || submissionState !== "idle" || reusingImageIds.length > 0;
   const canSubmit =
     prompt.trim() !== "" &&
     !busy &&
@@ -135,7 +138,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setPrompt("");
     setReferenceImages([]);
     referenceImagesRef.current = [];
-    setReusingImageIds([]);
+    resetReuseInFlight();
     setSessionId("");
     setTurns([]);
 
@@ -176,6 +179,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setPrompt("");
     setReferenceImages([]);
     referenceImagesRef.current = [];
+    resetDraftVersion();
 
     const pendingTurn: ImageTurn = {
       id: turnId,
@@ -343,7 +347,11 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       return;
     }
 
-    setReusingImageIds((current) => [...current, source.id]);
+    if (!startReuseInFlight(source.id)) {
+      return;
+    }
+
+    const draftVersion = draftVersionRef.current;
 
     try {
       const response = await fetch(source.contentUrl);
@@ -356,11 +364,19 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         type: blob.type || source.mediaType,
       });
 
+      if (draftVersion !== draftVersionRef.current) {
+        return;
+      }
+
       tryAddReferenceImages([createSelectedReferenceImage(file, "generated")]);
     } catch (error) {
+      if (draftVersion !== draftVersionRef.current) {
+        return;
+      }
+
       showAttachmentToast(toErrorMessage(error, `Failed to add ${source.name} to this draft.`));
     } finally {
-      setReusingImageIds((current) => current.filter((id) => id !== source.id));
+      finishReuseInFlight(source.id);
     }
   }
 
@@ -399,6 +415,35 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     referenceImagesRef.current = next;
     setReferenceImages(next);
     return true;
+  }
+
+  function resetDraftVersion() {
+    draftVersionRef.current += 1;
+  }
+
+  function resetReuseInFlight() {
+    resetDraftVersion();
+    reusingImageIdsRef.current.clear();
+    setReusingImageIds([]);
+  }
+
+  function startReuseInFlight(id: string) {
+    if (reusingImageIdsRef.current.has(id)) {
+      return false;
+    }
+
+    reusingImageIdsRef.current.add(id);
+    setReusingImageIds((current) => [...current, id]);
+    return true;
+  }
+
+  function finishReuseInFlight(id: string) {
+    if (!reusingImageIdsRef.current.has(id)) {
+      return;
+    }
+
+    reusingImageIdsRef.current.delete(id);
+    setReusingImageIds((current) => current.filter((currentId) => currentId !== id));
   }
 
   function showAttachmentToast(message: string) {

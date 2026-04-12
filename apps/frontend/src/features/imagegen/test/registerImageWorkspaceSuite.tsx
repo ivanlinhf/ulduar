@@ -482,6 +482,212 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     expect(context.mockedFetch).toHaveBeenCalledWith(generatedImageUrl);
   });
 
+  it("disables submission during generated-image reuse and ignores stale completions after a draft reset", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+    const generatedImageUrl =
+      "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content";
+    const deferred = createDeferred<Response>();
+
+    context.mockedFetch.mockImplementation(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === generatedImageUrl) {
+        return deferred.promise;
+      }
+
+      return new Response(JSON.stringify({ version: "test-version" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await user.type(screen.getByLabelText("Image prompt"), "Create an image to reuse");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(context.mockedCreateImageGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      context.requireImageStreamHandlers().onCompleted?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "completed",
+        prompt: "Create an image to reuse",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        completedAt: "2026-03-31T10:01:05Z",
+        inputAssets: [],
+        outputAssets: [
+          {
+            assetId: "asset-001",
+            filename: "generated-output.png",
+            mediaType: "image/png",
+            sizeBytes: 12345,
+            sha256: "abc123",
+            width: 1024,
+            height: 1024,
+            createdAt: "2026-03-31T10:01:05Z",
+            contentUrl:
+              "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Attach generated image generated-output.png" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("Image prompt"), "Try to submit while reusing");
+    await user.click(screen.getByRole("button", { name: "Attach generated image generated-output.png" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Add reference images" })).toBeDisabled();
+      expect(context.mockedFetch).toHaveBeenCalledTimes(2);
+    });
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await act(async () => {
+      deferred.resolve(
+        new Response(new Blob(["generated"], { type: "image/png" }), {
+          status: 200,
+          headers: {
+            "Content-Type": "image/png",
+          },
+        }),
+      );
+      await deferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Remove generated-output.png" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Image prompt")).toHaveValue("");
+  });
+
+  it("does not start duplicate generated-image reuse fetches for the same source", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+    const generatedImageUrl =
+      "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content";
+    const deferred = createDeferred<Response>();
+
+    context.mockedFetch.mockImplementation(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === generatedImageUrl) {
+        return deferred.promise;
+      }
+
+      return new Response(JSON.stringify({ version: "test-version" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    });
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+
+    await context.waitForImageReady();
+
+    await user.type(screen.getByLabelText("Image prompt"), "Create an image to reuse");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(context.mockedCreateImageGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      context.requireImageStreamHandlers().onCompleted?.({
+        generationId: "gen-44444444-4444-4444-4444-444444444444",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        mode: "text_to_image",
+        status: "completed",
+        prompt: "Create an image to reuse",
+        resolution: { key: "1024x1024", width: 1024, height: 1024 },
+        outputImageCount: 1,
+        createdAt: "2026-03-31T10:01:00Z",
+        completedAt: "2026-03-31T10:01:05Z",
+        inputAssets: [],
+        outputAssets: [
+          {
+            assetId: "asset-001",
+            filename: "generated-output.png",
+            mediaType: "image/png",
+            sizeBytes: 12345,
+            sha256: "abc123",
+            width: 1024,
+            height: 1024,
+            createdAt: "2026-03-31T10:01:05Z",
+            contentUrl:
+              "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
+          },
+        ],
+      });
+    });
+
+    const attachButton = await screen.findByRole("button", {
+      name: "Attach generated image generated-output.png",
+    });
+
+    fireEvent.click(attachButton);
+    fireEvent.click(attachButton);
+
+    expect(context.mockedFetch).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      deferred.resolve(
+        new Response(new Blob(["generated"], { type: "image/png" }), {
+          status: 200,
+          headers: {
+            "Content-Type": "image/png",
+          },
+        }),
+      );
+      await deferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Remove generated-output.png" })).toHaveLength(1);
+    });
+  });
+
   it("applies the reference-image limit when reusing a prior image", async () => {
     context.mockSuccessfulCreateImageGeneration();
     const user = userEvent.setup();
@@ -799,4 +1005,15 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     expect(screen.queryByRole("button", { name: "Remove ref.png" })).not.toBeInTheDocument();
   });
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, reject, resolve };
 }
