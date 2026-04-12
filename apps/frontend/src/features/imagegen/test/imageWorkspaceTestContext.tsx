@@ -21,6 +21,16 @@ export function setupImageWorkspaceTestContext() {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", mockedFetch);
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => `blob:mock-${Math.random().toString(36).slice(2)}`),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     imageStreamHandlers = undefined;
     mockedFetch.mockReset();
     mockedFetch.mockResolvedValue(createVersionResponse(currentFrontendVersion));

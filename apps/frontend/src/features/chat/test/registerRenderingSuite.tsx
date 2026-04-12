@@ -358,7 +358,7 @@ export function registerRenderingSuite(context: AppTestContext) {
     });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New chat" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Chat" }));
     await screen.findByText("Ready for the next turn.");
 
     await userEvent.type(screen.getByLabelText("Message"), "Second run");

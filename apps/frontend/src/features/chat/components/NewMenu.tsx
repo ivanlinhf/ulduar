@@ -206,7 +206,7 @@ export function NewMenu({
             close();
           }}
         >
-          New chat
+          New Chat
         </button>
 
         {isImageGenerationEnabled && (
@@ -224,7 +224,7 @@ export function NewMenu({
               close();
             }}
           >
-            New image
+            New Image
           </button>
         )}
       </div>

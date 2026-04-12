@@ -16,10 +16,10 @@ export function registerNewMenuSuite(context: AppTestContext) {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     // Menu is closed: items are hidden from the accessibility tree via aria-hidden
-    expect(screen.queryByRole("menuitem", { name: "New chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "New Chat" })).toBeNull();
   });
 
-  it("opens the menu and shows New chat item", async () => {
+  it("opens the menu and shows New Chat item", async () => {
     context.renderApp();
     await context.waitForReady();
 
@@ -27,7 +27,7 @@ export function registerNewMenuSuite(context: AppTestContext) {
     await userEvent.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("menuitem", { name: "New chat" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New Chat" })).toBeInTheDocument();
   });
 
   it("closes the menu on second trigger click", async () => {
@@ -40,7 +40,7 @@ export function registerNewMenuSuite(context: AppTestContext) {
 
     await userEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("menuitem", { name: "New chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "New Chat" })).toBeNull();
   });
 
   it("closes the menu on Escape and restores focus to the trigger", async () => {
@@ -68,14 +68,14 @@ export function registerNewMenuSuite(context: AppTestContext) {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("starts a new chat when New chat is selected and closes the menu", async () => {
+  it("starts a new chat when New Chat is selected and closes the menu", async () => {
     context.renderApp();
     await context.waitForReady();
 
     const initialCallCount = context.mockedCreateSession.mock.calls.length;
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New chat" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Chat" }));
 
     expect(screen.getByRole("button", { name: "New" })).toHaveAttribute("aria-expanded", "false");
     expect(context.mockedCreateSession.mock.calls.length).toBeGreaterThan(initialCallCount);
@@ -89,16 +89,16 @@ export function registerNewMenuSuite(context: AppTestContext) {
     trigger.focus();
     await userEvent.keyboard("{Enter}");
 
-    expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "New Chat" })).toHaveFocus();
   });
 
-  it("shows New image item only when image generation is enabled in the test environment", async () => {
+  it("shows New Image item only when image generation is enabled in the test environment", async () => {
     context.renderApp();
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
 
-    const newImageItem = screen.queryByRole("menuitem", { name: "New image" });
+    const newImageItem = screen.queryByRole("menuitem", { name: "New Image" });
 
     if (isImageGenerationEnabled) {
       expect(newImageItem).toBeInTheDocument();

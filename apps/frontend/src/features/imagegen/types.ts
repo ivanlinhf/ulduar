@@ -41,11 +41,10 @@ export type ImageTurnOutputImage = {
 
 export type ReusableImageSource = {
   id: string;
-  kind: ImageReferenceSourceKind;
+  kind: "generated";
   name: string;
   mediaType: string;
-  file?: File;
-  contentUrl?: string;
+  contentUrl: string;
 };
 
 export type ImageTurn = {
