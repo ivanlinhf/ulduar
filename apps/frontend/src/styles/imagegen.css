@@ -59,6 +59,14 @@
   flex: 1 1 auto;
 }
 
+.status-pending {
+  color: var(--muted);
+}
+
+.status-running {
+  color: var(--accent);
+}
+
 .image-turn-progress {
   display: flex;
   align-items: center;
