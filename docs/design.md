@@ -381,7 +381,7 @@ Returns the raw bytes of an output-role generation image. Served with a long-liv
 - Chat conversation area
 - Composer
 - Attachment picker for images and PDFs
-- `New` button: when image generation is disabled, acts as a direct `New chat` button. When image generation is enabled, opens a dropdown menu with `New chat` and `New image` options.
+- `New` control: always opens a dropdown menu. When image generation is disabled, the menu contains only `New chat`. When image generation is enabled, the menu contains `New chat` and `New image` options.
 
 No history sidebar is needed in v1.
 
@@ -406,9 +406,9 @@ Each image workspace session is a single backend chat session scoped to image ge
 
 ### Prior-image reuse
 
-Users can explicitly reattach a previously uploaded or generated image as a reference for a new generation. Reuse requires a deliberate user action (clicking the reuse button on a prior turn's image); reference images are not carried forward automatically between turns. The reused image is fetched from its stored content URL and added to the current draft's reference image list.
+Users can explicitly reattach a previously uploaded or generated image as a reference for a new generation. Reuse requires a deliberate user action (clicking the reuse button on a prior turn's image); reference images are not carried forward automatically between turns. When the reused image is a previously generated output, the frontend fetches its bytes from the stored content URL and adds it to the current draft's reference image list. When the reused image is one the user previously uploaded, the frontend reuses the in-memory `File` directly without a network fetch.
 
-Uploading a new reference image from disk and reusing a previously generated output use the same reference image attachment mechanism.
+Uploading a new reference image from disk, reusing a previously uploaded image, and reusing a previously generated output all converge on the same reference image attachment mechanism once the frontend has the file bytes.
 
 ## Statelessness and Concurrency
 
