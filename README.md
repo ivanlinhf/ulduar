@@ -190,7 +190,7 @@ Image generation is guarded by two independent gates that must both be enabled f
 1. **Frontend flag** — `VITE_IMAGE_GENERATION_ENABLED` controls whether the image-generation UI is built into the frontend bundle. When unset or `false`, the `New` button only shows `New chat`, and no image workspace is accessible regardless of backend configuration.
 2. **Backend provider** — `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` control whether the backend image generation endpoints are active. When these are unset, the capabilities and create endpoints return `503 Service Unavailable`.
 
-These gates are independent. Setting the frontend flag without a backend provider makes the UI visible but the image workspace will show a `503 Service Unavailable` error from `GET /api/v1/image-generations/capabilities` on startup. Setting the backend provider without the frontend flag keeps image generation invisible in the UI.
+These gates are independent. Setting the frontend flag without a backend provider makes the image-generation UI visible, but after `GET /api/v1/image-generations/capabilities` returns `503 Service Unavailable` the frontend treats image generation as unavailable: `New image` is shown but remains disabled and the image workspace cannot be entered. Setting the backend provider without the frontend flag keeps image generation invisible in the UI.
 
 To enable image generation locally:
 
