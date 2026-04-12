@@ -15,6 +15,7 @@ import {
   type ImageGenerationCapabilitiesResponse,
   type ImageGenerationMode,
 } from "../../lib/api";
+import { apiBaseURL } from "../../lib/config";
 import { imageToastDurationMs } from "./constants";
 import type {
   ImageBootstrapState,
@@ -100,14 +101,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setPrompt("");
     setReferenceImages([]);
     setSessionId("");
-    setTurns((prev) => {
-      for (const turn of prev) {
-        for (const ref of turn.referenceImages) {
-          URL.revokeObjectURL(ref.previewUrl);
-        }
-      }
-      return [];
-    });
+    setTurns([]);
 
     try {
       const session = await createSession();
@@ -194,14 +188,18 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         onCompleted: (payload) => {
           const outputImages: ImageTurnOutputImage[] = payload.outputAssets
             .filter((a) => a.contentUrl)
-            .map((a) => ({
-              assetId: a.assetId,
-              contentUrl: a.contentUrl!,
-              mediaType: a.mediaType,
-              width: a.width,
-              height: a.height,
-              filename: a.filename,
-            }));
+            .map((a) => {
+              const raw = a.contentUrl!;
+              const contentUrl = raw.startsWith("/") ? `${apiBaseURL}${raw}` : raw;
+              return {
+                assetId: a.assetId,
+                contentUrl,
+                mediaType: a.mediaType,
+                width: a.width,
+                height: a.height,
+                filename: a.filename,
+              };
+            });
           setTurns((prev) =>
             prev.map((t) =>
               t.id === turnId ? { ...t, status: "completed", outputImages } : t,

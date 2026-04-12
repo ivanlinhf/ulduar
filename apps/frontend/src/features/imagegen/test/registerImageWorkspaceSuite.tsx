@@ -166,7 +166,12 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     await waitFor(() => {
       expect(screen.getByText("completed")).toBeInTheDocument();
-      expect(screen.getByRole("img", { name: "output.png" })).toBeInTheDocument();
+      const outputImg = screen.getByRole("img", { name: "output.png" });
+      expect(outputImg).toBeInTheDocument();
+      expect(outputImg).toHaveAttribute(
+        "src",
+        "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
+      );
     });
 
     // Composer prompt should be cleared and ready for next turn
