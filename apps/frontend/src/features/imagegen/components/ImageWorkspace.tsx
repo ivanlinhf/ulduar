@@ -1,6 +1,5 @@
 import { NewMenu } from "../../chat/components/NewMenu";
 import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
-import { referenceImageInputAccept } from "../constants";
 import { useImageWorkspace } from "../useImageWorkspace";
 import { ImageComposer } from "./ImageComposer";
 
@@ -39,10 +38,13 @@ export function ImageWorkspace({
       <div className="image-workspace-body" />
 
       <ImageComposer
+        attachmentToast={workspace.attachmentToast}
         busy={workspace.busy}
         canSubmit={workspace.canSubmit}
         capabilities={capabilities}
         composerRef={workspace.composerRef}
+        fileInputRef={workspace.fileInputRef}
+        onFileSelection={workspace.handleFileSelection}
         onOpenFilePicker={workspace.openFilePicker}
         onPromptChange={workspace.handlePromptChange}
         onPromptKeyDown={workspace.handlePromptKeyDown}
@@ -56,23 +58,6 @@ export function ImageWorkspace({
         submissionState={workspace.submissionState}
         generateButtonLabel={workspace.generateButtonLabel}
       />
-
-      <input
-        ref={workspace.fileInputRef}
-        className="visually-hidden-file-input"
-        type="file"
-        accept={referenceImageInputAccept}
-        multiple
-        onChange={workspace.handleFileSelection}
-        disabled={workspace.busy}
-        tabIndex={-1}
-      />
-
-      {workspace.attachmentToast ? (
-        <div aria-live="polite" aria-atomic="true">
-          <div className="toast toast-warning">{workspace.attachmentToast}</div>
-        </div>
-      ) : null}
     </section>
   );
 }

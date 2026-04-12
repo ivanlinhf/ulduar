@@ -3,14 +3,17 @@ import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type
 import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
 import { ActionTooltip } from "../../chat/components/ActionTooltip";
 import { IconAttachment, IconClose, IconSend, IconSpinner } from "../../chat/components/icons";
-import { imagePromptPlaceholder } from "../constants";
+import { imagePromptPlaceholder, referenceImageInputAccept } from "../constants";
 import type { ImageSubmissionState, SelectedReferenceImage } from "../types";
 
 type ImageComposerProps = {
+  attachmentToast: string;
   busy: boolean;
   canSubmit: boolean;
   capabilities: ImageGenerationCapabilitiesResponse;
   composerRef: RefObject<HTMLTextAreaElement | null>;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  onFileSelection: (event: ChangeEvent<HTMLInputElement>) => void;
   onOpenFilePicker: () => void;
   onPromptChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onPromptKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -26,10 +29,13 @@ type ImageComposerProps = {
 };
 
 export function ImageComposer({
+  attachmentToast,
   busy,
   canSubmit,
   capabilities,
   composerRef,
+  fileInputRef,
+  onFileSelection,
   onOpenFilePicker,
   onPromptChange,
   onPromptKeyDown,
@@ -197,6 +203,23 @@ export function ImageComposer({
       </div>
 
       {screenError ? <p className="screen-error">{screenError}</p> : null}
+
+      <input
+        ref={fileInputRef}
+        className="visually-hidden-file-input"
+        type="file"
+        accept={referenceImageInputAccept}
+        multiple
+        onChange={onFileSelection}
+        disabled={busy}
+        tabIndex={-1}
+      />
+
+      {attachmentToast ? (
+        <div aria-live="polite" aria-atomic="true">
+          <div className="toast toast-warning">{attachmentToast}</div>
+        </div>
+      ) : null}
     </form>
   );
 }
