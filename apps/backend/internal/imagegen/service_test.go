@@ -21,11 +21,30 @@ func TestSupportedResolutionsReturnsCatalogCopy(t *testing.T) {
 	t.Parallel()
 
 	resolutions := SupportedResolutions()
-	if len(resolutions) != 7 {
-		t.Fatalf("len(resolutions) = %d, want 7", len(resolutions))
+	if len(resolutions) != 11 {
+		t.Fatalf("len(resolutions) = %d, want 11", len(resolutions))
 	}
-	if resolutions[0].Key != "1024x1024" || resolutions[6].Key != "1024x1536" {
-		t.Fatalf("unexpected resolution catalog: %+v", resolutions)
+
+	keys := make([]string, 0, len(resolutions))
+	for _, resolution := range resolutions {
+		keys = append(keys, resolution.Key)
+	}
+
+	wantKeys := []string{
+		"1024x1024",
+		"1536x864",
+		"864x1536",
+		"1280x1024",
+		"1024x1280",
+		"1152x896",
+		"896x1152",
+		"1344x768",
+		"768x1344",
+		"1536x1024",
+		"1024x1536",
+	}
+	if !slices.Equal(keys, wantKeys) {
+		t.Fatalf("unexpected resolution catalog: %v", keys)
 	}
 
 	resolutions[0].Key = "changed"
