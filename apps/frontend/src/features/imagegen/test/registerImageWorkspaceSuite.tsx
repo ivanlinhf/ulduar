@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
-import { imagePromptPlaceholder, imageToastDurationMs } from "../constants";
+import { imagePromptPlaceholder, imageToastDurationMs, referenceImageInputAccept } from "../constants";
 import type { ImageWorkspaceTestContext } from "./imageWorkspaceTestContext";
 
 export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) {
@@ -77,9 +77,10 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForImageReady();
 
     const referenceFile = new File(["x"], "ref.png", { type: "image/png" });
-    // Image workspace file input is the first one (chat file input is always at the end)
-    const allFileInputs = container.querySelectorAll('input[type="file"]');
-    const imageFileInput = allFileInputs[0] as HTMLInputElement;
+    const imageFileInput = container.querySelector(
+      `input[type="file"][accept="${referenceImageInputAccept}"]`,
+    ) as HTMLInputElement;
+    expect(imageFileInput).not.toBeNull();
     fireEvent.change(imageFileInput, { target: { files: [referenceFile] } });
 
     await user.type(screen.getByLabelText("Image prompt"), "Edit this image");
@@ -131,9 +132,11 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     await context.waitForImageReady();
 
-    // Image workspace file input is first; chat file input is last
-    const allFileInputs = container.querySelectorAll('input[type="file"]');
-    const imageFileInput = allFileInputs[0] as HTMLInputElement;
+    // Find the image workspace file input by its image-only accept attribute
+    const imageFileInput = container.querySelector(
+      `input[type="file"][accept="${referenceImageInputAccept}"]`,
+    ) as HTMLInputElement;
+    expect(imageFileInput).not.toBeNull();
     const pdfFile = new File(["x"], "doc.pdf", { type: "application/pdf" });
     fireEvent.change(imageFileInput, { target: { files: [pdfFile] } });
 
@@ -157,9 +160,11 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     vi.useFakeTimers();
     try {
-      // Image workspace file input is first; chat file input is last
-      const allFileInputs = container.querySelectorAll('input[type="file"]');
-      const imageFileInput = allFileInputs[0] as HTMLInputElement;
+      // Find the image workspace file input by its image-only accept attribute
+      const imageFileInput = container.querySelector(
+        `input[type="file"][accept="${referenceImageInputAccept}"]`,
+      ) as HTMLInputElement;
+      expect(imageFileInput).not.toBeNull();
 
       // Capabilities in test context sets maxReferenceImages to 4
       const tooManyFiles = Array.from({ length: 5 }, (_, i) =>
@@ -244,9 +249,11 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     await context.waitForImageReady();
 
-    // Image workspace file input is first; chat file input (with PDF) is last
-    const allFileInputs = container.querySelectorAll('input[type="file"]');
-    const imageFileInput = allFileInputs[0] as HTMLInputElement;
+    // Find the image workspace file input by its image-only accept attribute
+    const imageFileInput = container.querySelector(
+      `input[type="file"][accept="${referenceImageInputAccept}"]`,
+    ) as HTMLInputElement;
+    expect(imageFileInput).not.toBeNull();
     expect(imageFileInput).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif");
   });
 
@@ -260,9 +267,11 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     await context.waitForImageReady();
 
-    // Image workspace file input is first; chat file input is last
-    const allFileInputs = container.querySelectorAll('input[type="file"]');
-    const imageFileInput = allFileInputs[0] as HTMLInputElement;
+    // Find the image workspace file input by its image-only accept attribute
+    const imageFileInput = container.querySelector(
+      `input[type="file"][accept="${referenceImageInputAccept}"]`,
+    ) as HTMLInputElement;
+    expect(imageFileInput).not.toBeNull();
     const refFile = new File(["x"], "ref.png", { type: "image/png" });
     fireEvent.change(imageFileInput, { target: { files: [refFile] } });
 

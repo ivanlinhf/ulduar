@@ -37,9 +37,17 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const attachmentToastTimeoutRef = useRef<number | null>(null);
 
   const maxReferenceImages = capabilities.maxReferenceImages;
-  const mode: ImageGenerationMode = referenceImages.length > 0 ? "image_edit" : "text_to_image";
+  const hasReferenceImages = referenceImages.length > 0;
+  const supportsImageEdit = capabilities.modes.includes("image_edit");
+  const supportsTextToImage = capabilities.modes.includes("text_to_image");
+  const mode: ImageGenerationMode =
+    hasReferenceImages && supportsImageEdit ? "image_edit" : "text_to_image";
   const busy = bootstrapState === "loading" || submissionState !== "idle";
-  const canSubmit = prompt.trim() !== "" && !busy && bootstrapState === "ready";
+  const canSubmit =
+    prompt.trim() !== "" &&
+    !busy &&
+    bootstrapState === "ready" &&
+    ((hasReferenceImages && supportsImageEdit) || (!hasReferenceImages && supportsTextToImage));
 
   const generateButtonLabel =
     submissionState === "streaming"
@@ -196,11 +204,12 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       return;
     }
 
-    // Pre-compute entries with stable IDs so the updater doesn't call createLocalId twice.
+    // Pre-compute entries with stable IDs before entering the updater.
     const newEntries = files.map((file) => ({ id: createLocalId("ref"), file }));
 
-    // Validate against the current known state + incoming files. Using the closed-over
-    // referenceImages for this read is safe because UI file-picker events are serialized.
+    // Validate against the current rendered snapshot. File-picker events are
+    // serialized (the browser only shows one picker at a time), so the
+    // closed-over referenceImages value is always the latest when this runs.
     const validationError = validateReferenceImages(
       [...referenceImages, ...newEntries].map((r) => r.file),
       maxReferenceImages,
@@ -212,8 +221,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
 
     clearAttachmentToast();
     setScreenError("");
-    // Use the functional form for the write so rapid back-to-back selections
-    // always compose against the latest committed state.
+    // Use functional updater for the write so sequential selections always
+    // compose against the latest committed state.
     setReferenceImages((current) => [...current, ...newEntries]);
   }
 

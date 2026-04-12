@@ -1,6 +1,7 @@
-import { allowedReferenceImageTypes, maxReferenceImageBytes } from "./constants";
-export { createLocalId, toErrorMessage } from "../../lib/utils";
 import { formatBytes } from "../../lib/utils";
+import { allowedReferenceImageTypes, maxReferenceImageBytes } from "./constants";
+
+export { createLocalId, toErrorMessage } from "../../lib/utils";
 
 export function validateReferenceImages(files: File[], maxCount: number): string {
   if (files.length > maxCount) {
