@@ -381,12 +381,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
             : input.url;
 
       if (url === generatedImageUrl) {
-        return new Response(new Blob(["generated"], { type: "image/png" }), {
-          status: 200,
-          headers: {
-            "Content-Type": "image/png",
-          },
-        });
+        return createImageContentResponse();
       }
 
       return new Response(JSON.stringify({ version: "test-version" }), {
@@ -574,14 +569,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForImageReady();
 
     await act(async () => {
-      deferred.resolve(
-        new Response(new Blob(["generated"], { type: "image/png" }), {
-          status: 200,
-          headers: {
-            "Content-Type": "image/png",
-          },
-        }),
-      );
+      deferred.resolve(createImageContentResponse());
       await deferred.promise;
     });
 
@@ -672,14 +660,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     expect(context.mockedFetch).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      deferred.resolve(
-        new Response(new Blob(["generated"], { type: "image/png" }), {
-          status: 200,
-          headers: {
-            "Content-Type": "image/png",
-          },
-        }),
-      );
+      deferred.resolve(createImageContentResponse());
       await deferred.promise;
     });
 
@@ -1020,4 +1001,13 @@ function createDeferred<T>() {
   }
 
   return { promise, reject, resolve };
+}
+
+function createImageContentResponse() {
+  return new Response("generated", {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+    },
+  });
 }
