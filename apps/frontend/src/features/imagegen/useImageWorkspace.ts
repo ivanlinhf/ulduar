@@ -54,7 +54,9 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       ? "Generating image..."
       : bootstrapState === "loading"
         ? "Creating session..."
-        : "Ready to generate.";
+        : bootstrapState === "error"
+          ? "Unable to create session."
+          : "Ready to generate.";
 
   // Bootstrap a session when capabilities are provided (i.e., workspace entered).
   useEffect(() => {
@@ -255,10 +257,6 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     }, imageToastDurationMs);
   }
 
-  function startNewImage() {
-    void bootstrapSession();
-  }
-
   return {
     attachmentToast,
     bootstrapState,
@@ -282,6 +280,5 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     sessionId,
     submissionState,
     workspaceSubtitle,
-    startNewImage,
   };
 }

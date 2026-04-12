@@ -1,4 +1,5 @@
 import { allowedReferenceImageTypes, maxReferenceImageBytes } from "./constants";
+export { createLocalId, toErrorMessage } from "../../lib/utils";
 
 export function validateReferenceImages(files: File[], maxCount: number): string {
   if (files.length > maxCount) {
@@ -18,16 +19,4 @@ export function validateReferenceImages(files: File[], maxCount: number): string
   }
 
   return "";
-}
-
-export function createLocalId(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
-export function toErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
-  return fallback;
 }

@@ -22,59 +22,57 @@ export function ImageWorkspace({
   const workspace = useImageWorkspace(capabilities);
 
   return (
-    <>
-      <section className="chat-panel image-panel">
-        <header className="chat-header">
-          <p className="chat-subtitle">{workspace.workspaceSubtitle}</p>
+    <section className="chat-panel image-panel">
+      <header className="chat-header">
+        <p className="chat-subtitle">{workspace.workspaceSubtitle}</p>
 
-          <div className="chat-header-actions">
-            <NewMenu
-              isImageGenerationEnabled={isImageGenerationEnabled}
-              isImageGenerationAvailable={isImageGenerationAvailable}
-              onNewChat={onNewChat}
-              onNewImage={onNewImage}
-            />
-          </div>
-        </header>
+        <div className="chat-header-actions">
+          <NewMenu
+            isImageGenerationEnabled={isImageGenerationEnabled}
+            isImageGenerationAvailable={isImageGenerationAvailable}
+            onNewChat={onNewChat}
+            onNewImage={onNewImage}
+          />
+        </div>
+      </header>
 
-        <div className="image-workspace-body" />
+      <div className="image-workspace-body" />
 
-        <ImageComposer
-          busy={workspace.busy}
-          canSubmit={workspace.canSubmit}
-          capabilities={capabilities}
-          composerRef={workspace.composerRef}
-          onOpenFilePicker={workspace.openFilePicker}
-          onPromptChange={workspace.handlePromptChange}
-          onPromptKeyDown={workspace.handlePromptKeyDown}
-          onRemoveReferenceImage={workspace.removeReferenceImage}
-          onResolutionChange={workspace.handleResolutionChange}
-          onSubmit={workspace.handleSubmit}
-          prompt={workspace.prompt}
-          referenceImages={workspace.referenceImages}
-          resolution={workspace.resolution}
-          screenError={workspace.screenError}
-          submissionState={workspace.submissionState}
-          generateButtonLabel={workspace.generateButtonLabel}
-        />
+      <ImageComposer
+        busy={workspace.busy}
+        canSubmit={workspace.canSubmit}
+        capabilities={capabilities}
+        composerRef={workspace.composerRef}
+        onOpenFilePicker={workspace.openFilePicker}
+        onPromptChange={workspace.handlePromptChange}
+        onPromptKeyDown={workspace.handlePromptKeyDown}
+        onRemoveReferenceImage={workspace.removeReferenceImage}
+        onResolutionChange={workspace.handleResolutionChange}
+        onSubmit={workspace.handleSubmit}
+        prompt={workspace.prompt}
+        referenceImages={workspace.referenceImages}
+        resolution={workspace.resolution}
+        screenError={workspace.screenError}
+        submissionState={workspace.submissionState}
+        generateButtonLabel={workspace.generateButtonLabel}
+      />
 
-        <input
-          ref={workspace.fileInputRef}
-          className="visually-hidden-file-input"
-          type="file"
-          accept={referenceImageInputAccept}
-          multiple
-          onChange={workspace.handleFileSelection}
-          disabled={workspace.busy}
-          tabIndex={-1}
-        />
-      </section>
+      <input
+        ref={workspace.fileInputRef}
+        className="visually-hidden-file-input"
+        type="file"
+        accept={referenceImageInputAccept}
+        multiple
+        onChange={workspace.handleFileSelection}
+        disabled={workspace.busy}
+        tabIndex={-1}
+      />
 
       {workspace.attachmentToast ? (
-        <div className="toast-stack image-workspace-toast-stack" aria-live="polite" aria-atomic="true">
+        <div aria-live="polite" aria-atomic="true">
           <div className="toast toast-warning">{workspace.attachmentToast}</div>
         </div>
       ) : null}
-    </>
+    </section>
   );
 }
