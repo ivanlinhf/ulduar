@@ -16,6 +16,7 @@ export function setupImageWorkspaceTestContext() {
   const mockedFetch = vi.fn<typeof fetch>();
 
   let imageStreamHandlers: Parameters<typeof api.streamImageGeneration>[2] | undefined;
+  let localIdCounter = 0;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,10 +68,11 @@ export function setupImageWorkspaceTestContext() {
       return vi.fn();
     });
 
-    vi.spyOn(globalThis.crypto, "randomUUID")
-      .mockReturnValueOnce("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-      .mockReturnValueOnce("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-      .mockReturnValue("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    localIdCounter = 0;
+    vi.spyOn(globalThis.crypto, "randomUUID").mockImplementation(() => {
+      localIdCounter += 1;
+      return `00000000-0000-4000-8000-${String(localIdCounter).padStart(12, "0")}`;
+    });
   });
 
   function renderApp() {

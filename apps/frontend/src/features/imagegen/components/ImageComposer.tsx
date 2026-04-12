@@ -4,7 +4,8 @@ import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
 import { ActionTooltip } from "../../chat/components/ActionTooltip";
 import { IconAttachment, IconClose, IconSend, IconSpinner } from "../../chat/components/icons";
 import { imagePromptPlaceholder, referenceImageInputAccept } from "../constants";
-import type { ImageSubmissionState, SelectedReferenceImage } from "../types";
+import type { ImageSubmissionState, ReusableImageSource, SelectedReferenceImage } from "../types";
+import { ImageReusePicker } from "./ImageReusePicker";
 
 type ImageComposerProps = {
   attachmentToast: string;
@@ -19,10 +20,13 @@ type ImageComposerProps = {
   onPromptKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onRemoveReferenceImage: (id: string) => void;
   onResolutionChange: (event: ChangeEvent<HTMLSelectElement>) => void;
+  onReuseImage: (source: ReusableImageSource) => Promise<void>;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
   prompt: string;
   referenceImages: SelectedReferenceImage[];
+  reusableImages: ReusableImageSource[];
   resolution: string;
+  reusingImageIds: string[];
   screenError: string;
   submissionState: ImageSubmissionState;
   generateButtonLabel: string;
@@ -41,10 +45,13 @@ export function ImageComposer({
   onPromptKeyDown,
   onRemoveReferenceImage,
   onResolutionChange,
+  onReuseImage,
   onSubmit,
   prompt,
   referenceImages,
+  reusableImages,
   resolution,
+  reusingImageIds,
   screenError,
   submissionState,
   generateButtonLabel,
@@ -201,6 +208,13 @@ export function ImageComposer({
           </ActionTooltip>
         </div>
       </div>
+
+      <ImageReusePicker
+        busy={busy}
+        onReuseImage={onReuseImage}
+        reusingImageIds={reusingImageIds}
+        reusableImages={reusableImages}
+      />
 
       {screenError ? <p className="screen-error">{screenError}</p> : null}
 

@@ -1,6 +1,7 @@
 import {
   startTransition,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -23,6 +24,7 @@ import type {
   ImageTurn,
   ImageTurnOutputImage,
   ImageTurnReferenceImage,
+  ReusableImageSource,
   SelectedReferenceImage,
 } from "./types";
 import { createLocalId, toErrorMessage, validateReferenceImages } from "./utils";
@@ -36,6 +38,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const [prompt, setPrompt] = useState("");
   const [resolution, setResolution] = useState(defaultResolution);
   const [referenceImages, setReferenceImages] = useState<SelectedReferenceImage[]>([]);
+  const [reusingImageIds, setReusingImageIds] = useState<string[]>([]);
   const [screenError, setScreenError] = useState("");
   const [attachmentToast, setAttachmentToast] = useState("");
   const [turns, setTurns] = useState<ImageTurn[]>([]);
@@ -44,6 +47,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
+  const referenceImagesRef = useRef<SelectedReferenceImage[]>([]);
 
   const maxReferenceImages = capabilities.maxReferenceImages;
   const hasReferenceImages = referenceImages.length > 0;
@@ -74,6 +78,36 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
           ? "Unable to create session."
           : "Ready to generate.";
 
+  const reusableImages = useMemo<ReusableImageSource[]>(
+    () => [
+      ...turns.flatMap((turn) =>
+        turn.referenceImages
+          .filter((image) => image.sourceKind === "upload")
+          .map((image) => ({
+            id: `${turn.id}:reference:${image.id}`,
+            kind: "upload" as const,
+            name: image.name,
+            mediaType: image.file.type,
+            file: image.file,
+          })),
+      ),
+      ...turns.flatMap((turn) =>
+        turn.outputImages.map((image) => ({
+          id: `${turn.id}:output:${image.assetId}`,
+          kind: "generated" as const,
+          name: image.filename,
+          mediaType: image.mediaType,
+          contentUrl: image.contentUrl,
+        })),
+      ),
+    ],
+    [turns],
+  );
+
+  useEffect(() => {
+    referenceImagesRef.current = referenceImages;
+  }, [referenceImages]);
+
   // Bootstrap a session on mount (capabilities are guaranteed non-null by ImageWorkspace).
   useEffect(() => {
     const firstResolution = capabilities.resolutions[0]?.key ?? "";
@@ -100,6 +134,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setScreenError("");
     setPrompt("");
     setReferenceImages([]);
+    referenceImagesRef.current = [];
+    setReusingImageIds([]);
     setSessionId("");
     setTurns([]);
 
@@ -121,7 +157,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     }
 
     const validationError = validateReferenceImages(
-      referenceImages.map((r) => r.file),
+      referenceImagesRef.current.map((referenceImage) => referenceImage.file),
       maxReferenceImages,
     );
     if (validationError) {
@@ -130,7 +166,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     }
 
     const draftPrompt = prompt;
-    const draftImages = referenceImages;
+    const draftImages = referenceImagesRef.current;
     const draftResolution = resolution;
     const draftMode = mode;
     const turnId = createLocalId("turn");
@@ -139,6 +175,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setSubmissionState("submitting");
     setPrompt("");
     setReferenceImages([]);
+    referenceImagesRef.current = [];
 
     const pendingTurn: ImageTurn = {
       id: turnId,
@@ -146,10 +183,12 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       prompt: draftPrompt,
       mode: draftMode,
       resolution: draftResolution,
-      referenceImages: draftImages.map(({ id, file }): ImageTurnReferenceImage => ({
+      referenceImages: draftImages.map(({ id, file, sourceKind }): ImageTurnReferenceImage => ({
         id,
         previewUrl: URL.createObjectURL(file),
         name: file.name,
+        file,
+        sourceKind,
       })),
       status: "pending",
       outputImages: [],
@@ -162,11 +201,13 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         mode: draftMode,
         prompt: draftPrompt,
         resolution: draftResolution,
-        referenceImages: draftImages.map((r) => r.file),
+        referenceImages: draftImages.map((referenceImage) => referenceImage.file),
       });
 
       setTurns((prev) =>
-        prev.map((t) => (t.id === turnId ? { ...t, generationId: created.generationId } : t)),
+        prev.map((turn) =>
+          turn.id === turnId ? { ...turn, generationId: created.generationId } : turn,
+        ),
       );
 
       setSubmissionState("streaming");
@@ -174,7 +215,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
 
       function markTurnRunning() {
         setTurns((prev) =>
-          prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
+          prev.map((turn) => (turn.id === turnId ? { ...turn, status: "running" } : turn)),
         );
       }
 
@@ -187,22 +228,22 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         },
         onCompleted: (payload) => {
           const outputImages: ImageTurnOutputImage[] = payload.outputAssets
-            .filter((a) => a.contentUrl)
-            .map((a) => {
-              const raw = a.contentUrl!;
+            .filter((asset) => asset.contentUrl)
+            .map((asset) => {
+              const raw = asset.contentUrl!;
               const contentUrl = raw.startsWith("/") ? `${apiBaseURL}${raw}` : raw;
               return {
-                assetId: a.assetId,
+                assetId: asset.assetId,
                 contentUrl,
-                mediaType: a.mediaType,
-                width: a.width,
-                height: a.height,
-                filename: a.filename,
+                mediaType: asset.mediaType,
+                width: asset.width,
+                height: asset.height,
+                filename: asset.filename,
               };
             });
           setTurns((prev) =>
-            prev.map((t) =>
-              t.id === turnId ? { ...t, status: "completed", outputImages } : t,
+            prev.map((turn) =>
+              turn.id === turnId ? { ...turn, status: "completed", outputImages } : turn,
             ),
           );
           closeStream();
@@ -211,14 +252,18 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         onFailed: (payload) => {
           const errorMessage = payload.errorMessage ?? "Image generation failed";
           setTurns((prev) =>
-            prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage } : t)),
+            prev.map((turn) =>
+              turn.id === turnId ? { ...turn, status: "failed", errorMessage } : turn,
+            ),
           );
           closeStream();
           setSubmissionState("idle");
         },
         onTransportError: (message) => {
           setTurns((prev) =>
-            prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage: message } : t)),
+            prev.map((turn) =>
+              turn.id === turnId ? { ...turn, status: "failed", errorMessage: message } : turn,
+            ),
           );
           closeStream();
           setSubmissionState("idle");
@@ -227,7 +272,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     } catch (error) {
       const errorMessage = toErrorMessage(error, "Failed to submit image generation");
       setTurns((prev) =>
-        prev.map((t) => (t.id === turnId ? { ...t, status: "failed", errorMessage } : t)),
+        prev.map((turn) => (turn.id === turnId ? { ...turn, status: "failed", errorMessage } : turn)),
       );
       setSubmissionState("idle");
     }
@@ -264,26 +309,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       return;
     }
 
-    // Pre-compute entries with stable IDs before entering the updater.
-    const newEntries = files.map((file) => ({ id: createLocalId("ref"), file }));
-
-    // Validate against the current rendered snapshot. File-picker events are
-    // serialized (the browser only shows one picker at a time), so the
-    // closed-over referenceImages value is always the latest when this runs.
-    const validationError = validateReferenceImages(
-      [...referenceImages, ...newEntries].map((r) => r.file),
-      maxReferenceImages,
-    );
-    if (validationError) {
-      showAttachmentToast(validationError);
-      return;
-    }
-
-    clearAttachmentToast();
-    setScreenError("");
-    // Use functional updater for the write so sequential selections always
-    // compose against the latest committed state.
-    setReferenceImages((current) => [...current, ...newEntries]);
+    const newEntries = files.map((file) => createSelectedReferenceImage(file, "upload"));
+    tryAddReferenceImages(newEntries);
   }
 
   function openFilePicker() {
@@ -295,7 +322,46 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   }
 
   function removeReferenceImage(id: string) {
-    setReferenceImages((current) => current.filter((r) => r.id !== id));
+    setReferenceImages((current) => {
+      const next = current.filter((referenceImage) => referenceImage.id !== id);
+      referenceImagesRef.current = next;
+      return next;
+    });
+  }
+
+  async function reuseImage(source: ReusableImageSource) {
+    if (busy) {
+      return;
+    }
+
+    if (source.kind === "upload" && source.file) {
+      tryAddReferenceImages([createSelectedReferenceImage(source.file, "upload")]);
+      return;
+    }
+
+    if (source.kind !== "generated" || !source.contentUrl) {
+      return;
+    }
+
+    setReusingImageIds((current) => [...current, source.id]);
+
+    try {
+      const response = await fetch(source.contentUrl);
+      if (!response.ok) {
+        throw new Error(`Request failed with ${response.status} ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const file = new File([blob], source.name, {
+        type: blob.type || source.mediaType,
+      });
+
+      tryAddReferenceImages([createSelectedReferenceImage(file, "generated")]);
+    } catch (error) {
+      showAttachmentToast(toErrorMessage(error, `Failed to add ${source.name} to this draft.`));
+    } finally {
+      setReusingImageIds((current) => current.filter((id) => id !== source.id));
+    }
   }
 
   function closeStream() {
@@ -315,6 +381,24 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   function clearAttachmentToast() {
     clearAttachmentToastTimeout();
     setAttachmentToast("");
+  }
+
+  function tryAddReferenceImages(newEntries: SelectedReferenceImage[]) {
+    const next = [...referenceImagesRef.current, ...newEntries];
+    const validationError = validateReferenceImages(
+      next.map((referenceImage) => referenceImage.file),
+      maxReferenceImages,
+    );
+    if (validationError) {
+      showAttachmentToast(validationError);
+      return false;
+    }
+
+    clearAttachmentToast();
+    setScreenError("");
+    referenceImagesRef.current = next;
+    setReferenceImages(next);
+    return true;
   }
 
   function showAttachmentToast(message: string) {
@@ -343,12 +427,26 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     openFilePicker,
     prompt,
     referenceImages,
+    reusableImages,
+    reusingImageIds,
     removeReferenceImage,
     resolution,
+    reuseImage,
     screenError,
     sessionId,
     submissionState,
     turns,
     workspaceSubtitle,
+  };
+}
+
+function createSelectedReferenceImage(
+  file: File,
+  sourceKind: SelectedReferenceImage["sourceKind"],
+): SelectedReferenceImage {
+  return {
+    id: createLocalId("ref"),
+    file,
+    sourceKind,
   };
 }

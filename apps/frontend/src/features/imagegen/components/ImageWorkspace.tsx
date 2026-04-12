@@ -51,10 +51,13 @@ export function ImageWorkspace({
         onPromptKeyDown={workspace.handlePromptKeyDown}
         onRemoveReferenceImage={workspace.removeReferenceImage}
         onResolutionChange={workspace.handleResolutionChange}
+        onReuseImage={workspace.reuseImage}
         onSubmit={workspace.handleSubmit}
         prompt={workspace.prompt}
         referenceImages={workspace.referenceImages}
+        reusableImages={workspace.reusableImages}
         resolution={workspace.resolution}
+        reusingImageIds={workspace.reusingImageIds}
         screenError={workspace.screenError}
         submissionState={workspace.submissionState}
         generateButtonLabel={workspace.generateButtonLabel}

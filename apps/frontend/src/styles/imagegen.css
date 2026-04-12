@@ -171,3 +171,82 @@
   font-size: 0.85rem;
   color: var(--danger);
 }
+
+.image-reuse-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(56, 44, 30, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.image-reuse-header {
+  display: grid;
+  gap: 4px;
+}
+
+.image-reuse-title,
+.image-reuse-group-title {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.image-reuse-description {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.image-reuse-group {
+  display: grid;
+  gap: 8px;
+}
+
+.image-reuse-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-reuse-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(56, 44, 30, 0.12);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.image-reuse-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.image-reuse-item-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 44, 30, 0.12);
+  flex-shrink: 0;
+}
+
+.image-reuse-item-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-reuse-item-action {
+  font-size: 0.8rem;
+  color: var(--accent);
+}

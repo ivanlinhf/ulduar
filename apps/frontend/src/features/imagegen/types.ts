@@ -4,9 +4,12 @@ export type ImageSubmissionState = "idle" | "submitting" | "streaming";
 
 export type ImageBootstrapState = "idle" | "loading" | "ready" | "error";
 
+export type ImageReferenceSourceKind = "upload" | "generated";
+
 export type SelectedReferenceImage = {
   id: string;
   file: File;
+  sourceKind: ImageReferenceSourceKind;
 };
 
 export type ImageDraft = {
@@ -23,6 +26,8 @@ export type ImageTurnReferenceImage = {
   id: string;
   previewUrl: string;
   name: string;
+  file: File;
+  sourceKind: ImageReferenceSourceKind;
 };
 
 export type ImageTurnOutputImage = {
@@ -32,6 +37,15 @@ export type ImageTurnOutputImage = {
   width?: number;
   height?: number;
   filename: string;
+};
+
+export type ReusableImageSource = {
+  id: string;
+  kind: ImageReferenceSourceKind;
+  name: string;
+  mediaType: string;
+  file?: File;
+  contentUrl?: string;
 };
 
 export type ImageTurn = {
