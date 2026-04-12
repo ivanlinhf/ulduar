@@ -67,9 +67,14 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     void bootstrapSession();
 
     return () => {
-      clearAttachmentToastTimeout();
-      closeStream();
+      if (attachmentToastTimeoutRef.current !== null) {
+        window.clearTimeout(attachmentToastTimeoutRef.current);
+        attachmentToastTimeoutRef.current = null;
+      }
+      streamCleanupRef.current?.();
+      streamCleanupRef.current = null;
     };
+    // bootstrapSession is defined in the same hook scope and only needs to run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
