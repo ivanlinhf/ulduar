@@ -178,6 +178,15 @@ type syncResponse struct {
 	Prompt string      `json:"prompt,omitempty"`
 }
 
+type openAIImage struct {
+	B64JSON string `json:"b64_json"`
+	URL     string `json:"url"`
+}
+
+type openAIResponse struct {
+	Data []openAIImage `json:"data"`
+}
+
 // asyncResponse is the response body for a 202 Accepted (async job queued).
 type asyncResponse struct {
 	ID          string   `json:"id"`
@@ -414,16 +423,42 @@ func (c *Client) normalizeSyncResponse(rawBody []byte) (imageprovider.GenerateRe
 		return imageprovider.GenerateResult{}, fmt.Errorf("decode sync response: %w", err)
 	}
 
-	images := make([]imageprovider.OutputImage, 0, len(sr.Images))
-	for _, img := range sr.Images {
-		out, err := decodeImageField(img.URL)
-		if err != nil {
-			return imageprovider.GenerateResult{}, fmt.Errorf("normalize image: %w", err)
+	if len(sr.Images) > 0 {
+		images := make([]imageprovider.OutputImage, 0, len(sr.Images))
+		for _, img := range sr.Images {
+			out, err := decodeImageField(img.URL)
+			if err != nil {
+				return imageprovider.GenerateResult{}, fmt.Errorf("normalize image: %w", err)
+			}
+			if out.MediaType == "" && img.ContentType != "" {
+				out.MediaType = img.ContentType
+			}
+			images = append(images, out)
 		}
-		if out.MediaType == "" && img.ContentType != "" {
-			out.MediaType = img.ContentType
+		return imageprovider.GenerateResult{Images: images}, nil
+	}
+
+	var or openAIResponse
+	if err := json.Unmarshal(rawBody, &or); err != nil {
+		return imageprovider.GenerateResult{}, fmt.Errorf("decode alternate sync response: %w", err)
+	}
+
+	images := make([]imageprovider.OutputImage, 0, len(or.Data))
+	for _, img := range or.Data {
+		switch {
+		case strings.TrimSpace(img.B64JSON) != "":
+			decoded, err := base64.StdEncoding.DecodeString(img.B64JSON)
+			if err != nil {
+				return imageprovider.GenerateResult{}, fmt.Errorf("decode b64_json image data: %w", err)
+			}
+			images = append(images, imageprovider.OutputImage{Data: decoded})
+		case strings.TrimSpace(img.URL) != "":
+			out, err := decodeImageField(img.URL)
+			if err != nil {
+				return imageprovider.GenerateResult{}, fmt.Errorf("normalize data image: %w", err)
+			}
+			images = append(images, out)
 		}
-		images = append(images, out)
 	}
 
 	return imageprovider.GenerateResult{Images: images}, nil

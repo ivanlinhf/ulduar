@@ -485,6 +485,81 @@ func TestGenerateNormalizesImmediateURLResponse(t *testing.T) {
 	}
 }
 
+func TestGenerateNormalizesOpenAIStyleBase64Response(t *testing.T) {
+	t.Parallel()
+
+	imgData := []byte("raw-png-bytes")
+	encoded := base64.StdEncoding.EncodeToString(imgData)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(openAIResponse{
+			Data: []openAIImage{{B64JSON: encoded}},
+		})
+	}))
+	defer srv.Close()
+
+	c, _ := NewClient(srv.URL, "key", ClientOptions{HTTPClient: srv.Client()})
+
+	result, err := c.Generate(context.Background(), imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeTextToImage,
+		Prompt: "test",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !result.Completed() {
+		t.Fatal("result.Completed() = false, want true")
+	}
+	if len(result.Images) != 1 {
+		t.Fatalf("len(result.Images) = %d, want 1", len(result.Images))
+	}
+	img := result.Images[0]
+	if string(img.Data) != string(imgData) {
+		t.Errorf("img.Data = %q, want %q", img.Data, imgData)
+	}
+	if img.URL != "" {
+		t.Errorf("img.URL = %q, want empty", img.URL)
+	}
+}
+
+func TestGenerateNormalizesOpenAIStyleURLResponse(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(openAIResponse{
+			Data: []openAIImage{{URL: "https://cdn.example.com/out.png"}},
+		})
+	}))
+	defer srv.Close()
+
+	c, _ := NewClient(srv.URL, "key", ClientOptions{HTTPClient: srv.Client()})
+
+	result, err := c.Generate(context.Background(), imageprovider.GenerateRequest{
+		Mode:   imageprovider.ModeTextToImage,
+		Prompt: "test",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !result.Completed() {
+		t.Fatal("result.Completed() = false, want true")
+	}
+	if len(result.Images) != 1 {
+		t.Fatalf("len(result.Images) = %d, want 1", len(result.Images))
+	}
+	img := result.Images[0]
+	if img.URL != "https://cdn.example.com/out.png" {
+		t.Errorf("img.URL = %q", img.URL)
+	}
+	if img.Data != nil {
+		t.Errorf("img.Data should be nil for URL response")
+	}
+}
+
 func TestGenerateNormalizesAsyncJobResponse(t *testing.T) {
 	t.Parallel()
 
