@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
 import { IconSpinner } from "../../chat/components/icons";
 import type { ImageTurn } from "../types";
@@ -8,31 +8,15 @@ type ImageTurnCardProps = {
 };
 
 export function ImageTurnCard({ turn }: ImageTurnCardProps) {
-  const previewUrlMapRef = useRef<Map<string, string>>(new Map());
-  const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
-
   useEffect(() => {
-    const map = previewUrlMapRef.current;
-    let added = false;
-    for (const { id, file } of turn.referenceImages) {
-      if (!map.has(id)) {
-        map.set(id, URL.createObjectURL(file));
-        added = true;
-      }
-    }
-    if (added) {
-      setPreviewUrls(new Map(map));
-    }
-  }, [turn.referenceImages]);
-
-  useEffect(() => {
-    const map = previewUrlMapRef.current;
+    const urls = turn.referenceImages.map((r) => r.previewUrl);
     return () => {
-      for (const url of map.values()) {
+      for (const url of urls) {
         URL.revokeObjectURL(url);
       }
-      map.clear();
     };
+    // referenceImages are set once at turn creation and never change; capture on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -40,18 +24,15 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
       <div className="image-turn-input">
         {turn.referenceImages.length > 0 ? (
           <div className="image-turn-references">
-            {turn.referenceImages.map(({ id, file }) => {
-              const url = previewUrls.get(id);
-              return url ? (
-                <img
-                  key={id}
-                  className="image-turn-ref-thumb"
-                  src={url}
-                  alt={file.name}
-                  title={file.name}
-                />
-              ) : null;
-            })}
+            {turn.referenceImages.map(({ id, previewUrl, name }) => (
+              <img
+                key={id}
+                className="image-turn-ref-thumb"
+                src={previewUrl}
+                alt={name}
+                title={name}
+              />
+            ))}
           </div>
         ) : null}
 

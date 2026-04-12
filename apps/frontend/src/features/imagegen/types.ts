@@ -19,6 +19,12 @@ export type ImageWorkspaceCapabilities = ImageGenerationCapabilitiesResponse;
 
 export type ImageTurnStatus = "pending" | "running" | "completed" | "failed";
 
+export type ImageTurnReferenceImage = {
+  id: string;
+  previewUrl: string;
+  name: string;
+};
+
 export type ImageTurnOutputImage = {
   assetId: string;
   contentUrl: string;
@@ -34,7 +40,7 @@ export type ImageTurn = {
   prompt: string;
   mode: ImageGenerationMode;
   resolution: string;
-  referenceImages: SelectedReferenceImage[];
+  referenceImages: ImageTurnReferenceImage[];
   status: ImageTurnStatus;
   outputImages: ImageTurnOutputImage[];
   errorMessage?: string;

@@ -9,8 +9,15 @@ type ImageTimelineProps = {
 
 export function ImageTimeline({ turns }: ImageTimelineProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
+  const prevLengthRef = useRef(0);
 
   useEffect(() => {
+    if (turns.length <= prevLengthRef.current) {
+      prevLengthRef.current = turns.length;
+      return;
+    }
+    prevLengthRef.current = turns.length;
+
     const prefersReducedMotion =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&

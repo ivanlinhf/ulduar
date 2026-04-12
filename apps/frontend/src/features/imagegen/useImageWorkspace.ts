@@ -21,6 +21,7 @@ import type {
   ImageSubmissionState,
   ImageTurn,
   ImageTurnOutputImage,
+  ImageTurnReferenceImage,
   SelectedReferenceImage,
 } from "./types";
 import { createLocalId, toErrorMessage, validateReferenceImages } from "./utils";
@@ -99,7 +100,14 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setPrompt("");
     setReferenceImages([]);
     setSessionId("");
-    setTurns([]);
+    setTurns((prev) => {
+      for (const turn of prev) {
+        for (const ref of turn.referenceImages) {
+          URL.revokeObjectURL(ref.previewUrl);
+        }
+      }
+      return [];
+    });
 
     try {
       const session = await createSession();
@@ -144,7 +152,11 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       prompt: draftPrompt,
       mode: draftMode,
       resolution: draftResolution,
-      referenceImages: draftImages,
+      referenceImages: draftImages.map(({ id, file }): ImageTurnReferenceImage => ({
+        id,
+        previewUrl: URL.createObjectURL(file),
+        name: file.name,
+      })),
       status: "pending",
       outputImages: [],
     };
