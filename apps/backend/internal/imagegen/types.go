@@ -44,6 +44,10 @@ type Resolution struct {
 
 var supportedResolutionCatalog = []Resolution{
 	{Key: "1024x1024", Width: 1024, Height: 1024},
+	{Key: "1536x864", Width: 1536, Height: 864},
+	{Key: "864x1536", Width: 864, Height: 1536},
+	{Key: "1280x1024", Width: 1280, Height: 1024},
+	{Key: "1024x1280", Width: 1024, Height: 1280},
 	{Key: "1152x896", Width: 1152, Height: 896},
 	{Key: "896x1152", Width: 896, Height: 1152},
 	{Key: "1344x768", Width: 1344, Height: 768},

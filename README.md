@@ -206,17 +206,23 @@ Supported v1 image generation modes:
 
 Each generation always produces exactly 1 output image.
 
-Supported resolutions:
+Current app-exposed resolution presets:
 
 | Key | Width | Height |
 |---|---|---|
 | `1024x1024` | 1024 | 1024 |
+| `1536x864` | 1536 | 864 |
+| `864x1536` | 864 | 1536 |
+| `1280x1024` | 1280 | 1024 |
+| `1024x1280` | 1024 | 1280 |
 | `1152x896` | 1152 | 896 |
 | `896x1152` | 896 | 1152 |
 | `1344x768` | 1344 | 768 |
 | `768x1344` | 768 | 1344 |
 | `1536x1024` | 1536 | 1024 |
 | `1024x1536` | 1024 | 1536 |
+
+Azure AI Foundry `FLUX.2-pro` supports a broader range than this preset list. The official Microsoft Foundry and Black Forest Labs docs describe output resolution support as width/height values from `64x64` up to `4 MP`, with output dimensions always being multiples of `16`. For image edits, FLUX.2 matches the input image dimensions by default, rounded to multiples of `16`.
 
 Image generation endpoints:
 
