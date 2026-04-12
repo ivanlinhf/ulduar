@@ -1,5 +1,6 @@
 import { allowedReferenceImageTypes, maxReferenceImageBytes } from "./constants";
 export { createLocalId, toErrorMessage } from "../../lib/utils";
+import { formatBytes } from "../../lib/utils";
 
 export function validateReferenceImages(files: File[], maxCount: number): string {
   if (files.length > maxCount) {
@@ -14,7 +15,7 @@ export function validateReferenceImages(files: File[], maxCount: number): string
       return `${file.name} is empty.`;
     }
     if (file.size > maxReferenceImageBytes) {
-      return `${file.name} exceeds the 20 MB reference image limit.`;
+      return `${file.name} exceeds the ${formatBytes(maxReferenceImageBytes)} reference image limit.`;
     }
   }
 

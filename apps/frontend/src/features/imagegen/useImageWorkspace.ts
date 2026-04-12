@@ -19,8 +19,8 @@ import { imageToastDurationMs } from "./constants";
 import type { ImageBootstrapState, ImageSubmissionState, SelectedReferenceImage } from "./types";
 import { createLocalId, toErrorMessage, validateReferenceImages } from "./utils";
 
-export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesResponse | null) {
-  const defaultResolution = capabilities?.resolutions[0]?.key ?? "";
+export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesResponse) {
+  const defaultResolution = capabilities.resolutions[0]?.key ?? "";
 
   const [bootstrapState, setBootstrapState] = useState<ImageBootstrapState>("idle");
   const [submissionState, setSubmissionState] = useState<ImageSubmissionState>("idle");
@@ -37,7 +37,7 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
 
-  const maxReferenceImages = capabilities?.maxReferenceImages ?? 0;
+  const maxReferenceImages = capabilities.maxReferenceImages;
   const mode: ImageGenerationMode = referenceImages.length > 0 ? "image_edit" : "text_to_image";
   const busy = bootstrapState === "loading" || submissionState !== "idle";
   const canSubmit = prompt.trim() !== "" && !busy && bootstrapState === "ready";
@@ -58,12 +58,8 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
           ? "Unable to create session."
           : "Ready to generate.";
 
-  // Bootstrap a session when capabilities are provided (i.e., workspace entered).
+  // Bootstrap a session on mount (capabilities are guaranteed non-null by ImageWorkspace).
   useEffect(() => {
-    if (capabilities === null) {
-      return;
-    }
-
     const firstResolution = capabilities.resolutions[0]?.key ?? "";
     setResolution(firstResolution);
     void bootstrapSession();

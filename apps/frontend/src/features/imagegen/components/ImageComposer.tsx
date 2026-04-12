@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEventHandler, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEventHandler, type RefObject, type SubmitEvent } from "react";
 
 import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
 import { ActionTooltip } from "../../chat/components/ActionTooltip";
@@ -10,7 +10,7 @@ type ImageComposerProps = {
   busy: boolean;
   canSubmit: boolean;
   capabilities: ImageGenerationCapabilitiesResponse;
-  composerRef: React.RefObject<HTMLTextAreaElement | null>;
+  composerRef: RefObject<HTMLTextAreaElement | null>;
   onOpenFilePicker: () => void;
   onPromptChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onPromptKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
