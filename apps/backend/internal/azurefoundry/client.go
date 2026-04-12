@@ -156,14 +156,43 @@ type textToImageRequest struct {
 }
 
 type imageEditRequest struct {
-	Prompt       string   `json:"prompt"`
-	ImagePrompt  string   `json:"image_prompt,omitempty"`  // single base64-encoded image
-	ImagePrompts []string `json:"image_prompts,omitempty"` // multiple base64-encoded images
-	Width        int      `json:"width,omitempty"`
-	Height       int      `json:"height,omitempty"`
-	OutputFormat string   `json:"output_format,omitempty"`
-	NumImages    int      `json:"num_images,omitempty"`
-	Model        string   `json:"model,omitempty"`
+	Prompt       string
+	InputImages  []string
+	Width        int
+	Height       int
+	OutputFormat string
+	NumImages    int
+	Model        string
+}
+
+func (r imageEditRequest) MarshalJSON() ([]byte, error) {
+	payload := map[string]any{
+		"prompt": r.Prompt,
+	}
+	if r.Width > 0 {
+		payload["width"] = r.Width
+	}
+	if r.Height > 0 {
+		payload["height"] = r.Height
+	}
+	if strings.TrimSpace(r.OutputFormat) != "" {
+		payload["output_format"] = r.OutputFormat
+	}
+	if r.NumImages > 0 {
+		payload["num_images"] = r.NumImages
+	}
+	if strings.TrimSpace(r.Model) != "" {
+		payload["model"] = r.Model
+	}
+	for i, img := range r.InputImages {
+		key := "input_image"
+		if i > 0 {
+			key = fmt.Sprintf("input_image_%d", i+1)
+		}
+		payload[key] = img
+	}
+
+	return json.Marshal(payload)
 }
 
 // fluxImage represents one image entry in a synchronous provider response.
@@ -402,17 +431,10 @@ func (c *Client) buildImageEditPayload(req imageprovider.GenerateRequest) imageE
 		OutputFormat: req.OutputFormat,
 		NumImages:    n,
 		Model:        c.model,
+		InputImages:  make([]string, 0, len(req.InputImages)),
 	}
-	switch len(req.InputImages) {
-	case 0:
-		// no reference images
-	case 1:
-		r.ImagePrompt = base64.StdEncoding.EncodeToString(req.InputImages[0])
-	default:
-		r.ImagePrompts = make([]string, len(req.InputImages))
-		for i, img := range req.InputImages {
-			r.ImagePrompts[i] = base64.StdEncoding.EncodeToString(img)
-		}
+	for _, img := range req.InputImages {
+		r.InputImages = append(r.InputImages, base64.StdEncoding.EncodeToString(img))
 	}
 	return r
 }

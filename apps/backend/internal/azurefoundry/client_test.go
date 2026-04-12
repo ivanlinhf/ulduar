@@ -343,11 +343,17 @@ func TestGenerateEncodesImageEditPayloadWithSingleImage(t *testing.T) {
 	if err := json.Unmarshal(capturedBody, &body); err != nil {
 		t.Fatalf("json.Unmarshal(capturedBody) error = %v", err)
 	}
-	if body["image_prompt"] != wantEncoded {
-		t.Errorf("image_prompt = %q, want base64 of input image", body["image_prompt"])
+	if body["input_image"] != wantEncoded {
+		t.Errorf("input_image = %q, want base64 of input image", body["input_image"])
+	}
+	if _, ok := body["input_image_2"]; ok {
+		t.Error("input_image_2 should not be set for a single image")
+	}
+	if _, ok := body["image_prompt"]; ok {
+		t.Error("image_prompt should not be sent to FLUX image edit")
 	}
 	if _, ok := body["image_prompts"]; ok {
-		t.Error("image_prompts should not be set for single image")
+		t.Error("image_prompts should not be sent to FLUX image edit")
 	}
 }
 
@@ -377,18 +383,20 @@ func TestGenerateEncodesImageEditPayloadWithMultipleImages(t *testing.T) {
 	if err := json.Unmarshal(capturedBody, &body); err != nil {
 		t.Fatalf("json.Unmarshal(capturedBody) error = %v", err)
 	}
+	if body["input_image"] != base64.StdEncoding.EncodeToString(img1) {
+		t.Errorf("input_image = %q", body["input_image"])
+	}
+	if body["input_image_2"] != base64.StdEncoding.EncodeToString(img2) {
+		t.Errorf("input_image_2 = %q", body["input_image_2"])
+	}
+	if _, ok := body["input_image_3"]; ok {
+		t.Error("input_image_3 should not be set when only two images are provided")
+	}
 	if _, ok := body["image_prompt"]; ok {
-		t.Error("image_prompt should not be set for multiple images")
+		t.Error("image_prompt should not be sent to FLUX image edit")
 	}
-	prompts, ok := body["image_prompts"].([]any)
-	if !ok || len(prompts) != 2 {
-		t.Fatalf("image_prompts = %v", body["image_prompts"])
-	}
-	if prompts[0] != base64.StdEncoding.EncodeToString(img1) {
-		t.Errorf("image_prompts[0] = %q", prompts[0])
-	}
-	if prompts[1] != base64.StdEncoding.EncodeToString(img2) {
-		t.Errorf("image_prompts[1] = %q", prompts[1])
+	if _, ok := body["image_prompts"]; ok {
+		t.Error("image_prompts should not be sent to FLUX image edit")
 	}
 }
 
