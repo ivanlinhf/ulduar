@@ -1,4 +1,4 @@
-import type { ImageGenerationCapabilitiesResponse } from "../../lib/api";
+import type { ImageGenerationCapabilitiesResponse, ImageGenerationMode } from "../../lib/api";
 
 export type ImageSubmissionState = "idle" | "submitting" | "streaming";
 
@@ -16,3 +16,32 @@ export type ImageDraft = {
 };
 
 export type ImageWorkspaceCapabilities = ImageGenerationCapabilitiesResponse;
+
+export type ImageTurnStatus = "pending" | "running" | "completed" | "failed";
+
+export type ImageTurnReferenceImage = {
+  id: string;
+  previewUrl: string;
+  name: string;
+};
+
+export type ImageTurnOutputImage = {
+  assetId: string;
+  contentUrl: string;
+  mediaType: string;
+  width?: number;
+  height?: number;
+  filename: string;
+};
+
+export type ImageTurn = {
+  id: string;
+  generationId: string;
+  prompt: string;
+  mode: ImageGenerationMode;
+  resolution: string;
+  referenceImages: ImageTurnReferenceImage[];
+  status: ImageTurnStatus;
+  outputImages: ImageTurnOutputImage[];
+  errorMessage?: string;
+};
