@@ -185,7 +185,17 @@ Operational notes:
 
 ### Optional image generation in dev/test
 
-Image generation is disabled by default. To enable it locally, set `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` before starting the backend.
+Image generation is guarded by two independent gates that must both be enabled for the full feature to work:
+
+1. **Frontend flag** — `VITE_IMAGE_GENERATION_ENABLED` controls whether the image-generation UI is built into the frontend bundle. When unset or `false`, the `New` button only shows `New chat`, and no image workspace is accessible regardless of backend configuration.
+2. **Backend provider** — `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` control whether the backend image generation endpoints are active. When these are unset, the capabilities and create endpoints return `503 Service Unavailable`.
+
+These gates are independent. Setting the frontend flag without a backend provider makes the image-generation UI visible, but after `GET /api/v1/image-generations/capabilities` returns `503 Service Unavailable` the frontend treats image generation as unavailable: `New image` is shown but remains disabled and the image workspace cannot be entered. Setting the backend provider without the frontend flag keeps image generation invisible in the UI.
+
+To enable image generation locally:
+
+- Set `VITE_IMAGE_GENERATION_ENABLED=true` when starting the frontend.
+- Set `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` before starting the backend.
 
 The image generation layer uses a pluggable provider interface. Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured provider, selected automatically when `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set. Chat still uses Azure OpenAI Responses API; image generation uses the configured image provider independently.
 

@@ -240,6 +240,7 @@ Environment variables should cover:
 - System prompt or default assistant instruction
 - Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
 - Web-search runs must preserve the existing session model, API shape, and anonymous chat flow while persisting only final citation metadata
+- `VITE_IMAGE_GENERATION_ENABLED` (frontend-only build flag): when unset or `false`, the image-generation UI is hidden entirely. Setting this to `true` exposes the image workspace but backend provider configuration is required separately for image generation to function.
 
 ### Image generation provider
 
@@ -380,9 +381,34 @@ Returns the raw bytes of an output-role generation image. Served with a long-liv
 - Chat conversation area
 - Composer
 - Attachment picker for images and PDFs
-- “New chat” button optional, but if present it should simply create a new session
+- `New` control: always opens a dropdown menu. When image generation is disabled, the menu contains only `New chat`. When image generation is enabled, the menu contains `New chat` and `New image` options.
 
 No history sidebar is needed in v1.
+
+### Image generation UI rollout model
+
+Image generation UI is controlled by two gates:
+
+- **Frontend flag** (`VITE_IMAGE_GENERATION_ENABLED`): when unset or `false`, all image-generation UI is hidden regardless of backend configuration. When `true`, the frontend includes the image-generation entry points and checks backend capabilities to decide whether `New image` is enabled.
+- **Backend provider** (`AZURE_FOUNDRY_ENDPOINT` + `AZURE_FOUNDRY_API_KEY`): when unset, the backend returns `503 Service Unavailable` from `GET /api/v1/image-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/image-generations`.
+
+In practice, the image workspace is only reachable when both gates are satisfied: the frontend flag is enabled and backend capabilities report image generation as available. If the frontend flag is enabled but the backend provider is unavailable, the frontend treats image generation as unavailable, `New image` is disabled, and the image workspace cannot be entered from the UI. The chat workspace is unaffected. Setting the backend provider without enabling the frontend flag keeps image generation invisible in the UI.
+
+### Image workspace
+
+When `New image` is selected, the frontend switches to a dedicated image workspace. The image workspace holds its own session, separate from any active chat session. Selecting `New image` again resets the image workspace and starts a fresh image session; the existing chat session is preserved.
+
+The image workspace is a multi-turn view. Each submitted generation becomes a turn displayed in the image timeline. The session persists as long as the page remains loaded; refreshing the browser or switching to a new chat session discards the image workspace state.
+
+### Image generation session model
+
+Each image workspace session is a single backend chat session scoped to image generation. All generations submitted within one image workspace share the same `sessionId`. The session ID is held in memory only, consistent with the chat session model; refreshing the browser loses access to the prior image workspace.
+
+### Prior-image reuse
+
+Users can explicitly reattach a previously uploaded or generated image as a reference for a new generation. Reuse requires a deliberate user action (clicking the reuse button on a prior turn's image); reference images are not carried forward automatically between turns. When the reused image is a previously generated output, the frontend fetches its bytes from the stored content URL and adds it to the current draft's reference image list. When the reused image is one the user previously uploaded, the frontend reuses the in-memory `File` directly without a network fetch.
+
+Uploading a new reference image from disk, reusing a previously uploaded image, and reusing a previously generated output all converge on the same reference image attachment mechanism once the frontend has the file bytes.
 
 ## Statelessness and Concurrency
 
