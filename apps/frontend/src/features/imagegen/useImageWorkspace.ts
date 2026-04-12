@@ -31,7 +31,6 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const [screenError, setScreenError] = useState("");
   const [attachmentToast, setAttachmentToast] = useState("");
 
-  const sessionIdRef = useRef("");
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -84,13 +83,11 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
     setScreenError("");
     setPrompt("");
     setReferenceImages([]);
-    sessionIdRef.current = "";
     setSessionId("");
 
     try {
       const session = await createSession();
       startTransition(() => {
-        sessionIdRef.current = session.sessionId;
         setSessionId(session.sessionId);
         setBootstrapState("ready");
       });
@@ -148,11 +145,15 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
         onFailed: (payload) => {
           closeStream();
           setSubmissionState("idle");
+          setPrompt(draftPrompt);
+          setReferenceImages(draftImages);
           setScreenError(payload.errorMessage ?? "Image generation failed");
         },
         onTransportError: (message) => {
           closeStream();
           setSubmissionState("idle");
+          setPrompt(draftPrompt);
+          setReferenceImages(draftImages);
           setScreenError(message);
         },
       });
@@ -195,12 +196,13 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
       return;
     }
 
-    const nextImages = [
-      ...referenceImages,
-      ...files.map((file) => ({ id: createLocalId("ref"), file })),
-    ];
+    // Pre-compute entries with stable IDs so the updater doesn't call createLocalId twice.
+    const newEntries = files.map((file) => ({ id: createLocalId("ref"), file }));
+
+    // Validate against the current known state + incoming files. Using the closed-over
+    // referenceImages for this read is safe because UI file-picker events are serialized.
     const validationError = validateReferenceImages(
-      nextImages.map((r) => r.file),
+      [...referenceImages, ...newEntries].map((r) => r.file),
       maxReferenceImages,
     );
     if (validationError) {
@@ -210,7 +212,9 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
 
     clearAttachmentToast();
     setScreenError("");
-    setReferenceImages(nextImages);
+    // Use the functional form for the write so rapid back-to-back selections
+    // always compose against the latest committed state.
+    setReferenceImages((current) => [...current, ...newEntries]);
   }
 
   function openFilePicker() {
