@@ -13,12 +13,16 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
 
   useEffect(() => {
     const map = previewUrlMapRef.current;
+    let added = false;
     for (const { id, file } of turn.referenceImages) {
       if (!map.has(id)) {
         map.set(id, URL.createObjectURL(file));
+        added = true;
       }
     }
-    setPreviewUrls(new Map(map));
+    if (added) {
+      setPreviewUrls(new Map(map));
+    }
   }, [turn.referenceImages]);
 
   useEffect(() => {
