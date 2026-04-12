@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-
 import { IconSpinner } from "../../chat/components/icons";
 import type { ImageTurn } from "../types";
 
@@ -8,17 +6,6 @@ type ImageTurnCardProps = {
 };
 
 export function ImageTurnCard({ turn }: ImageTurnCardProps) {
-  useEffect(() => {
-    const urls = turn.referenceImages.map((r) => r.previewUrl);
-    return () => {
-      for (const url of urls) {
-        URL.revokeObjectURL(url);
-      }
-    };
-    // referenceImages are set once at turn creation and never change; capture on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <article className="image-turn-card">
       <div className="image-turn-input">
@@ -31,6 +18,8 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
                 src={previewUrl}
                 alt={name}
                 title={name}
+                onLoad={() => URL.revokeObjectURL(previewUrl)}
+                onError={() => URL.revokeObjectURL(previewUrl)}
               />
             ))}
           </div>
