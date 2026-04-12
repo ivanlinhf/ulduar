@@ -11,7 +11,15 @@ export function ImageTimeline({ turns }: ImageTimelineProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    endRef.current?.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "end",
+    });
   }, [turns.length]);
 
   return (

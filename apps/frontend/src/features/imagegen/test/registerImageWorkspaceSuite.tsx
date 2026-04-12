@@ -158,7 +158,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
             width: 1024,
             height: 1024,
             createdAt: "2026-03-31T10:01:05Z",
-            contentUrl: "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/assets/asset-001/content",
+            contentUrl: "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
           },
         ],
       });

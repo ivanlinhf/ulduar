@@ -165,16 +165,19 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
 
       setSubmissionState("streaming");
       closeStream();
+
+      function markTurnRunning() {
+        setTurns((prev) =>
+          prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
+        );
+      }
+
       streamCleanupRef.current = streamImageGeneration(sessionId, created.generationId, {
         onStarted: () => {
-          setTurns((prev) =>
-            prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
-          );
+          markTurnRunning();
         },
         onRunning: () => {
-          setTurns((prev) =>
-            prev.map((t) => (t.id === turnId ? { ...t, status: "running" } : t)),
-          );
+          markTurnRunning();
         },
         onCompleted: (payload) => {
           const outputImages: ImageTurnOutputImage[] = payload.outputAssets
