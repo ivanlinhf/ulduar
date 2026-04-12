@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEventHandler, type RefObject, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject, type SubmitEvent } from "react";
 
-import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
+import type { ImageGenerationCapabilitiesResponse, ImageGenerationMode } from "../../../lib/api";
 import { ActionTooltip } from "../../chat/components/ActionTooltip";
-import { IconAttachment, IconClose, IconSend, IconSpinner } from "../../chat/components/icons";
-import { imagePromptPlaceholder, referenceImageInputAccept } from "../constants";
+import { IconClose, IconSend, IconSpinner } from "../../chat/components/icons";
+import { referenceImageInputAccept } from "../constants";
 import type { ImageSubmissionState, ReusableImageSource, SelectedReferenceImage } from "../types";
 import { ImageReusePicker } from "./ImageReusePicker";
 
@@ -22,6 +22,7 @@ type ImageComposerProps = {
   onResolutionChange: (event: ChangeEvent<HTMLSelectElement>) => void;
   onReuseImage: (source: ReusableImageSource) => Promise<void>;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
+  mode: ImageGenerationMode;
   prompt: string;
   referenceImages: SelectedReferenceImage[];
   reusableImages: ReusableImageSource[];
@@ -47,6 +48,7 @@ export function ImageComposer({
   onResolutionChange,
   onReuseImage,
   onSubmit,
+  mode,
   prompt,
   referenceImages,
   reusableImages,
@@ -58,6 +60,11 @@ export function ImageComposer({
 }: ImageComposerProps) {
   const previewUrlMapRef = useRef<Map<string, string>>(new Map());
   const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
+  const isEditMode = mode === "image_edit";
+  const modeLabel = isEditMode ? "Edit" : "Generate";
+  const inputPlaceholder = isEditMode
+    ? "Describe the result you want. Add reference images from file or this session to guide the next image. Shift + Enter to generate."
+    : "Describe the result you want. Add reference images from file or this session when you want the next image to follow or edit them. Shift + Enter to generate.";
 
   // Incrementally update blob URLs for reference image thumbnails.
   useEffect(() => {
@@ -91,13 +98,10 @@ export function ImageComposer({
     };
   }, []);
 
-  const handleAttachClick: MouseEventHandler<HTMLButtonElement> = () => {
-    onOpenFilePicker();
-  };
-
   return (
     <form className="composer image-composer" onSubmit={onSubmit}>
       <div className="composer-input-shell composer-input-shell-inline">
+        <span className="image-composer-mode-badge">{modeLabel}</span>
         <textarea
           ref={composerRef}
           className="composer-input"
@@ -105,7 +109,7 @@ export function ImageComposer({
           value={prompt}
           onChange={onPromptChange}
           onKeyDown={onPromptKeyDown}
-          placeholder={imagePromptPlaceholder}
+          placeholder={inputPlaceholder}
           rows={5}
           disabled={busy}
         />
@@ -132,22 +136,13 @@ export function ImageComposer({
         </div>
 
         <div className="composer-footer-start">
-          <ActionTooltip
-            side="above"
-            dismissOnPress
-            openOnFocus={false}
-            content={<span className="action-tooltip-label">Add reference images</span>}
-          >
-            <button
-              aria-label="Add reference images"
-              className="attachment-button icon-only-button"
-              disabled={busy}
-              onClick={handleAttachClick}
-              type="button"
-            >
-              <IconAttachment />
-            </button>
-          </ActionTooltip>
+          <ImageReusePicker
+            busy={busy}
+            onOpenFilePicker={onOpenFilePicker}
+            onReuseImage={onReuseImage}
+            reusingImageIds={reusingImageIds}
+            reusableImages={reusableImages}
+          />
 
           <div className="composer-attachment-list">
             {referenceImages.map(({ id, file }) => {
@@ -208,13 +203,6 @@ export function ImageComposer({
           </ActionTooltip>
         </div>
       </div>
-
-      <ImageReusePicker
-        busy={busy}
-        onReuseImage={onReuseImage}
-        reusingImageIds={reusingImageIds}
-        reusableImages={reusableImages}
-      />
 
       {screenError ? <p className="screen-error">{screenError}</p> : null}
 

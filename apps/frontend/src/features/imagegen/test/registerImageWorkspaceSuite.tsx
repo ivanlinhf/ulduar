@@ -2,24 +2,28 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
-import { imagePromptPlaceholder, imageToastDurationMs, referenceImageInputAccept } from "../constants";
+import { imageToastDurationMs, referenceImageInputAccept } from "../constants";
 import type { ImageWorkspaceTestContext } from "./imageWorkspaceTestContext";
 
 export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) {
-  it("renders the image workspace with prompt and Generate button when New image is selected", async () => {
+  it("renders the image workspace with prompt and Generate button when New Image is selected", async () => {
     context.renderApp();
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
     const promptInput = screen.getByLabelText("Image prompt");
     expect(promptInput).toBeInTheDocument();
-    expect(promptInput).toHaveAttribute("placeholder", imagePromptPlaceholder);
+    expect(promptInput).toHaveAttribute(
+      "placeholder",
+      "Describe the result you want. Add reference images from file or this session when you want the next image to follow or edit them. Shift + Enter to generate.",
+    );
 
     expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument();
+    expect(screen.getByText("Generate", { selector: ".image-composer-mode-badge" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
   });
 
@@ -28,7 +32,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -40,7 +44,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -58,7 +62,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -84,7 +88,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -104,7 +108,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -186,7 +190,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -238,7 +242,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -248,6 +252,10 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     ) as HTMLInputElement;
     expect(imageFileInput).not.toBeNull();
     fireEvent.change(imageFileInput, { target: { files: [referenceFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit")).toBeInTheDocument();
+    });
 
     await user.type(screen.getByLabelText("Image prompt"), "Edit this image");
     await user.click(screen.getByRole("button", { name: "Generate" }));
@@ -263,7 +271,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     });
   });
 
-  it("reuses a previous uploaded reference image only after the user explicitly reattaches it", async () => {
+  it("uses From File when the user wants to reattach an earlier upload", async () => {
     context.mockSuccessfulCreateImageGeneration();
     const user = userEvent.setup();
 
@@ -271,7 +279,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -311,12 +319,6 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       });
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Attach previous upload earlier-ref.png" }),
-      ).toBeInTheDocument();
-    });
-
     await user.type(screen.getByLabelText("Image prompt"), "Do not reuse implicitly");
     await user.click(screen.getByRole("button", { name: "Generate" }));
 
@@ -346,7 +348,9 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       });
     });
 
-    await user.click(screen.getByRole("button", { name: "Attach previous upload earlier-ref.png" }));
+    await user.click(screen.getByRole("button", { name: "Add reference images" }));
+    await user.click(screen.getByRole("menuitem", { name: "From File" }));
+    fireEvent.change(imageFileInput, { target: { files: [referenceFile] } });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Remove earlier-ref.png" })).toBeInTheDocument();
@@ -396,7 +400,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -441,6 +445,9 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
         ],
       });
     });
+
+    await user.click(screen.getByRole("button", { name: "Add reference images" }));
+    await user.click(screen.getByRole("menuitem", { name: "From Session" }));
 
     await waitFor(() => {
       expect(
@@ -508,7 +515,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -548,13 +555,16 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       });
     });
 
+    await user.type(screen.getByLabelText("Image prompt"), "Try to submit while reusing");
+    await user.click(screen.getByRole("button", { name: "Add reference images" }));
+    await user.click(screen.getByRole("menuitem", { name: "From Session" }));
+
     await waitFor(() => {
       expect(
         screen.getByRole("button", { name: "Attach generated image generated-output.png" }),
       ).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText("Image prompt"), "Try to submit while reusing");
     await user.click(screen.getByRole("button", { name: "Attach generated image generated-output.png" }));
 
     await waitFor(() => {
@@ -564,7 +574,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     });
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -610,7 +620,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -650,12 +660,19 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       });
     });
 
-    const attachButton = await screen.findByRole("button", {
+    const attachmentMenuButton = await screen.findByRole("button", {
+      name: "Add reference images",
+    });
+
+    fireEvent.click(attachmentMenuButton);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "From Session" }));
+
+    const generatedAttachButton = await screen.findByRole("button", {
       name: "Attach generated image generated-output.png",
     });
 
-    fireEvent.click(attachButton);
-    fireEvent.click(attachButton);
+    fireEvent.click(generatedAttachButton);
+    fireEvent.click(generatedAttachButton);
 
     expect(context.mockedFetch).toHaveBeenCalledTimes(2);
 
@@ -669,26 +686,46 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     });
   });
 
-  it("applies the reference-image limit when reusing a prior image", async () => {
+  it("applies the reference-image limit when reusing a prior generated image", async () => {
     context.mockSuccessfulCreateImageGeneration();
     const user = userEvent.setup();
+    const generatedImageUrl =
+      "http://localhost:8080/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content";
+
+    context.mockedFetch.mockImplementation(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === generatedImageUrl) {
+        return createImageContentResponse();
+      }
+
+      return new Response(JSON.stringify({ version: "test-version" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    });
 
     const { container } = context.renderApp();
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
-    const earlierReferenceFile = new File(["earlier"], "earlier-ref.png", { type: "image/png" });
     const imageFileInput = container.querySelector(
       `input[type="file"][accept="${referenceImageInputAccept}"]`,
     ) as HTMLInputElement;
     expect(imageFileInput).not.toBeNull();
-    fireEvent.change(imageFileInput, { target: { files: [earlierReferenceFile] } });
 
-    await user.type(screen.getByLabelText("Image prompt"), "Create reusable upload");
+    await user.type(screen.getByLabelText("Image prompt"), "Create reusable output");
     await user.click(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() => {
@@ -699,15 +736,28 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       context.requireImageStreamHandlers().onCompleted?.({
         generationId: "gen-44444444-4444-4444-4444-444444444444",
         sessionId: "22222222-2222-2222-2222-222222222222",
-        mode: "image_edit",
+        mode: "text_to_image",
         status: "completed",
-        prompt: "Create reusable upload",
+        prompt: "Create reusable output",
         resolution: { key: "1024x1024", width: 1024, height: 1024 },
         outputImageCount: 1,
         createdAt: "2026-03-31T10:01:00Z",
         completedAt: "2026-03-31T10:01:05Z",
         inputAssets: [],
-        outputAssets: [],
+        outputAssets: [
+          {
+            assetId: "asset-001",
+            filename: "generated-output.png",
+            mediaType: "image/png",
+            sizeBytes: 12345,
+            sha256: "abc123",
+            width: 1024,
+            height: 1024,
+            createdAt: "2026-03-31T10:01:05Z",
+            contentUrl:
+              "/api/v1/sessions/22222222-2222-2222-2222-222222222222/image-generations/gen-44444444-4444-4444-4444-444444444444/images/asset-001/content",
+          },
+        ],
       });
     });
 
@@ -720,13 +770,15 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
       expect(screen.getByRole("button", { name: "Remove draft-4.png" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Attach previous upload earlier-ref.png" }));
+    await user.click(screen.getByRole("button", { name: "Add reference images" }));
+    await user.click(screen.getByRole("menuitem", { name: "From Session" }));
+    await user.click(screen.getByRole("button", { name: "Attach generated image generated-output.png" }));
 
     await waitFor(() => {
       expect(screen.getByText(/at most 4 reference images/i)).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: "Remove earlier-ref.png" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove generated-output.png" })).not.toBeInTheDocument();
   });
 
   it("submits on Shift+Enter", async () => {
@@ -736,7 +788,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -760,7 +812,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -786,7 +838,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -820,14 +872,14 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     }
   });
 
-  it("creates a fresh session and clears draft state when New image is selected again", async () => {
+  it("creates a fresh session and clears draft state when New Image is selected again", async () => {
     context.mockSuccessfulCreateImageGeneration();
 
     context.renderApp();
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -837,9 +889,9 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     const initialImageSessionCalls = context.mockedCreateSession.mock.calls.length;
 
-    // Click New image again
+    // Click New Image again
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -857,7 +909,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -870,7 +922,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
 
     // Start a new image session
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -884,7 +936,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -909,7 +961,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -948,7 +1000,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New image" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 
@@ -966,7 +1018,7 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     await context.waitForReady();
 
     await user.click(screen.getByRole("button", { name: "New" }));
-    await user.click(screen.getByRole("menuitem", { name: "New image" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
 
     await context.waitForImageReady();
 

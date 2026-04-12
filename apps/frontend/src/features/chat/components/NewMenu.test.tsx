@@ -28,15 +28,15 @@ describe("NewMenu", () => {
     renderNewMenu();
     await userEvent.click(screen.getByRole("button", { name: "New" }));
     expect(screen.getByRole("button", { name: "New" })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "New Chat" })).toHaveFocus();
   });
 
-  it("calls onNewChat and closes menu when New chat item is clicked, returning focus to trigger", async () => {
+  it("calls onNewChat and closes menu when New Chat item is clicked, returning focus to trigger", async () => {
     const onNewChat = vi.fn();
     renderNewMenu({ onNewChat });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "New chat" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New Chat" }));
 
     const trigger = screen.getByRole("button", { name: "New" });
     expect(onNewChat).toHaveBeenCalledTimes(1);
@@ -69,7 +69,7 @@ describe("NewMenu", () => {
     renderNewMenu();
     const trigger = screen.getByRole("button", { name: "New" });
     await userEvent.click(trigger);
-    expect(screen.getByRole("menuitem", { name: "New chat" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "New Chat" })).toHaveFocus();
 
     // Simulate an outside pointerdown on a non-focusable element (e.g. body).
     fireEvent.pointerDown(document.body);
@@ -133,10 +133,10 @@ describe("NewMenu", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
 
-    const newChatItem = screen.getByRole("menuitem", { name: "New chat" });
-    const newImageItem = screen.getByRole("menuitem", { name: "New image" });
+    const newChatItem = screen.getByRole("menuitem", { name: "New Chat" });
+    const newImageItem = screen.getByRole("menuitem", { name: "New Image" });
 
-    // New chat is the focused (active) item; New image is disabled — always tabIndex=-1.
+    // New Chat is the focused (active) item; New Image is disabled — always tabIndex=-1.
     expect(newChatItem).toHaveAttribute("tabindex", "0");
     expect(newImageItem).toHaveAttribute("tabindex", "-1");
   });
@@ -154,41 +154,41 @@ describe("NewMenu", () => {
     expect(items[0]).toHaveFocus();
   });
 
-  it("does not render New image item when isImageGenerationEnabled is false", async () => {
+  it("does not render New Image item when isImageGenerationEnabled is false", async () => {
     renderNewMenu({ isImageGenerationEnabled: false });
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(screen.queryByRole("menuitem", { name: "New image" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "New Image" })).not.toBeInTheDocument();
   });
 
-  it("renders New image item as enabled when isImageGenerationEnabled and isImageGenerationAvailable are true", async () => {
+  it("renders New Image item as enabled when isImageGenerationEnabled and isImageGenerationAvailable are true", async () => {
     const onNewImage = vi.fn();
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true, onNewImage });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    const item = screen.getByRole("menuitem", { name: "New image" });
+    const item = screen.getByRole("menuitem", { name: "New Image" });
     expect(item).not.toHaveAttribute("aria-disabled");
 
     await userEvent.click(item);
     expect(onNewImage).toHaveBeenCalledTimes(1);
   });
 
-  it("renders New image item as disabled when isImageGenerationEnabled is true but isImageGenerationAvailable is false", async () => {
+  it("renders New Image item as disabled when isImageGenerationEnabled is true but isImageGenerationAvailable is false", async () => {
     const onNewImage = vi.fn();
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: false, onNewImage });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    const item = screen.getByRole("menuitem", { name: "New image" });
+    const item = screen.getByRole("menuitem", { name: "New Image" });
     expect(item).toHaveAttribute("aria-disabled", "true");
 
     await userEvent.click(item);
     expect(onNewImage).not.toHaveBeenCalled();
   });
 
-  it("renders New image item as disabled when the handler is missing", async () => {
+  it("renders New Image item as disabled when the handler is missing", async () => {
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true, onNewImage: undefined });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    const item = screen.getByRole("menuitem", { name: "New image" });
+    const item = screen.getByRole("menuitem", { name: "New Image" });
     expect(item).toHaveAttribute("aria-disabled", "true");
     expect(item).toHaveAttribute("tabindex", "-1");
   });
@@ -197,10 +197,10 @@ describe("NewMenu", () => {
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: false });
 
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    const newChatItem = screen.getByRole("menuitem", { name: "New chat" });
+    const newChatItem = screen.getByRole("menuitem", { name: "New Chat" });
     expect(newChatItem).toHaveFocus();
 
-    // ArrowDown should wrap because the only enabled item is New chat
+    // ArrowDown should wrap because the only enabled item is New Chat
     await userEvent.keyboard("{ArrowDown}");
     expect(newChatItem).toHaveFocus();
   });

@@ -84,17 +84,6 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
   const reusableImages = useMemo<ReusableImageSource[]>(
     () => [
       ...turns.flatMap((turn) =>
-        turn.referenceImages
-          .filter((image) => image.sourceKind === "upload")
-          .map((image) => ({
-            id: `${turn.id}:reference:${image.id}`,
-            kind: "upload" as const,
-            name: image.name,
-            mediaType: image.file.type,
-            file: image.file,
-          })),
-      ),
-      ...turns.flatMap((turn) =>
         turn.outputImages.map((image) => ({
           id: `${turn.id}:output:${image.assetId}`,
           kind: "generated" as const,
@@ -335,15 +324,6 @@ export function useImageWorkspace(capabilities: ImageGenerationCapabilitiesRespo
 
   async function reuseImage(source: ReusableImageSource) {
     if (busy) {
-      return;
-    }
-
-    if (source.kind === "upload" && source.file) {
-      tryAddReferenceImages([createSelectedReferenceImage(source.file, "upload")]);
-      return;
-    }
-
-    if (source.kind !== "generated" || !source.contentUrl) {
       return;
     }
 

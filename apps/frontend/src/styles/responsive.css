@@ -71,9 +71,25 @@
     margin-left: 0;
     align-self: center;
   }
+
+  .image-reference-menu,
+  .image-reuse-panel {
+    width: min(560px, calc(100vw - 40px));
+  }
+
+  .image-reuse-panel {
+    max-height: min(320px, calc(100dvh - 200px));
+  }
 }
 
 @media (max-width: 720px) {
+  .image-reference-menu,
+  .image-reuse-panel {
+    left: auto;
+    right: 0;
+    width: min(480px, calc(100vw - 40px));
+  }
+
   .composer-footer-end {
     width: 100%;
     justify-content: flex-end;

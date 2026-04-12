@@ -53,6 +53,7 @@ export function ImageWorkspace({
         onResolutionChange={workspace.handleResolutionChange}
         onReuseImage={workspace.reuseImage}
         onSubmit={workspace.handleSubmit}
+        mode={workspace.mode}
         prompt={workspace.prompt}
         referenceImages={workspace.referenceImages}
         reusableImages={workspace.reusableImages}
