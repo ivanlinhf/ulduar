@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { IconSpinner } from "../../chat/components/icons";
 import type { ImageTurn } from "../types";
 
@@ -6,6 +8,31 @@ type ImageTurnCardProps = {
 };
 
 export function ImageTurnCard({ turn }: ImageTurnCardProps) {
+  // Track which previewUrls have already been revoked by onLoad/onError so the
+  // unmount cleanup below doesn't double-revoke them.
+  const revokedRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    const revoked = revokedRef.current;
+    const urls = turn.referenceImages.map((r) => r.previewUrl);
+    return () => {
+      for (const url of urls) {
+        if (!revoked.has(url)) {
+          URL.revokeObjectURL(url);
+        }
+      }
+    };
+    // referenceImages are fixed at turn creation; capture once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function revokeOnce(url: string) {
+    if (!revokedRef.current.has(url)) {
+      revokedRef.current.add(url);
+      URL.revokeObjectURL(url);
+    }
+  }
+
   return (
     <article className="image-turn-card">
       <div className="image-turn-input">
@@ -18,8 +45,8 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
                 src={previewUrl}
                 alt={name}
                 title={name}
-                onLoad={() => URL.revokeObjectURL(previewUrl)}
-                onError={() => URL.revokeObjectURL(previewUrl)}
+                onLoad={() => revokeOnce(previewUrl)}
+                onError={() => revokeOnce(previewUrl)}
               />
             ))}
           </div>
@@ -46,6 +73,8 @@ export function ImageTurnCard({ turn }: ImageTurnCardProps) {
               className="image-turn-output"
               src={img.contentUrl}
               alt={img.filename}
+              loading="lazy"
+              decoding="async"
             />
           ))}
         </div>
