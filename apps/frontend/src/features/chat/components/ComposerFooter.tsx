@@ -129,7 +129,6 @@ export function ComposerFooter({
           align="right"
           side="above"
           dismissOnPress
-          openOnFocus={false}
           content={<span className="action-tooltip-label">{submitButtonLabel}</span>}
         >
           <button

@@ -86,8 +86,8 @@ export function ActionTooltip({
           setIsDismissed(true);
         }
       }}
-      onFocusCapture={() => {
-        if (openOnFocus) {
+      onFocusCapture={(event) => {
+        if (openOnFocus && event.target instanceof Element && event.target.matches(":focus-visible")) {
           setIsFocused(true);
         }
       }}
@@ -97,6 +97,7 @@ export function ActionTooltip({
         }
 
         setIsFocused(false);
+        setIsDismissed(false);
       }}
     >
       {child}
