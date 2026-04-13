@@ -74,9 +74,6 @@
 
   .image-reuse-panel {
     width: min(560px, calc(100vw - 40px));
-  }
-
-  .image-reuse-panel {
     max-height: min(320px, calc(100dvh - 200px));
   }
 }
@@ -85,9 +82,6 @@
   .image-reuse-panel {
     left: auto;
     right: 0;
-  }
-
-  .image-reuse-panel {
     width: min(480px, calc(100vw - 40px));
   }
 

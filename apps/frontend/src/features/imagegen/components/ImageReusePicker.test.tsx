@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ImageReusePicker } from "./ImageReusePicker";
 
 describe("ImageReusePicker", () => {
-  it("opens a compact source menu with file and session actions", async () => {
+  it("opens the source menu with file action and disabled session action when no reusable images exist", async () => {
     const user = userEvent.setup();
 
     render(
