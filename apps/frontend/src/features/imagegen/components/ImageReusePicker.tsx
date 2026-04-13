@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
+import { ActionTooltip } from "../../chat/components/ActionTooltip";
 import { IconAttachment, IconClose } from "../../chat/components/icons";
 import type { ReusableImageSource } from "../types";
 
@@ -115,26 +116,33 @@ export function ImageReusePicker({
 
   return (
     <div className="image-reuse-anchor">
-      <button
-        ref={triggerRef}
-        aria-controls={isOpen ? panelId : menuId}
-        aria-expanded={isMenuOpen || isOpen}
-        aria-haspopup={isOpen ? "dialog" : "menu"}
-        aria-label="Add reference images"
-        className="attachment-button icon-only-button"
-        disabled={busy}
-        type="button"
-        onClick={() => {
-          if (isOpen || isMenuOpen) {
-            closeAll();
-            return;
-          }
-
-          openMenu();
-        }}
+      <ActionTooltip
+        side="above"
+        dismissOnPress
+        openOnFocus={false}
+        content={<span className="action-tooltip-label">Add references</span>}
       >
-        <IconAttachment />
-      </button>
+        <button
+          ref={triggerRef}
+          aria-controls={isOpen ? panelId : menuId}
+          aria-expanded={isMenuOpen || isOpen}
+          aria-haspopup={isOpen ? "dialog" : "menu"}
+          aria-label="Add reference images"
+          className="attachment-button icon-only-button"
+          disabled={busy}
+          type="button"
+          onClick={() => {
+            if (isOpen || isMenuOpen) {
+              closeAll();
+              return;
+            }
+
+            openMenu();
+          }}
+        >
+          <IconAttachment />
+        </button>
+      </ActionTooltip>
 
       <div
         ref={menuRef}
