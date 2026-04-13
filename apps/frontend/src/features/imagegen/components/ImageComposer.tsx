@@ -190,6 +190,7 @@ export function ImageComposer({
           <ActionTooltip
             align="right"
             side="above"
+            dismissOnPress
             content={<span className="action-tooltip-label">{generateButtonLabel}</span>}
           >
             <button

@@ -159,6 +159,26 @@ export function registerComposerSuite(context: AppTestContext) {
     expect(screen.getByRole("tooltip")).toHaveTextContent("Add attachments");
   });
 
+  it("keeps the send tooltip dismissed after clicking the button", async () => {
+    context.mockSuccessfulCreateMessage();
+    const user = userEvent.setup();
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.type(screen.getByLabelText("Message"), "Hello");
+
+    const sendButton = screen.getByRole("button", { name: "Send" });
+
+    await user.hover(sendButton);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Send");
+
+    await user.click(sendButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.unhover(sendButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
   it("shows attachment controls inside the expanded composer", async () => {
     const user = userEvent.setup();
     const { container } = context.renderApp();

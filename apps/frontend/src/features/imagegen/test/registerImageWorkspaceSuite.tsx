@@ -80,6 +80,32 @@ export function registerImageWorkspaceSuite(context: ImageWorkspaceTestContext) 
     });
   });
 
+  it("keeps the generate tooltip dismissed after clicking the button", async () => {
+    context.mockSuccessfulCreateImageGeneration();
+    const user = userEvent.setup();
+
+    context.renderApp();
+    await context.waitForReady();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Image" }));
+
+    await context.waitForImageReady();
+
+    await user.type(screen.getByLabelText("Image prompt"), "A sunset");
+
+    const generateButton = screen.getByRole("button", { name: "Generate" });
+
+    await user.hover(generateButton);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Generate");
+
+    await user.click(generateButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.unhover(generateButton);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
   it("adds a pending turn to the timeline after submitting", async () => {
     context.mockSuccessfulCreateImageGeneration();
     const user = userEvent.setup();

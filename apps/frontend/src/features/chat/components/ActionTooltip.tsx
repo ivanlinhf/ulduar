@@ -3,6 +3,7 @@ import {
   isValidElement,
   useEffect,
   useId,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
@@ -32,6 +33,7 @@ export function ActionTooltip({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const isPointerDownRef = useRef(false);
   const isOpen = !isDismissed && (isHovered || isFocused);
   const tooltipId = useId();
 
@@ -82,12 +84,16 @@ export function ActionTooltip({
         setIsDismissed(false);
       }}
       onPointerDownCapture={() => {
+        isPointerDownRef.current = true;
         if (dismissOnPress) {
           setIsDismissed(true);
         }
       }}
+      onPointerUpCapture={() => {
+        isPointerDownRef.current = false;
+      }}
       onFocusCapture={() => {
-        if (openOnFocus) {
+        if (openOnFocus && !isPointerDownRef.current) {
           setIsFocused(true);
         }
       }}
@@ -97,6 +103,9 @@ export function ActionTooltip({
         }
 
         setIsFocused(false);
+        if (!isHovered) {
+          setIsDismissed(false);
+        }
       }}
     >
       {child}
