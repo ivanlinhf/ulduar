@@ -27,6 +27,28 @@ describe("ImageReusePicker", () => {
     );
   });
 
+  it("shows the add references tooltip and dismisses it after pressing the trigger", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ImageReusePicker
+        busy={false}
+        onOpenFilePicker={vi.fn()}
+        onReuseImage={vi.fn().mockResolvedValue(undefined)}
+        reusingImageIds={[]}
+        reusableImages={[]}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Add reference images" });
+
+    await user.hover(trigger);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Add references");
+
+    await user.click(trigger);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
   it("opens the session picker only when reusable images exist", async () => {
     const user = userEvent.setup();
 
