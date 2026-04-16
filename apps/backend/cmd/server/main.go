@@ -93,6 +93,20 @@ func main() {
 		MaxReferenceImageBytes: cfg.Image.MaxReferenceImageBytes,
 		Provider:               imageProvider,
 	})
+	var presentationClient presentationgen.ResponseClient
+	if strings.TrimSpace(cfg.Presentation.Endpoint) != "" {
+		client, err := azureopenai.NewClient(
+			cfg.Presentation.Endpoint,
+			cfg.Presentation.APIKey,
+			cfg.Presentation.APIVersion,
+			cfg.Presentation.Deployment,
+		)
+		if err != nil {
+			slog.Error("connect azure openai presentation planner", "error", err)
+			return
+		}
+		presentationClient = client
+	}
 	presentationService := presentationgen.NewService(dbPool, presentationgen.ServiceOptions{
 		Planner: presentationgen.PlannerConfig{
 			Endpoint:       cfg.Presentation.Endpoint,
@@ -103,6 +117,8 @@ func main() {
 			RequestTimeout: cfg.Presentation.RequestTimeout,
 			StreamTimeout:  cfg.Presentation.StreamTimeout,
 		},
+		BlobStore:      blobClient,
+		ResponseClient: presentationClient,
 	})
 
 	server := &http.Server{

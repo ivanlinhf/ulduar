@@ -99,6 +99,7 @@ CREATE TABLE presentation_generations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
     prompt TEXT NOT NULL,
+    dialect_json JSONB,
     provider_name TEXT NOT NULL,
     provider_model TEXT NOT NULL,
     provider_job_id TEXT,

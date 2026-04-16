@@ -233,6 +233,7 @@ func TestMapPresentationGeneration(t *testing.T) {
 		ID:            mustUUID(t, "88888888-8888-8888-8888-888888888888"),
 		SessionID:     mustUUID(t, "11111111-1111-1111-1111-111111111111"),
 		Prompt:        "prepare a roadmap deck",
+		DialectJson:   []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`),
 		ProviderName:  "azure-openai",
 		ProviderModel: "gpt-5-chat",
 		ProviderJobID: textValue("job-456"),
@@ -254,6 +255,9 @@ func TestMapPresentationGeneration(t *testing.T) {
 	}
 	if generation.ProviderJobID != "job-456" {
 		t.Fatalf("generation.ProviderJobID = %q", generation.ProviderJobID)
+	}
+	if string(generation.DialectJSON) != `{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}` {
+		t.Fatalf("generation.DialectJSON = %s", string(generation.DialectJSON))
 	}
 	if generation.StartedAt == nil || !generation.StartedAt.Equal(startedAt) {
 		t.Fatalf("generation.StartedAt = %v", generation.StartedAt)

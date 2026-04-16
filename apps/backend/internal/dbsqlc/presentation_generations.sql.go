@@ -43,6 +43,7 @@ const createPresentationGeneration = `-- name: CreatePresentationGeneration :one
 INSERT INTO presentation_generations (
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -59,12 +60,14 @@ INSERT INTO presentation_generations (
     $6,
     $7,
     $8,
-    $9
+    $9,
+    $10
 )
 RETURNING
     id,
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -79,6 +82,7 @@ RETURNING
 type CreatePresentationGenerationParams struct {
 	SessionID     pgtype.UUID        `json:"session_id"`
 	Prompt        string             `json:"prompt"`
+	DialectJson   []byte             `json:"dialect_json"`
 	ProviderName  string             `json:"provider_name"`
 	ProviderModel string             `json:"provider_model"`
 	ProviderJobID pgtype.Text        `json:"provider_job_id"`
@@ -92,6 +96,7 @@ func (q *Queries) CreatePresentationGeneration(ctx context.Context, arg CreatePr
 	row := q.db.QueryRow(ctx, createPresentationGeneration,
 		arg.SessionID,
 		arg.Prompt,
+		arg.DialectJson,
 		arg.ProviderName,
 		arg.ProviderModel,
 		arg.ProviderJobID,
@@ -105,6 +110,7 @@ func (q *Queries) CreatePresentationGeneration(ctx context.Context, arg CreatePr
 		&i.ID,
 		&i.SessionID,
 		&i.Prompt,
+		&i.DialectJson,
 		&i.ProviderName,
 		&i.ProviderModel,
 		&i.ProviderJobID,
@@ -123,6 +129,7 @@ SELECT
     id,
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -143,6 +150,7 @@ func (q *Queries) GetPresentationGeneration(ctx context.Context, id pgtype.UUID)
 		&i.ID,
 		&i.SessionID,
 		&i.Prompt,
+		&i.DialectJson,
 		&i.ProviderName,
 		&i.ProviderModel,
 		&i.ProviderJobID,
@@ -161,6 +169,7 @@ SELECT
     id,
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -187,6 +196,7 @@ func (q *Queries) GetPresentationGenerationBySession(ctx context.Context, arg Ge
 		&i.ID,
 		&i.SessionID,
 		&i.Prompt,
+		&i.DialectJson,
 		&i.ProviderName,
 		&i.ProviderModel,
 		&i.ProviderJobID,
@@ -205,6 +215,7 @@ SELECT
     id,
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -232,6 +243,7 @@ func (q *Queries) ListPresentationGenerationsBySession(ctx context.Context, sess
 			&i.ID,
 			&i.SessionID,
 			&i.Prompt,
+			&i.DialectJson,
 			&i.ProviderName,
 			&i.ProviderModel,
 			&i.ProviderJobID,
@@ -257,6 +269,7 @@ SELECT
     id,
     session_id,
     prompt,
+    dialect_json,
     provider_name,
     provider_model,
     provider_job_id,
@@ -278,6 +291,7 @@ func (q *Queries) LockPresentationGenerationForUpdate(ctx context.Context, id pg
 		&i.ID,
 		&i.SessionID,
 		&i.Prompt,
+		&i.DialectJson,
 		&i.ProviderName,
 		&i.ProviderModel,
 		&i.ProviderJobID,
@@ -299,7 +313,8 @@ SET provider_name = $2,
     status = $5,
     error_code = $6,
     error_message = $7,
-    completed_at = $8
+    completed_at = $8,
+    dialect_json = $9
 WHERE id = $1
 `
 
@@ -312,6 +327,7 @@ type UpdatePresentationGenerationStateParams struct {
 	ErrorCode     pgtype.Text        `json:"error_code"`
 	ErrorMessage  pgtype.Text        `json:"error_message"`
 	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	DialectJson   []byte             `json:"dialect_json"`
 }
 
 func (q *Queries) UpdatePresentationGenerationState(ctx context.Context, arg UpdatePresentationGenerationStateParams) (int64, error) {
@@ -324,6 +340,7 @@ func (q *Queries) UpdatePresentationGenerationState(ctx context.Context, arg Upd
 		arg.ErrorCode,
 		arg.ErrorMessage,
 		arg.CompletedAt,
+		arg.DialectJson,
 	)
 	if err != nil {
 		return 0, err

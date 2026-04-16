@@ -92,6 +92,7 @@ type PresentationGeneration struct {
 	ID            pgtype.UUID        `json:"id"`
 	SessionID     pgtype.UUID        `json:"session_id"`
 	Prompt        string             `json:"prompt"`
+	DialectJson   []byte             `json:"dialect_json"`
 	ProviderName  string             `json:"provider_name"`
 	ProviderModel string             `json:"provider_model"`
 	ProviderJobID pgtype.Text        `json:"provider_job_id"`

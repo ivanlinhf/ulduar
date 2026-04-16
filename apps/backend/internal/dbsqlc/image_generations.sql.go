@@ -11,6 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimPendingImageGeneration = `-- name: ClaimPendingImageGeneration :execrows
+UPDATE image_generations
+SET provider_name = $2,
+    provider_model = $3,
+    provider_job_id = NULL,
+    status = 'running',
+    error_code = NULL,
+    error_message = NULL,
+    started_at = NOW(),
+    completed_at = NULL
+WHERE id = $1
+  AND status = 'pending'
+`
+
+type ClaimPendingImageGenerationParams struct {
+	ID            pgtype.UUID `json:"id"`
+	ProviderName  string      `json:"provider_name"`
+	ProviderModel string      `json:"provider_model"`
+}
+
+func (q *Queries) ClaimPendingImageGeneration(ctx context.Context, arg ClaimPendingImageGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimPendingImageGeneration, arg.ID, arg.ProviderName, arg.ProviderModel)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createImageGeneration = `-- name: CreateImageGeneration :one
 INSERT INTO image_generations (
     session_id,
@@ -118,34 +146,6 @@ func (q *Queries) CreateImageGeneration(ctx context.Context, arg CreateImageGene
 		&i.CompletedAt,
 	)
 	return i, err
-}
-
-const claimPendingImageGeneration = `-- name: ClaimPendingImageGeneration :execrows
-UPDATE image_generations
-SET provider_name = $2,
-    provider_model = $3,
-    provider_job_id = NULL,
-    status = 'running',
-    error_code = NULL,
-    error_message = NULL,
-    started_at = NOW(),
-    completed_at = NULL
-WHERE id = $1
-  AND status = 'pending'
-`
-
-type ClaimPendingImageGenerationParams struct {
-	ID            pgtype.UUID `json:"id"`
-	ProviderName  string      `json:"provider_name"`
-	ProviderModel string      `json:"provider_model"`
-}
-
-func (q *Queries) ClaimPendingImageGeneration(ctx context.Context, arg ClaimPendingImageGenerationParams) (int64, error) {
-	result, err := q.db.Exec(ctx, claimPendingImageGeneration, arg.ID, arg.ProviderName, arg.ProviderModel)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const getImageGeneration = `-- name: GetImageGeneration :one
