@@ -19,8 +19,6 @@ const (
 	slideMarginXEMU = 457200
 	slideMarginYEMU = 304800
 	contentGapEMU   = 228600
-
-	zipXMLContentType = "application/xml"
 )
 
 var zipModifiedTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -571,13 +569,13 @@ func renderParagraph(paragraph textParagraph) string {
 		if paragraph.italic {
 			builder.WriteString(` i="1"`)
 		}
+		builder.WriteString(`><a:latin typeface="Arial"/>`)
 		if paragraph.color != "" {
-			builder.WriteString(`><a:solidFill><a:srgbClr val="`)
+			builder.WriteString(`<a:solidFill><a:srgbClr val="`)
 			builder.WriteString(paragraph.color)
-			builder.WriteString(`"/></a:solidFill></a:rPr><a:t>`)
-		} else {
-			builder.WriteString(`><a:latin typeface="Arial"/></a:rPr><a:t>`)
+			builder.WriteString(`"/></a:solidFill>`)
 		}
+		builder.WriteString(`</a:rPr><a:t>`)
 		builder.WriteString(escapeXML(paragraph.text))
 		builder.WriteString(`</a:t></a:r>`)
 	} else {
@@ -603,7 +601,10 @@ func dereferenceString(value *string) string {
 func escapeXML(value string) string {
 	var buffer bytes.Buffer
 	if err := xml.EscapeText(&buffer, []byte(value)); err != nil {
-		panic(fmt.Sprintf("escape xml %q: %v", value, err))
+		// xml.EscapeText writes to a bytes.Buffer here, so an error is not
+		// expected in practice. Avoid panicking in this library helper on the
+		// unreachable path and fall back to the original value instead.
+		return value
 	}
 	return buffer.String()
 }

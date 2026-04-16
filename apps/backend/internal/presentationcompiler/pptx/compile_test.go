@@ -130,6 +130,12 @@ func TestCompileProducesDeterministicPPTXForSupportedLayouts(t *testing.T) {
 		"ppt/slides/slide4.xml",
 		"ppt/slides/slide5.xml",
 		"ppt/slides/slide6.xml",
+		"ppt/slides/_rels/slide1.xml.rels",
+		"ppt/slides/_rels/slide2.xml.rels",
+		"ppt/slides/_rels/slide3.xml.rels",
+		"ppt/slides/_rels/slide4.xml.rels",
+		"ppt/slides/_rels/slide5.xml.rels",
+		"ppt/slides/_rels/slide6.xml.rels",
 	}
 	for _, name := range requiredEntries {
 		if _, ok := entries[name]; !ok {
@@ -148,6 +154,7 @@ func TestCompileProducesDeterministicPPTXForSupportedLayouts(t *testing.T) {
 
 	assertContains(t, entries["ppt/slides/slide1.xml"], `Quarterly Business Review`)
 	assertContains(t, entries["ppt/slides/slide1.xml"], `FY2026 Q1`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `<a:latin typeface="Arial"/><a:solidFill><a:srgbClr val="666666"/></a:solidFill>`)
 	assertContains(t, entries["ppt/slides/slide2.xml"], `Executive summary`)
 	assertContains(t, entries["ppt/slides/slide2.xml"], `Key messages`)
 	assertContains(t, entries["ppt/slides/slide3.xml"], `Launch readiness improved from 61% to 88%`)
