@@ -113,6 +113,24 @@ func (q *Queries) ListMessagesBySession(ctx context.Context, sessionID pgtype.UU
 	return items, nil
 }
 
+const updateMessageStatusAndModel = `-- name: UpdateMessageStatusAndModel :exec
+UPDATE chat_messages
+SET status = $2,
+    model_name = $3
+WHERE id = $1
+`
+
+type UpdateMessageStatusAndModelParams struct {
+	ID        pgtype.UUID `json:"id"`
+	Status    string      `json:"status"`
+	ModelName pgtype.Text `json:"model_name"`
+}
+
+func (q *Queries) UpdateMessageStatusAndModel(ctx context.Context, arg UpdateMessageStatusAndModelParams) error {
+	_, err := q.db.Exec(ctx, updateMessageStatusAndModel, arg.ID, arg.Status, arg.ModelName)
+	return err
+}
+
 const updateMessageContentStatusAndModel = `-- name: UpdateMessageContentStatusAndModel :execrows
 UPDATE chat_messages
 SET content_json = $2,
@@ -139,22 +157,4 @@ func (q *Queries) UpdateMessageContentStatusAndModel(ctx context.Context, arg Up
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const updateMessageStatusAndModel = `-- name: UpdateMessageStatusAndModel :exec
-UPDATE chat_messages
-SET status = $2,
-    model_name = $3
-WHERE id = $1
-`
-
-type UpdateMessageStatusAndModelParams struct {
-	ID        pgtype.UUID `json:"id"`
-	Status    string      `json:"status"`
-	ModelName pgtype.Text `json:"model_name"`
-}
-
-func (q *Queries) UpdateMessageStatusAndModel(ctx context.Context, arg UpdateMessageStatusAndModelParams) error {
-	_, err := q.db.Exec(ctx, updateMessageStatusAndModel, arg.ID, arg.Status, arg.ModelName)
-	return err
 }
