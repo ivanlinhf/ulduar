@@ -91,11 +91,14 @@ func Normalize(document Document) (Document, error) {
 
 func normalizeSlide(slide Slide, path string) (Slide, error) {
 	normalized := Slide{
-		Layout:   SlideLayout(strings.TrimSpace(string(slide.Layout))),
-		Title:    strings.TrimSpace(slide.Title),
-		Subtitle: strings.TrimSpace(slide.Subtitle),
-		Blocks:   []Block{},
-		Columns:  []Column{},
+		Layout:  SlideLayout(strings.TrimSpace(string(slide.Layout))),
+		Title:   strings.TrimSpace(slide.Title),
+		Blocks:  []Block{},
+		Columns: []Column{},
+	}
+	if slide.Subtitle != nil {
+		subtitle := strings.TrimSpace(*slide.Subtitle)
+		normalized.Subtitle = &subtitle
 	}
 
 	if normalized.Layout == "" {
@@ -110,17 +113,17 @@ func normalizeSlide(slide Slide, path string) (Slide, error) {
 
 	switch normalized.Layout {
 	case LayoutTitle, LayoutSection:
-		if len(slide.Blocks) > 0 {
+		if slide.Blocks != nil {
 			return Slide{}, validationError("%s.blocks is not supported for %q slides", path, normalized.Layout)
 		}
-		if len(slide.Columns) > 0 {
+		if slide.Columns != nil {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
 		}
 	case LayoutTitleBullets:
-		if normalized.Subtitle != "" {
+		if slide.Subtitle != nil {
 			return Slide{}, validationError("%s.subtitle is not supported for %q slides", path, normalized.Layout)
 		}
-		if len(slide.Columns) > 0 {
+		if slide.Columns != nil {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
 		}
 
@@ -145,10 +148,10 @@ func normalizeSlide(slide Slide, path string) (Slide, error) {
 
 		normalized.Blocks = blocks
 	case LayoutTwoColumn:
-		if normalized.Subtitle != "" {
+		if slide.Subtitle != nil {
 			return Slide{}, validationError("%s.subtitle is not supported for %q slides", path, normalized.Layout)
 		}
-		if len(slide.Blocks) > 0 {
+		if slide.Blocks != nil {
 			return Slide{}, validationError("%s.blocks is not supported for %q slides", path, normalized.Layout)
 		}
 		if len(slide.Columns) != 2 {
@@ -164,10 +167,10 @@ func normalizeSlide(slide Slide, path string) (Slide, error) {
 			normalized.Columns = append(normalized.Columns, normalizedColumn)
 		}
 	case LayoutTable:
-		if normalized.Subtitle != "" {
+		if slide.Subtitle != nil {
 			return Slide{}, validationError("%s.subtitle is not supported for %q slides", path, normalized.Layout)
 		}
-		if len(slide.Columns) > 0 {
+		if slide.Columns != nil {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
 		}
 
@@ -181,7 +184,7 @@ func normalizeSlide(slide Slide, path string) (Slide, error) {
 
 		normalized.Blocks = blocks
 	case LayoutClosing:
-		if len(slide.Columns) > 0 {
+		if slide.Columns != nil {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
 		}
 
@@ -231,12 +234,18 @@ func normalizeBlocks(blocks []Block, path string, allowedBlockTypes []BlockType)
 
 func normalizeBlock(block Block, path string) (Block, error) {
 	normalized := Block{
-		Type:        BlockType(strings.TrimSpace(string(block.Type))),
-		Text:        strings.TrimSpace(block.Text),
-		Items:       []string{},
-		Header:      []string{},
-		Rows:        [][]string{},
-		Attribution: strings.TrimSpace(block.Attribution),
+		Type:   BlockType(strings.TrimSpace(string(block.Type))),
+		Items:  []string{},
+		Header: []string{},
+		Rows:   [][]string{},
+	}
+	if block.Text != nil {
+		text := strings.TrimSpace(*block.Text)
+		normalized.Text = &text
+	}
+	if block.Attribution != nil {
+		attribution := strings.TrimSpace(*block.Attribution)
+		normalized.Attribution = &attribution
 	}
 
 	if normalized.Type == "" {
@@ -245,36 +254,36 @@ func normalizeBlock(block Block, path string) (Block, error) {
 
 	switch normalized.Type {
 	case BlockTypeParagraph:
-		if normalized.Text == "" {
+		if normalized.Text == nil || *normalized.Text == "" {
 			return Block{}, validationError("%s.text is required for paragraph blocks", path)
 		}
-		if len(block.Items) > 0 {
+		if block.Items != nil {
 			return Block{}, validationError("%s.items is not supported for paragraph blocks", path)
 		}
-		if len(block.Header) > 0 || len(block.Rows) > 0 {
+		if block.Header != nil || block.Rows != nil {
 			return Block{}, validationError("%s.header and %s.rows are only supported for table blocks", path, path)
 		}
-		if normalized.Attribution != "" {
+		if block.Attribution != nil {
 			return Block{}, validationError("%s.attribution is only supported for quote blocks", path)
 		}
 	case BlockTypeQuote:
-		if normalized.Text == "" {
+		if normalized.Text == nil || *normalized.Text == "" {
 			return Block{}, validationError("%s.text is required for quote blocks", path)
 		}
-		if len(block.Items) > 0 {
+		if block.Items != nil {
 			return Block{}, validationError("%s.items is not supported for quote blocks", path)
 		}
-		if len(block.Header) > 0 || len(block.Rows) > 0 {
+		if block.Header != nil || block.Rows != nil {
 			return Block{}, validationError("%s.header and %s.rows are only supported for table blocks", path, path)
 		}
 	case BlockTypeBulletList, BlockTypeNumberedList:
-		if normalized.Text != "" {
+		if block.Text != nil {
 			return Block{}, validationError("%s.text is not supported for %q blocks", path, normalized.Type)
 		}
-		if normalized.Attribution != "" {
+		if block.Attribution != nil {
 			return Block{}, validationError("%s.attribution is only supported for quote blocks", path)
 		}
-		if len(block.Header) > 0 || len(block.Rows) > 0 {
+		if block.Header != nil || block.Rows != nil {
 			return Block{}, validationError("%s.header and %s.rows are only supported for table blocks", path, path)
 		}
 
@@ -287,13 +296,13 @@ func normalizeBlock(block Block, path string) (Block, error) {
 		}
 		normalized.Items = items
 	case BlockTypeTable:
-		if normalized.Text != "" {
+		if block.Text != nil {
 			return Block{}, validationError("%s.text is not supported for table blocks", path)
 		}
-		if normalized.Attribution != "" {
+		if block.Attribution != nil {
 			return Block{}, validationError("%s.attribution is only supported for quote blocks", path)
 		}
-		if len(block.Items) > 0 {
+		if block.Items != nil {
 			return Block{}, validationError("%s.items is only supported for bullet_list and numbered_list blocks", path)
 		}
 

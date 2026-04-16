@@ -273,7 +273,7 @@ Normalization does **not**:
 - Reject unsupported `layout` values
 - Reject unsupported `type` values
 - Reject `slideSize` values other than `"16:9"`
-- Reject layout-specific fields used in the wrong layout
+- Reject layout-specific fields used in the wrong layout, even when they are present as empty strings or empty arrays
 - Reject empty required strings after trimming
 - Reject empty list items and empty table cells
 - Reject table rows with inconsistent column counts

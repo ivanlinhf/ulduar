@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+func stringPtr(value string) *string {
+	return &value
+}
+
 func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 	t.Parallel()
 
@@ -17,7 +21,7 @@ func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 				Blocks: []Block{
 					{
 						Type: BlockTypeParagraph,
-						Text: " Opening summary. ",
+						Text: stringPtr(" Opening summary. "),
 					},
 					{
 						Type:  BlockTypeBulletList,
@@ -42,8 +46,8 @@ func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type:        BlockTypeQuote,
-								Text:        " Keep the format small. ",
-								Attribution: " Design notes ",
+								Text:        stringPtr(" Keep the format small. "),
+								Attribution: stringPtr(" Design notes "),
 							},
 						},
 					},
@@ -146,13 +150,47 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type: BlockTypeParagraph,
-								Text: "Only a paragraph",
+								Text: stringPtr("Only a paragraph"),
 							},
 						},
 					},
 				},
 			},
 			wantErr: `slides[0].blocks must contain at least 1 bullet_list or numbered_list block`,
+		},
+		{
+			name: "title rejects empty blocks field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutTitle,
+						Title:  "Hello",
+						Blocks: []Block{},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks is not supported for "title" slides`,
+		},
+		{
+			name: "title bullets rejects empty subtitle field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout:   LayoutTitleBullets,
+						Title:    "Overview",
+						Subtitle: stringPtr(""),
+						Blocks: []Block{
+							{
+								Type:  BlockTypeBulletList,
+								Items: []string{"One"},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].subtitle is not supported for "title_bullets" slides`,
 		},
 		{
 			name: "two column requires exactly two columns",
@@ -176,6 +214,38 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 				},
 			},
 			wantErr: `slides[0].columns must contain exactly 2 columns`,
+		},
+		{
+			name: "two column rejects empty blocks field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutTwoColumn,
+						Title:  "Compare",
+						Blocks: []Block{},
+						Columns: []Column{
+							{
+								Blocks: []Block{
+									{
+										Type:  BlockTypeBulletList,
+										Items: []string{"One"},
+									},
+								},
+							},
+							{
+								Blocks: []Block{
+									{
+										Type:  BlockTypeBulletList,
+										Items: []string{"Two"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks is not supported for "two_column" slides`,
 		},
 		{
 			name: "table row width mismatch",
@@ -219,6 +289,87 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 			},
 			wantErr: `slides[0].blocks[0].type "table" is not supported in this layout`,
 		},
+		{
+			name: "paragraph rejects empty items field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutClosing,
+						Title:  "Wrap up",
+						Blocks: []Block{
+							{
+								Type:  BlockTypeParagraph,
+								Text:  stringPtr("Summary"),
+								Items: []string{},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].items is not supported for paragraph blocks`,
+		},
+		{
+			name: "numbered list rejects empty text field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutClosing,
+						Title:  "Wrap up",
+						Blocks: []Block{
+							{
+								Type:  BlockTypeNumberedList,
+								Text:  stringPtr(""),
+								Items: []string{"One"},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].text is not supported for "numbered_list" blocks`,
+		},
+		{
+			name: "quote rejects empty header field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutClosing,
+						Title:  "Wrap up",
+						Blocks: []Block{
+							{
+								Type:   BlockTypeQuote,
+								Text:   stringPtr("Keep it small"),
+								Header: []string{},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].header and slides[0].blocks[0].rows are only supported for table blocks`,
+		},
+		{
+			name: "table rejects empty attribution field",
+			document: Document{
+				Version: VersionV1,
+				Slides: []Slide{
+					{
+						Layout: LayoutTable,
+						Title:  "Metrics",
+						Blocks: []Block{
+							{
+								Type:        BlockTypeTable,
+								Header:      []string{"Metric"},
+								Rows:        [][]string{{"Latency"}},
+								Attribution: stringPtr(""),
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].attribution is only supported for quote blocks`,
+		},
 	}
 
 	for _, test := range tests {
@@ -255,5 +406,85 @@ func TestParseJSONRejectsUnknownFields(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("ParseJSON() error = %q, want unknown field error", err.Error())
+	}
+}
+
+func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload string
+		wantErr string
+	}{
+		{
+			name: "title with empty blocks field",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "title",
+						"title": "Hello",
+						"blocks": []
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks is not supported for "title" slides`,
+		},
+		{
+			name: "title bullets with empty subtitle field",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "title_bullets",
+						"title": "Overview",
+						"subtitle": "",
+						"blocks": [
+							{
+								"type": "bullet_list",
+								"items": ["One"]
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].subtitle is not supported for "title_bullets" slides`,
+		},
+		{
+			name: "paragraph with empty items field",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "closing",
+						"title": "Done",
+						"blocks": [
+							{
+								"type": "paragraph",
+								"text": "Summary",
+								"items": []
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks[0].items is not supported for paragraph blocks`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParseJSON([]byte(test.payload))
+			if err == nil {
+				t.Fatal("ParseJSON() error = nil, want error")
+			}
+			if err.Error() != test.wantErr {
+				t.Fatalf("ParseJSON() error = %q, want %q", err.Error(), test.wantErr)
+			}
+		})
 	}
 }

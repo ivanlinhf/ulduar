@@ -35,7 +35,7 @@ type Document struct {
 type Slide struct {
 	Layout   SlideLayout `json:"layout"`
 	Title    string      `json:"title"`
-	Subtitle string      `json:"subtitle,omitempty"`
+	Subtitle *string     `json:"subtitle,omitempty"`
 	Blocks   []Block     `json:"blocks,omitempty"`
 	Columns  []Column    `json:"columns,omitempty"`
 }
@@ -47,9 +47,9 @@ type Column struct {
 
 type Block struct {
 	Type        BlockType  `json:"type"`
-	Text        string     `json:"text,omitempty"`
+	Text        *string    `json:"text,omitempty"`
 	Items       []string   `json:"items,omitempty"`
 	Header      []string   `json:"header,omitempty"`
 	Rows        [][]string `json:"rows,omitempty"`
-	Attribution string     `json:"attribution,omitempty"`
+	Attribution *string    `json:"attribution,omitempty"`
 }
