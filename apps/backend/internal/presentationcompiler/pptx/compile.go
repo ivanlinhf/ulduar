@@ -15,6 +15,8 @@ import (
 const (
 	slideWidthEMU  = 12192000
 	slideHeightEMU = 6858000
+	notesWidthEMU  = 6858000
+	notesHeightEMU = 9144000
 
 	slideMarginXEMU = 457200
 	slideMarginYEMU = 304800
@@ -175,8 +177,16 @@ func buildPresentationXML(document presentationdialect.Document) string {
 		builder.WriteString(`"/>`)
 	}
 	builder.WriteString(`</p:sldIdLst>`)
-	builder.WriteString(`<p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>`)
-	builder.WriteString(`<p:notesSz cx="6858000" cy="9144000"/>`)
+	builder.WriteString(`<p:sldSz cx="`)
+	builder.WriteString(strconv.Itoa(slideWidthEMU))
+	builder.WriteString(`" cy="`)
+	builder.WriteString(strconv.Itoa(slideHeightEMU))
+	builder.WriteString(`" type="screen16x9"/>`)
+	builder.WriteString(`<p:notesSz cx="`)
+	builder.WriteString(strconv.Itoa(notesWidthEMU))
+	builder.WriteString(`" cy="`)
+	builder.WriteString(strconv.Itoa(notesHeightEMU))
+	builder.WriteString(`"/>`)
 	builder.WriteString(`</p:presentation>`)
 
 	return builder.String()
