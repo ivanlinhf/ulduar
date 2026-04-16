@@ -254,7 +254,7 @@ func normalizeBlock(block Block, path string) (Block, error) {
 
 	switch normalized.Type {
 	case BlockTypeParagraph:
-		if normalized.Text == nil || *normalized.Text == "" {
+		if optionalStringEmpty(normalized.Text) {
 			return Block{}, validationError("%s.text is required for paragraph blocks", path)
 		}
 		if block.Items != nil {
@@ -267,7 +267,7 @@ func normalizeBlock(block Block, path string) (Block, error) {
 			return Block{}, validationError("%s.attribution is only supported for quote blocks", path)
 		}
 	case BlockTypeQuote:
-		if normalized.Text == nil || *normalized.Text == "" {
+		if optionalStringEmpty(normalized.Text) {
 			return Block{}, validationError("%s.text is required for quote blocks", path)
 		}
 		if block.Items != nil {
@@ -369,4 +369,8 @@ func validationError(format string, args ...any) error {
 	return ValidationError{
 		Message: fmt.Sprintf(format, args...),
 	}
+}
+
+func optionalStringEmpty(value *string) bool {
+	return value == nil || *value == ""
 }
