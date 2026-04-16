@@ -260,7 +260,8 @@ The normalization pass must:
 - preserve `version` and require it to be `"v1"`
 - return canonical empty Go slices for optional `blocks` and `columns` in the normalized in-memory document
 
-JSON serialization is not a separate canonicalization contract in v1. When marshaled from the Go structs, omitted optional fields may still be omitted from JSON instead of appearing as empty arrays.
+JSON serialization is not a separate canonicalization contract in v1.
+When marshaled from the Go structs, omitted optional fields may still be omitted from JSON instead of appearing as empty arrays.
 
 Normalization does **not**:
 

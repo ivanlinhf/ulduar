@@ -391,7 +391,7 @@ func rejectNullJSONFields(data []byte) error {
 func rejectNullDocumentFields(value any) error {
 	document, ok := value.(map[string]any)
 	if !ok {
-		return nil
+		return validationError("document must be a JSON object")
 	}
 
 	if err := rejectNullObjectField(document, "version", "version"); err != nil {
@@ -420,7 +420,7 @@ func rejectNullDocumentFields(value any) error {
 func rejectNullSlideFields(value any, path string) error {
 	slide, ok := value.(map[string]any)
 	if !ok {
-		return nil
+		return validationError("%s must be an object", path)
 	}
 
 	for _, field := range []string{"layout", "title", "subtitle"} {
@@ -465,7 +465,7 @@ func rejectNullSlideFields(value any, path string) error {
 func rejectNullColumnFields(value any, path string) error {
 	column, ok := value.(map[string]any)
 	if !ok {
-		return nil
+		return validationError("%s must be an object", path)
 	}
 
 	if err := rejectNullObjectField(column, "heading", path+".heading"); err != nil {
@@ -493,7 +493,7 @@ func rejectNullColumnFields(value any, path string) error {
 func rejectNullBlockFields(value any, path string) error {
 	block, ok := value.(map[string]any)
 	if !ok {
-		return nil
+		return validationError("%s must be an object", path)
 	}
 
 	for _, field := range []string{"type", "text", "attribution"} {
