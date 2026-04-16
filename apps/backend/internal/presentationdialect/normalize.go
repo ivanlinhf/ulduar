@@ -550,6 +550,9 @@ func rejectNullObjectField(values map[string]any, key string, path string) error
 	return nil
 }
 
+// rejectNullArrayField reports whether a field was present and rejects explicit nulls.
+// When present is false, the field was omitted. When present is true and err is nil,
+// callers may continue validating nested array elements only if the returned value is non-nil.
 func rejectNullArrayField(values map[string]any, key string, path string) ([]any, bool, error) {
 	value, ok := values[key]
 	if !ok {
@@ -572,8 +575,5 @@ func requireObject(value any, path string) (map[string]any, error) {
 	if ok {
 		return object, nil
 	}
-	if path == "document" {
-		return nil, validationError("document must be a JSON object")
-	}
-	return nil, validationError("%s must be an object", path)
+	return nil, validationError("%s must be a JSON object", path)
 }
