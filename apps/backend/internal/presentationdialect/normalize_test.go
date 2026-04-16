@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func stringPtr(value string) *string {
+func testStringPtr(value string) *string {
 	return &value
 }
 
@@ -21,7 +21,7 @@ func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 				Blocks: []Block{
 					{
 						Type: BlockTypeParagraph,
-						Text: stringPtr(" Opening summary. "),
+						Text: testStringPtr(" Opening summary. "),
 					},
 					{
 						Type:  BlockTypeBulletList,
@@ -46,8 +46,8 @@ func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type:        BlockTypeQuote,
-								Text:        stringPtr(" Keep the format small. "),
-								Attribution: stringPtr(" Design notes "),
+								Text:        testStringPtr(" Keep the format small. "),
+								Attribution: testStringPtr(" Design notes "),
 							},
 						},
 					},
@@ -150,7 +150,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type: BlockTypeParagraph,
-								Text: stringPtr("Only a paragraph"),
+								Text: testStringPtr("Only a paragraph"),
 							},
 						},
 					},
@@ -180,7 +180,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 					{
 						Layout:   LayoutTitleBullets,
 						Title:    "Overview",
-						Subtitle: stringPtr(""),
+						Subtitle: testStringPtr(""),
 						Blocks: []Block{
 							{
 								Type:  BlockTypeBulletList,
@@ -300,7 +300,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type:  BlockTypeParagraph,
-								Text:  stringPtr("Summary"),
+								Text:  testStringPtr("Summary"),
 								Items: []string{},
 							},
 						},
@@ -320,7 +320,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type:  BlockTypeNumberedList,
-								Text:  stringPtr(""),
+								Text:  testStringPtr(""),
 								Items: []string{"One"},
 							},
 						},
@@ -340,7 +340,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 						Blocks: []Block{
 							{
 								Type:   BlockTypeQuote,
-								Text:   stringPtr("Keep it small"),
+								Text:   testStringPtr("Keep it small"),
 								Header: []string{},
 							},
 						},
@@ -362,7 +362,7 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 								Type:        BlockTypeTable,
 								Header:      []string{"Metric"},
 								Rows:        [][]string{{"Latency"}},
-								Attribution: stringPtr(""),
+								Attribution: testStringPtr(""),
 							},
 						},
 					},
