@@ -3,6 +3,8 @@ package presentationgen
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -222,7 +224,7 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 			Deployment:   "presentation-deployment",
 			SystemPrompt: "presentation-system-prompt",
 		},
-		blobs:          stubBlobStore{data: map[string][]byte{"blob://image": {1, 2, 3}, "blob://pdf": {4, 5, 6, 7}}},
+		blobs:          &stubBlobStore{data: map[string][]byte{"blob://image": {1, 2, 3}, "blob://pdf": {4, 5, 6, 7}}},
 		responses:      client,
 		generationRead: reader,
 		assetRead:      stubAssetReader{assets: assets},
@@ -445,6 +447,54 @@ func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *tes
 	}
 }
 
+func TestExecuteGenerationFailsWhenProviderReturnsFailedResponse(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a quarterly review deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+	client := &stubResponseClient{
+		responses: []azureopenai.Response{{
+			Status: "failed",
+			Error: &azureopenai.ResponseError{
+				Code:    "server_error",
+				Message: "planner backend unavailable",
+			},
+		}},
+	}
+
+	service := &Service{
+		planner:        PlannerConfig{Deployment: "presentation-deployment"},
+		responses:      client,
+		generationRead: reader,
+		assetRead:      stubAssetReader{},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("ExecuteGeneration() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "plan presentation") {
+		t.Fatalf("ExecuteGeneration() error = %q, want planner failure", err.Error())
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	update := reader.updateCalls[0]
+	if update.ErrorCode != "provider_request_failed" {
+		t.Fatalf("update.ErrorCode = %q, want %q", update.ErrorCode, "provider_request_failed")
+	}
+	if !strings.Contains(update.ErrorMessage, "server_error: planner backend unavailable") {
+		t.Fatalf("update.ErrorMessage = %q, want provider response details", update.ErrorMessage)
+	}
+}
+
 func TestExecuteGenerationFailsWithOversizedAttachmentCode(t *testing.T) {
 	t.Parallel()
 
@@ -459,7 +509,7 @@ func TestExecuteGenerationFailsWithOversizedAttachmentCode(t *testing.T) {
 	}
 
 	service := &Service{
-		blobs:          stubBlobStore{data: map[string][]byte{"blob://large": {1, 2, 3}}},
+		blobs:          &stubBlobStore{data: map[string][]byte{"blob://large": {1, 2, 3}}},
 		responses:      &stubResponseClient{},
 		generationRead: reader,
 		assetRead: stubAssetReader{assets: []repository.PresentationGenerationAsset{{
@@ -487,6 +537,49 @@ func TestExecuteGenerationFailsWithOversizedAttachmentCode(t *testing.T) {
 	}
 }
 
+func TestExecuteGenerationMapsBlobDownloadLimitErrorToOversizedAttachmentCode(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a quarterly review deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			downloadErrs: map[string]error{
+				"blob://large": fmt.Errorf("read blob blob://large: blob blob://large exceeds %d bytes", defaultMaxAttachmentBytes),
+			},
+		},
+		responses:      &stubResponseClient{},
+		generationRead: reader,
+		assetRead: stubAssetReader{assets: []repository.PresentationGenerationAsset{{
+			ID:        "asset-large",
+			Role:      string(AssetRoleInput),
+			BlobPath:  "blob://large",
+			MediaType: InputMediaTypePDF,
+			Filename:  "large.pdf",
+			SizeBytes: defaultMaxAttachmentBytes,
+		}}},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("ExecuteGeneration() error = nil, want error")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if reader.updateCalls[0].ErrorCode != "input_asset_too_large" {
+		t.Fatalf("update.ErrorCode = %q, want %q", reader.updateCalls[0].ErrorCode, "input_asset_too_large")
+	}
+}
+
 func TestExecuteGenerationFailsWithUnsupportedMediaTypeCode(t *testing.T) {
 	t.Parallel()
 
@@ -501,7 +594,7 @@ func TestExecuteGenerationFailsWithUnsupportedMediaTypeCode(t *testing.T) {
 	}
 
 	service := &Service{
-		blobs:          stubBlobStore{data: map[string][]byte{"blob://doc": {1, 2, 3}}},
+		blobs:          &stubBlobStore{data: map[string][]byte{"blob://doc": {1, 2, 3}}},
 		responses:      &stubResponseClient{},
 		generationRead: reader,
 		assetRead: stubAssetReader{assets: []repository.PresentationGenerationAsset{{
@@ -526,11 +619,40 @@ func TestExecuteGenerationFailsWithUnsupportedMediaTypeCode(t *testing.T) {
 	}
 }
 
+func TestPrepareAttachmentInputRejectsUnsupportedMediaTypeWithoutDownloading(t *testing.T) {
+	t.Parallel()
+
+	blobs := &stubBlobStore{
+		data: map[string][]byte{
+			"blob://doc": {1, 2, 3},
+		},
+	}
+	service := &Service{blobs: blobs}
+
+	_, err := service.prepareAttachmentInput(context.Background(), repository.PresentationGenerationAsset{
+		ID:        "asset-doc",
+		Role:      string(AssetRoleInput),
+		BlobPath:  "blob://doc",
+		MediaType: "text/plain",
+		Filename:  "notes.txt",
+		SizeBytes: 3,
+	})
+	if err == nil {
+		t.Fatal("prepareAttachmentInput() error = nil, want error")
+	}
+	if !errors.Is(err, errPlannerInputAssetUnsupportedMediaType) {
+		t.Fatalf("prepareAttachmentInput() error = %v, want unsupported media type", err)
+	}
+	if len(blobs.downloadCalls) != 0 {
+		t.Fatalf("len(blobs.downloadCalls) = %d, want 0", len(blobs.downloadCalls))
+	}
+}
+
 func TestPrepareAttachmentInputRejectsOversizedAsset(t *testing.T) {
 	t.Parallel()
 
 	service := &Service{
-		blobs: stubBlobStore{
+		blobs: &stubBlobStore{
 			data: map[string][]byte{
 				"blob://large": []byte("ignored"),
 			},
@@ -554,11 +676,11 @@ func TestPrepareAttachmentInputRejectsOversizedAsset(t *testing.T) {
 }
 
 type stubGenerationReader struct {
-	generation          repository.PresentationGeneration
-	err                 error
-	claimPendingResult  bool
-	claimPendingErr     error
-	updateCalls         []repository.UpdatePresentationGenerationStateParams
+	generation         repository.PresentationGeneration
+	err                error
+	claimPendingResult bool
+	claimPendingErr    error
+	updateCalls        []repository.UpdatePresentationGenerationStateParams
 }
 
 func (s *stubGenerationReader) GetByID(context.Context, string) (repository.PresentationGeneration, error) {
@@ -632,10 +754,16 @@ func (s *stubResponseClient) CreateResponse(_ context.Context, request azureopen
 }
 
 type stubBlobStore struct {
-	data map[string][]byte
+	data          map[string][]byte
+	downloadErrs  map[string]error
+	downloadCalls []string
 }
 
-func (s stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, error) {
+func (s *stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, error) {
+	s.downloadCalls = append(s.downloadCalls, blobPath)
+	if err, ok := s.downloadErrs[blobPath]; ok {
+		return nil, err
+	}
 	data, ok := s.data[blobPath]
 	if !ok {
 		return nil, context.Canceled
@@ -644,13 +772,13 @@ func (s stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, err
 	return data, nil
 }
 
-func (s stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
 	data, err := s.Download(ctx, blobPath)
 	if err != nil {
 		return nil, err
 	}
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
-		return nil, context.DeadlineExceeded
+		return nil, fmt.Errorf("blob %q exceeds %d bytes", blobPath, maxBytes)
 	}
 
 	return data, nil

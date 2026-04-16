@@ -21,14 +21,14 @@ import (
 )
 
 const (
-	plannerProviderName       = "azure-openai"
-	providerMessageType       = "message"
-	providerInputTextType     = "input_text"
-	providerInputImageType    = "input_image"
-	providerInputFileType     = "input_file"
-	providerImageDetailLevel  = "auto"
-	plannerUserRole           = "user"
-	plannerFailureInvalidJSON = "invalid_planner_output"
+	plannerProviderName             = "azure-openai"
+	providerMessageType             = "message"
+	providerInputTextType           = "input_text"
+	providerInputImageType          = "input_image"
+	providerInputFileType           = "input_file"
+	providerImageDetailLevel        = "auto"
+	plannerUserRole                 = "user"
+	plannerFailureInvalidJSON       = "invalid_planner_output"
 	defaultMaxAttachmentBytes int64 = 20 << 20
 	runningGracePeriod              = time.Minute
 )
@@ -37,6 +37,7 @@ var (
 	errPlannerInputAssetTooLarge             = errors.New("presentation input asset too large")
 	errPlannerInputAssetDownload             = errors.New("presentation input asset download failed")
 	errPlannerInputAssetUnsupportedMediaType = errors.New("presentation input asset unsupported media type")
+	errPlannerProviderResponse               = errors.New("presentation planner provider response failed")
 )
 
 const plannerDialectInstructions = `You are the Ulduar v1 presentation planner.
@@ -289,6 +290,9 @@ func (s *Service) createPlannerResponse(ctx context.Context, request azureopenai
 	if err != nil {
 		return azureopenai.Response{}, "", err
 	}
+	if err := plannerResponseError(response); err != nil {
+		return response, "", err
+	}
 
 	return response, extractResponseText(response), nil
 }
@@ -348,8 +352,18 @@ func (s *Service) prepareAttachmentInput(ctx context.Context, asset repository.P
 		return azureopenai.InputContentItem{}, fmt.Errorf("%w: input asset %s exceeds %d bytes", errPlannerInputAssetTooLarge, asset.ID, defaultMaxAttachmentBytes)
 	}
 
+	sanitizedFilename := filenames.Sanitize(asset.Filename, "attachment.pdf")
+	switch asset.MediaType {
+	case InputMediaTypeJPEG, InputMediaTypePNG, InputMediaTypeWEBP, InputMediaTypePDF:
+	default:
+		return azureopenai.InputContentItem{}, fmt.Errorf("%w: unsupported attachment media type %q", errPlannerInputAssetUnsupportedMediaType, asset.MediaType)
+	}
+
 	data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, defaultMaxAttachmentBytes)
 	if err != nil {
+		if exceedsBlobDownloadLimit(err, defaultMaxAttachmentBytes) {
+			return azureopenai.InputContentItem{}, fmt.Errorf("%w: input asset %s exceeds %d bytes", errPlannerInputAssetTooLarge, asset.ID, defaultMaxAttachmentBytes)
+		}
 		return azureopenai.InputContentItem{}, fmt.Errorf("%w: load input asset %s blob: %w", errPlannerInputAssetDownload, asset.ID, err)
 	}
 
@@ -364,11 +378,11 @@ func (s *Service) prepareAttachmentInput(ctx context.Context, asset repository.P
 		return azureopenai.InputContentItem{
 			Type:     providerInputFileType,
 			FileData: base64.StdEncoding.EncodeToString(data),
-			Filename: filenames.Sanitize(asset.Filename, "attachment.pdf"),
+			Filename: sanitizedFilename,
 		}, nil
-	default:
-		return azureopenai.InputContentItem{}, fmt.Errorf("%w: unsupported attachment media type %q", errPlannerInputAssetUnsupportedMediaType, asset.MediaType)
 	}
+
+	return azureopenai.InputContentItem{}, fmt.Errorf("unsupported presentation attachment media type %q", asset.MediaType)
 }
 
 func (s *Service) instructions() string {
@@ -457,6 +471,30 @@ func sortInputAssets(assets []repository.PresentationGenerationAsset) []reposito
 
 func buildDataURL(mediaType string, data []byte) string {
 	return fmt.Sprintf("data:%s;base64,%s", mediaType, base64.StdEncoding.EncodeToString(data))
+}
+
+func plannerResponseError(response azureopenai.Response) error {
+	if response.Error != nil {
+		parts := make([]string, 0, 2)
+		if code := strings.TrimSpace(response.Error.Code); code != "" {
+			parts = append(parts, code)
+		}
+		if message := strings.TrimSpace(response.Error.Message); message != "" {
+			parts = append(parts, message)
+		}
+		if len(parts) == 0 {
+			return fmt.Errorf("%w: response returned an unspecified error", errPlannerProviderResponse)
+		}
+		return fmt.Errorf("%w: %s", errPlannerProviderResponse, strings.Join(parts, ": "))
+	}
+
+	status := strings.ToLower(strings.TrimSpace(response.Status))
+	switch status {
+	case "", "completed":
+		return nil
+	default:
+		return fmt.Errorf("%w: unexpected response status %q", errPlannerProviderResponse, status)
+	}
 }
 
 func extractResponseText(response azureopenai.Response) string {
@@ -598,6 +636,14 @@ func plannerRequestPreparationErrorCode(err error) string {
 	default:
 		return "planner_request_prepare_failed"
 	}
+}
+
+func exceedsBlobDownloadLimit(err error, maxBytes int64) bool {
+	if err == nil || maxBytes <= 0 {
+		return false
+	}
+
+	return strings.Contains(err.Error(), fmt.Sprintf(" exceeds %d bytes", maxBytes))
 }
 
 func validateUUID(value, field string) error {
