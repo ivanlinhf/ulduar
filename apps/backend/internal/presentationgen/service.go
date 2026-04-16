@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
@@ -133,14 +134,14 @@ func validateUUID(value, field string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return ValidationError{
-			StatusCode: 400,
+			StatusCode: http.StatusBadRequest,
 			Message:    fmt.Sprintf("%s is required", field),
 		}
 	}
 	var parsed pgtype.UUID
 	if err := parsed.Scan(trimmed); err != nil {
 		return ValidationError{
-			StatusCode: 400,
+			StatusCode: http.StatusBadRequest,
 			Message:    fmt.Sprintf("%s must be a valid UUID", field),
 		}
 	}
@@ -151,7 +152,7 @@ func validateUUID(value, field string) error {
 func mapRepositoryError(err error, notFoundMessage string) error {
 	if errors.Is(err, repository.ErrNotFound) {
 		return ValidationError{
-			StatusCode: 404,
+			StatusCode: http.StatusNotFound,
 			Message:    notFoundMessage,
 		}
 	}

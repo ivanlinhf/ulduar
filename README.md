@@ -56,13 +56,13 @@ Backend app startup validates these:
 - `AZURE_OPENAI_SYSTEM_PROMPT`
   Optional. If unset, defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_PRESENTATION_ENDPOINT`
-  Example: `https://your-resource-name.openai.azure.com/`
+  Optional Azure OpenAI endpoint for the future presentation-generation planner workflow. When unset, the planner remains unconfigured and inert. Example: `https://your-resource-name.openai.azure.com/`
 - `AZURE_OPENAI_PRESENTATION_API_KEY`
-  Azure OpenAI API key for the presentation-generation planner workflow.
+  Optional Azure OpenAI API key for the presentation-generation planner workflow. Required when `AZURE_OPENAI_PRESENTATION_ENDPOINT` is set.
 - `AZURE_OPENAI_PRESENTATION_API_VERSION`
-  Required version string for the presentation-generation planner workflow. Use `v1` for the current implementation and examples.
+  Optional version string for the presentation-generation planner workflow. Required when `AZURE_OPENAI_PRESENTATION_ENDPOINT` is set. Use `v1` for the current implementation and examples.
 - `AZURE_OPENAI_PRESENTATION_DEPLOYMENT`
-  Azure OpenAI deployment name for the presentation-generation planner workflow, for example `gpt-5-chat`
+  Optional Azure OpenAI deployment name for the presentation-generation planner workflow, for example `gpt-5-chat`. Required when `AZURE_OPENAI_PRESENTATION_ENDPOINT` is set.
 - `AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT`
   Optional. If unset, defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_ENABLE_WEB_SEARCH`
@@ -151,10 +151,12 @@ export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
 # Leave AZURE_OPENAI_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
 # Set it to an empty string only if you want to disable the default prompt explicitly.
 # export AZURE_OPENAI_SYSTEM_PROMPT=
-export AZURE_OPENAI_PRESENTATION_ENDPOINT=https://your-resource-name.openai.azure.com/
-export AZURE_OPENAI_PRESENTATION_API_KEY=replace-me
-export AZURE_OPENAI_PRESENTATION_API_VERSION=v1
-export AZURE_OPENAI_PRESENTATION_DEPLOYMENT=gpt-5-chat
+# Optional presentation-generation planner config.
+# Leave these unset unless you are validating the future presentation workflow.
+# export AZURE_OPENAI_PRESENTATION_ENDPOINT=https://your-resource-name.openai.azure.com/
+# export AZURE_OPENAI_PRESENTATION_API_KEY=replace-me
+# export AZURE_OPENAI_PRESENTATION_API_VERSION=v1
+# export AZURE_OPENAI_PRESENTATION_DEPLOYMENT=gpt-5-chat
 # Leave AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
 # Set it to an empty string only if you want to disable the default prompt explicitly.
 # export AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT=

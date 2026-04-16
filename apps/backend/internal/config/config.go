@@ -180,12 +180,6 @@ func (c Config) Validate() error {
 	if err := validatePositiveDuration(c.OpenAIStreamTimeout, "azure openai stream timeout"); err != nil {
 		return err
 	}
-	if err := validatePositiveDuration(c.Presentation.RequestTimeout, "azure openai presentation request timeout"); err != nil {
-		return err
-	}
-	if err := validatePositiveDuration(c.Presentation.StreamTimeout, "azure openai presentation stream timeout"); err != nil {
-		return err
-	}
 	if err := validatePositiveDuration(c.RunFinalizationTimeout, "chat run finalization timeout"); err != nil {
 		return err
 	}
@@ -234,20 +228,25 @@ func (c Config) Validate() error {
 		return errors.New("azure openai deployment must not be empty")
 	}
 
-	if c.Presentation.Endpoint == "" {
-		return errors.New("azure openai presentation endpoint must not be empty")
-	}
-	if err := validateAbsoluteURL(c.Presentation.Endpoint, "azure openai presentation endpoint", "http", "https"); err != nil {
-		return err
-	}
-	if c.Presentation.APIKey == "" {
-		return errors.New("azure openai presentation api key must not be empty")
-	}
-	if c.Presentation.APIVersion == "" {
-		return errors.New("azure openai presentation api version must not be empty")
-	}
-	if c.Presentation.Deployment == "" {
-		return errors.New("azure openai presentation deployment must not be empty")
+	if c.Presentation.Endpoint != "" {
+		if err := validateAbsoluteURL(c.Presentation.Endpoint, "azure openai presentation endpoint", "http", "https"); err != nil {
+			return err
+		}
+		if c.Presentation.APIKey == "" {
+			return errors.New("azure openai presentation api key must not be empty when endpoint is configured")
+		}
+		if c.Presentation.APIVersion == "" {
+			return errors.New("azure openai presentation api version must not be empty when endpoint is configured")
+		}
+		if c.Presentation.Deployment == "" {
+			return errors.New("azure openai presentation deployment must not be empty when endpoint is configured")
+		}
+		if err := validatePositiveDuration(c.Presentation.RequestTimeout, "azure openai presentation request timeout"); err != nil {
+			return err
+		}
+		if err := validatePositiveDuration(c.Presentation.StreamTimeout, "azure openai presentation stream timeout"); err != nil {
+			return err
+		}
 	}
 
 	if c.Image.AzureFoundry.Endpoint != "" {

@@ -22,6 +22,10 @@ func setBaseEnv(tb testing.TB) {
 	tb.Setenv("AZURE_OPENAI_API_KEY", "secret")
 	tb.Setenv("AZURE_OPENAI_API_VERSION", "v1")
 	tb.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+}
+
+func setPresentationEnv(tb testing.TB) {
+	tb.Helper()
 	tb.Setenv("AZURE_OPENAI_PRESENTATION_ENDPOINT", "https://example.openai.azure.com/")
 	tb.Setenv("AZURE_OPENAI_PRESENTATION_API_KEY", "presentation-secret")
 	tb.Setenv("AZURE_OPENAI_PRESENTATION_API_VERSION", "v1")
@@ -56,6 +60,9 @@ func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
 	}
 	if cfg.AzureOpenAIWebSearch {
 		t.Fatal("cfg.AzureOpenAIWebSearch = true, want false by default")
+	}
+	if cfg.Presentation.Endpoint != "" {
+		t.Fatalf("cfg.Presentation.Endpoint = %q, want empty by default", cfg.Presentation.Endpoint)
 	}
 	if cfg.Presentation.SystemPrompt != defaultOpenAISystemPrompt {
 		t.Fatalf("cfg.Presentation.SystemPrompt = %q", cfg.Presentation.SystemPrompt)
@@ -274,6 +281,7 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 
 	t.Run("custom timeouts and prompt", func(t *testing.T) {
 		base(t)
+		setPresentationEnv(t)
 		t.Setenv("AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT", "Plan slides conservatively.")
 		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "45s")
 		t.Setenv("AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT", "6m")
@@ -295,6 +303,7 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 
 	t.Run("missing api key", func(t *testing.T) {
 		base(t)
+		setPresentationEnv(t)
 		t.Setenv("AZURE_OPENAI_PRESENTATION_API_KEY", "")
 
 		_, err := Load()
@@ -308,6 +317,7 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 
 	t.Run("invalid endpoint", func(t *testing.T) {
 		base(t)
+		setPresentationEnv(t)
 		t.Setenv("AZURE_OPENAI_PRESENTATION_ENDPOINT", "not-a-url")
 
 		_, err := Load()
@@ -321,6 +331,7 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 
 	t.Run("missing api version", func(t *testing.T) {
 		base(t)
+		setPresentationEnv(t)
 		t.Setenv("AZURE_OPENAI_PRESENTATION_API_VERSION", "")
 
 		_, err := Load()
@@ -334,6 +345,7 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 
 	t.Run("bad request timeout", func(t *testing.T) {
 		base(t)
+		setPresentationEnv(t)
 		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "notaduration")
 
 		_, err := Load()
@@ -342,6 +354,20 @@ func TestLoadValidatesPresentationConfig(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "azure openai presentation request timeout") {
 			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("invalid timeout is ignored when planner is unset", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "notaduration")
+		t.Setenv("AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT", "alsobad")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Presentation.Endpoint != "" {
+			t.Fatalf("cfg.Presentation.Endpoint = %q, want empty", cfg.Presentation.Endpoint)
 		}
 	})
 }
