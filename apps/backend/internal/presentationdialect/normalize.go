@@ -389,9 +389,9 @@ func rejectNullJSONFields(data []byte) error {
 }
 
 func rejectNullDocumentFields(value any) error {
-	document, ok := value.(map[string]any)
-	if !ok {
-		return validationError("document must be a JSON object")
+	document, err := requireObject(value, "document")
+	if err != nil {
+		return err
 	}
 
 	if err := rejectNullObjectField(document, "version", "version"); err != nil {
@@ -418,9 +418,9 @@ func rejectNullDocumentFields(value any) error {
 }
 
 func rejectNullSlideFields(value any, path string) error {
-	slide, ok := value.(map[string]any)
-	if !ok {
-		return validationError("%s must be an object", path)
+	slide, err := requireObject(value, path)
+	if err != nil {
+		return err
 	}
 
 	for _, field := range []string{"layout", "title", "subtitle"} {
@@ -463,9 +463,9 @@ func rejectNullSlideFields(value any, path string) error {
 }
 
 func rejectNullColumnFields(value any, path string) error {
-	column, ok := value.(map[string]any)
-	if !ok {
-		return validationError("%s must be an object", path)
+	column, err := requireObject(value, path)
+	if err != nil {
+		return err
 	}
 
 	if err := rejectNullObjectField(column, "heading", path+".heading"); err != nil {
@@ -491,9 +491,9 @@ func rejectNullColumnFields(value any, path string) error {
 }
 
 func rejectNullBlockFields(value any, path string) error {
-	block, ok := value.(map[string]any)
-	if !ok {
-		return validationError("%s must be an object", path)
+	block, err := requireObject(value, path)
+	if err != nil {
+		return err
 	}
 
 	for _, field := range []string{"type", "text", "attribution"} {
@@ -556,7 +556,7 @@ func rejectNullArrayField(values map[string]any, key string, path string) ([]any
 		return nil, false, nil
 	}
 	if value == nil {
-		return nil, true, validationError("%s must not be null", path)
+		return nil, false, validationError("%s must not be null", path)
 	}
 
 	array, ok := value.([]any)
@@ -565,4 +565,15 @@ func rejectNullArrayField(values map[string]any, key string, path string) ([]any
 	}
 
 	return array, true, nil
+}
+
+func requireObject(value any, path string) (map[string]any, error) {
+	object, ok := value.(map[string]any)
+	if ok {
+		return object, nil
+	}
+	if path == "document" {
+		return nil, validationError("document must be a JSON object")
+	}
+	return nil, validationError("%s must be an object", path)
 }
