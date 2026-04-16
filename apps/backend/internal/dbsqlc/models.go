@@ -87,3 +87,31 @@ type ImageGenerationAsset struct {
 	Height       pgtype.Int8        `json:"height"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
+
+type PresentationGeneration struct {
+	ID            pgtype.UUID        `json:"id"`
+	SessionID     pgtype.UUID        `json:"session_id"`
+	Prompt        string             `json:"prompt"`
+	ProviderName  string             `json:"provider_name"`
+	ProviderModel string             `json:"provider_model"`
+	ProviderJobID pgtype.Text        `json:"provider_job_id"`
+	Status        string             `json:"status"`
+	ErrorCode     pgtype.Text        `json:"error_code"`
+	ErrorMessage  pgtype.Text        `json:"error_message"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+}
+
+type PresentationGenerationAsset struct {
+	ID           pgtype.UUID        `json:"id"`
+	GenerationID pgtype.UUID        `json:"generation_id"`
+	Role         string             `json:"role"`
+	SortOrder    int64              `json:"sort_order"`
+	BlobPath     string             `json:"blob_path"`
+	MediaType    string             `json:"media_type"`
+	Filename     string             `json:"filename"`
+	SizeBytes    int64              `json:"size_bytes"`
+	Sha256       string             `json:"sha256"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}

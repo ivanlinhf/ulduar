@@ -18,6 +18,7 @@ import (
 	"github.com/ivanlin/ulduar/apps/backend/internal/imageprovider"
 	applogging "github.com/ivanlin/ulduar/apps/backend/internal/logging"
 	"github.com/ivanlin/ulduar/apps/backend/internal/postgres"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationgen"
 )
 
 func main() {
@@ -92,6 +93,17 @@ func main() {
 		MaxReferenceImageBytes: cfg.Image.MaxReferenceImageBytes,
 		Provider:               imageProvider,
 	})
+	presentationService := presentationgen.NewService(dbPool, presentationgen.ServiceOptions{
+		Planner: presentationgen.PlannerConfig{
+			Endpoint:       cfg.Presentation.Endpoint,
+			APIKey:         cfg.Presentation.APIKey,
+			APIVersion:     cfg.Presentation.APIVersion,
+			Deployment:     cfg.Presentation.Deployment,
+			SystemPrompt:   cfg.Presentation.SystemPrompt,
+			RequestTimeout: cfg.Presentation.RequestTimeout,
+			StreamTimeout:  cfg.Presentation.StreamTimeout,
+		},
+	})
 
 	server := &http.Server{
 		Addr: cfg.HTTPAddress(),
@@ -116,6 +128,7 @@ func main() {
 		"openai_deployment", openAIClient.Deployment(),
 		"openai_base_url", openAIClient.BaseURL(),
 		"openai_api_version", openAIClient.APIVersion(),
+		"presentation_planner_configured", presentationService.PlannerConfigured(),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

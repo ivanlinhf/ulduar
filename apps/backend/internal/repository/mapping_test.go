@@ -225,6 +225,72 @@ func TestMapImageGenerationAsset(t *testing.T) {
 	}
 }
 
+func TestMapPresentationGeneration(t *testing.T) {
+	createdAt := time.Date(2026, 4, 16, 2, 5, 0, 0, time.UTC)
+	startedAt := createdAt.Add(time.Minute)
+	completedAt := createdAt.Add(2 * time.Minute)
+	row := dbsqlc.PresentationGeneration{
+		ID:            mustUUID(t, "88888888-8888-8888-8888-888888888888"),
+		SessionID:     mustUUID(t, "11111111-1111-1111-1111-111111111111"),
+		Prompt:        "prepare a roadmap deck",
+		ProviderName:  "azure-openai",
+		ProviderModel: "gpt-5-chat",
+		ProviderJobID: textValue("job-456"),
+		Status:        "completed",
+		ErrorCode:     textValue(""),
+		ErrorMessage:  textValue(""),
+		CreatedAt:     mustTime(createdAt),
+		StartedAt:     mustTime(startedAt),
+		CompletedAt:   mustTime(completedAt),
+	}
+
+	generation, err := mapPresentationGeneration(row)
+	if err != nil {
+		t.Fatalf("mapPresentationGeneration() error = %v", err)
+	}
+
+	if generation.ID != "88888888-8888-8888-8888-888888888888" {
+		t.Fatalf("generation.ID = %q", generation.ID)
+	}
+	if generation.ProviderJobID != "job-456" {
+		t.Fatalf("generation.ProviderJobID = %q", generation.ProviderJobID)
+	}
+	if generation.StartedAt == nil || !generation.StartedAt.Equal(startedAt) {
+		t.Fatalf("generation.StartedAt = %v", generation.StartedAt)
+	}
+	if generation.CompletedAt == nil || !generation.CompletedAt.Equal(completedAt) {
+		t.Fatalf("generation.CompletedAt = %v", generation.CompletedAt)
+	}
+}
+
+func TestMapPresentationGenerationAsset(t *testing.T) {
+	createdAt := time.Date(2026, 4, 16, 2, 10, 0, 0, time.UTC)
+	row := dbsqlc.PresentationGenerationAsset{
+		ID:           mustUUID(t, "99999999-9999-9999-9999-999999999999"),
+		GenerationID: mustUUID(t, "88888888-8888-8888-8888-888888888888"),
+		Role:         "output",
+		SortOrder:    0,
+		BlobPath:     "sessions/s1/presentation-generations/g1/outputs/final.pptx",
+		MediaType:    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		Filename:     "final.pptx",
+		SizeBytes:    8192,
+		Sha256:       "ghi",
+		CreatedAt:    mustTime(createdAt),
+	}
+
+	asset, err := mapPresentationGenerationAsset(row)
+	if err != nil {
+		t.Fatalf("mapPresentationGenerationAsset() error = %v", err)
+	}
+
+	if asset.ID != "99999999-9999-9999-9999-999999999999" {
+		t.Fatalf("asset.ID = %q", asset.ID)
+	}
+	if asset.MediaType != "application/vnd.openxmlformats-officedocument.presentationml.presentation" {
+		t.Fatalf("asset.MediaType = %q", asset.MediaType)
+	}
+}
+
 func TestParseOptionalUUIDAllowsEmpty(t *testing.T) {
 	value, err := parseOptionalUUID("")
 	if err != nil {

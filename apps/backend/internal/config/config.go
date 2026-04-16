@@ -51,7 +51,19 @@ type Config struct {
 	AzureOpenAIDeployment   string
 	AzureOpenAISystemPrompt string
 	AzureOpenAIWebSearch    bool
+	Presentation            PresentationConfig
 	Image                   ImageConfig
+}
+
+// PresentationConfig groups all presentation-generation planner settings.
+type PresentationConfig struct {
+	Endpoint       string
+	APIKey         string
+	APIVersion     string
+	Deployment     string
+	SystemPrompt   string
+	RequestTimeout time.Duration
+	StreamTimeout  time.Duration
 }
 
 // ImageConfig groups all image-generation provider settings.
@@ -102,6 +114,15 @@ func Load() (Config, error) {
 		AzureOpenAIDeployment:   strings.TrimSpace(os.Getenv("AZURE_OPENAI_DEPLOYMENT")),
 		AzureOpenAISystemPrompt: envOrDefaultUnlessSet("AZURE_OPENAI_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
 		AzureOpenAIWebSearch:    webSearchEnabled,
+		Presentation: PresentationConfig{
+			Endpoint:       strings.TrimSpace(os.Getenv("AZURE_OPENAI_PRESENTATION_ENDPOINT")),
+			APIKey:         strings.TrimSpace(os.Getenv("AZURE_OPENAI_PRESENTATION_API_KEY")),
+			APIVersion:     strings.TrimSpace(os.Getenv("AZURE_OPENAI_PRESENTATION_API_VERSION")),
+			Deployment:     strings.TrimSpace(os.Getenv("AZURE_OPENAI_PRESENTATION_DEPLOYMENT")),
+			SystemPrompt:   envOrDefaultUnlessSet("AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT", defaultOpenAISystemPrompt),
+			RequestTimeout: durationEnvOrDefault("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", defaultOpenAIRequestTimeout),
+			StreamTimeout:  durationEnvOrDefault("AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT", defaultOpenAIStreamTimeout),
+		},
 		Image: ImageConfig{
 			MaxReferenceImageBytes: int64EnvOrDefault("IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES", imagegen.DefaultMaxReferenceImageBytes),
 			AzureFoundry: FluxConfig{
@@ -159,6 +180,12 @@ func (c Config) Validate() error {
 	if err := validatePositiveDuration(c.OpenAIStreamTimeout, "azure openai stream timeout"); err != nil {
 		return err
 	}
+	if err := validatePositiveDuration(c.Presentation.RequestTimeout, "azure openai presentation request timeout"); err != nil {
+		return err
+	}
+	if err := validatePositiveDuration(c.Presentation.StreamTimeout, "azure openai presentation stream timeout"); err != nil {
+		return err
+	}
 	if err := validatePositiveDuration(c.RunFinalizationTimeout, "chat run finalization timeout"); err != nil {
 		return err
 	}
@@ -205,6 +232,22 @@ func (c Config) Validate() error {
 
 	if c.AzureOpenAIDeployment == "" {
 		return errors.New("azure openai deployment must not be empty")
+	}
+
+	if c.Presentation.Endpoint == "" {
+		return errors.New("azure openai presentation endpoint must not be empty")
+	}
+	if err := validateAbsoluteURL(c.Presentation.Endpoint, "azure openai presentation endpoint", "http", "https"); err != nil {
+		return err
+	}
+	if c.Presentation.APIKey == "" {
+		return errors.New("azure openai presentation api key must not be empty")
+	}
+	if c.Presentation.APIVersion == "" {
+		return errors.New("azure openai presentation api version must not be empty")
+	}
+	if c.Presentation.Deployment == "" {
+		return errors.New("azure openai presentation deployment must not be empty")
 	}
 
 	if c.Image.AzureFoundry.Endpoint != "" {

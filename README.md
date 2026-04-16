@@ -55,12 +55,26 @@ Backend app startup validates these:
   Azure OpenAI deployment name, for example `gpt-5-chat`
 - `AZURE_OPENAI_SYSTEM_PROMPT`
   Optional. If unset, defaults to markdown-friendly response guidance that prefers Markdown when helpful, avoids raw HTML, and still follows user requests for plain text or machine-readable output such as JSON. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
+- `AZURE_OPENAI_PRESENTATION_ENDPOINT`
+  Example: `https://your-resource-name.openai.azure.com/`
+- `AZURE_OPENAI_PRESENTATION_API_KEY`
+  Azure OpenAI API key for the presentation-generation planner workflow.
+- `AZURE_OPENAI_PRESENTATION_API_VERSION`
+  Required version string for the presentation-generation planner workflow. Use `v1` for the current implementation and examples.
+- `AZURE_OPENAI_PRESENTATION_DEPLOYMENT`
+  Azure OpenAI deployment name for the presentation-generation planner workflow, for example `gpt-5-chat`
+- `AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT`
+  Optional. If unset, defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the default prompt entirely. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_ENABLE_WEB_SEARCH`
   Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests, persists final assistant URL citations, and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
   Optional duration for non-stream Responses API calls. Default `90s`.
 - `AZURE_OPENAI_STREAM_TIMEOUT`
   Optional duration for streamed Responses API calls. Default `10m`.
+- `AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT`
+  Optional duration for non-stream presentation-generation planner calls. Default `90s`.
+- `AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT`
+  Optional duration for streamed presentation-generation planner calls. Default `10m`.
 - `CHAT_RUN_FINALIZATION_TIMEOUT`
   Optional duration for persisting final run/message state after provider completion or failure. Default `15s`.
 - `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES`
@@ -137,10 +151,19 @@ export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
 # Leave AZURE_OPENAI_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
 # Set it to an empty string only if you want to disable the default prompt explicitly.
 # export AZURE_OPENAI_SYSTEM_PROMPT=
+export AZURE_OPENAI_PRESENTATION_ENDPOINT=https://your-resource-name.openai.azure.com/
+export AZURE_OPENAI_PRESENTATION_API_KEY=replace-me
+export AZURE_OPENAI_PRESENTATION_API_VERSION=v1
+export AZURE_OPENAI_PRESENTATION_DEPLOYMENT=gpt-5-chat
+# Leave AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT unset to use the default markdown-friendly prompt.
+# Set it to an empty string only if you want to disable the default prompt explicitly.
+# export AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT=
 # Disabled by default. Enable manually only in dev/test while rolling out Azure-native web_search.
 export AZURE_OPENAI_ENABLE_WEB_SEARCH=false
 export AZURE_OPENAI_REQUEST_TIMEOUT=90s
 export AZURE_OPENAI_STREAM_TIMEOUT=10m
+export AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT=90s
+export AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT=10m
 export CHAT_RUN_FINALIZATION_TIMEOUT=15s
 export IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES=20971520
 # Optional Azure AI Foundry FLUX config for image generation.
