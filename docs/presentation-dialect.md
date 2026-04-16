@@ -258,7 +258,9 @@ The normalization pass must:
 - trim leading and trailing whitespace from all strings
 - default missing or empty `slideSize` to `"16:9"`
 - preserve `version` and require it to be `"v1"`
-- return canonical empty arrays for optional `blocks` and `columns`
+- return canonical empty Go slices for optional `blocks` and `columns` in the normalized in-memory document
+
+JSON serialization is not a separate canonicalization contract in v1. When marshaled from the Go structs, omitted optional fields may still be omitted from JSON instead of appearing as empty arrays.
 
 Normalization does **not**:
 
@@ -273,7 +275,8 @@ Normalization does **not**:
 - Reject unsupported `layout` values
 - Reject unsupported `type` values
 - Reject `slideSize` values other than `"16:9"`
-- Reject layout-specific fields used in the wrong layout, even when they are present as empty strings or empty arrays
+- Reject `null` for all v1 string and array fields; omit the field instead when it is optional
+- Reject layout-specific fields used in the wrong layout, even when they are present as `null`, empty strings, or empty arrays
 - Reject empty required strings after trimming
 - Reject empty list items and empty table cells
 - Reject table rows with inconsistent column counts

@@ -34,6 +34,10 @@ var textBlockTypes = []BlockType{
 }
 
 func ParseJSON(data []byte) (Document, error) {
+	if err := rejectNullJSONFields(data); err != nil {
+		return Document{}, err
+	}
+
 	var document Document
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -373,4 +377,192 @@ func validationError(format string, args ...any) error {
 
 func isNilOrEmpty(value *string) bool {
 	return value == nil || *value == ""
+}
+
+func rejectNullJSONFields(data []byte) error {
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("decode presentation document: %w", err)
+	}
+
+	return rejectNullDocumentFields(value)
+}
+
+func rejectNullDocumentFields(value any) error {
+	document, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	if err := rejectNullObjectField(document, "version", "version"); err != nil {
+		return err
+	}
+	if err := rejectNullObjectField(document, "slideSize", "slideSize"); err != nil {
+		return err
+	}
+
+	slides, ok, err := rejectNullArrayField(document, "slides", "slides")
+	if err != nil || !ok {
+		return err
+	}
+	for index, slide := range slides {
+		if slide == nil {
+			return validationError("slides[%d] must not be null", index)
+		}
+		if err := rejectNullSlideFields(slide, fmt.Sprintf("slides[%d]", index)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func rejectNullSlideFields(value any, path string) error {
+	slide, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	for _, field := range []string{"layout", "title", "subtitle"} {
+		if err := rejectNullObjectField(slide, field, path+"."+field); err != nil {
+			return err
+		}
+	}
+
+	blocks, ok, err := rejectNullArrayField(slide, "blocks", path+".blocks")
+	if err != nil {
+		return err
+	}
+	if ok {
+		for index, block := range blocks {
+			if block == nil {
+				return validationError("%s[%d] must not be null", path+".blocks", index)
+			}
+			if err := rejectNullBlockFields(block, fmt.Sprintf("%s[%d]", path+".blocks", index)); err != nil {
+				return err
+			}
+		}
+	}
+
+	columns, ok, err := rejectNullArrayField(slide, "columns", path+".columns")
+	if err != nil {
+		return err
+	}
+	if ok {
+		for index, column := range columns {
+			if column == nil {
+				return validationError("%s[%d] must not be null", path+".columns", index)
+			}
+			if err := rejectNullColumnFields(column, fmt.Sprintf("%s[%d]", path+".columns", index)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func rejectNullColumnFields(value any, path string) error {
+	column, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	if err := rejectNullObjectField(column, "heading", path+".heading"); err != nil {
+		return err
+	}
+
+	blocks, ok, err := rejectNullArrayField(column, "blocks", path+".blocks")
+	if err != nil {
+		return err
+	}
+	if ok {
+		for index, block := range blocks {
+			if block == nil {
+				return validationError("%s[%d] must not be null", path+".blocks", index)
+			}
+			if err := rejectNullBlockFields(block, fmt.Sprintf("%s[%d]", path+".blocks", index)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func rejectNullBlockFields(value any, path string) error {
+	block, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	for _, field := range []string{"type", "text", "attribution"} {
+		if err := rejectNullObjectField(block, field, path+"."+field); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range []string{"items", "header"} {
+		values, ok, err := rejectNullArrayField(block, field, path+"."+field)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue
+		}
+		for index, item := range values {
+			if item == nil {
+				return validationError("%s[%d] must not be null", path+"."+field, index)
+			}
+		}
+	}
+
+	rows, ok, err := rejectNullArrayField(block, "rows", path+".rows")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	for rowIndex, row := range rows {
+		if row == nil {
+			return validationError("%s[%d] must not be null", path+".rows", rowIndex)
+		}
+		cells, ok := row.([]any)
+		if !ok {
+			continue
+		}
+		for columnIndex, cell := range cells {
+			if cell == nil {
+				return validationError("%s[%d][%d] must not be null", path+".rows", rowIndex, columnIndex)
+			}
+		}
+	}
+
+	return nil
+}
+
+func rejectNullObjectField(values map[string]any, key string, path string) error {
+	value, ok := values[key]
+	if ok && value == nil {
+		return validationError("%s must not be null", path)
+	}
+	return nil
+}
+
+func rejectNullArrayField(values map[string]any, key string, path string) ([]any, bool, error) {
+	value, ok := values[key]
+	if !ok {
+		return nil, false, nil
+	}
+	if value == nil {
+		return nil, true, validationError("%s must not be null", path)
+	}
+
+	array, ok := value.([]any)
+	if !ok {
+		return nil, true, nil
+	}
+
+	return array, true, nil
 }

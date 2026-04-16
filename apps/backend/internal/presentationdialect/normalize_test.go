@@ -488,3 +488,158 @@ func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
 		})
 	}
 }
+
+func TestParseJSONRejectsNullFields(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload string
+		wantErr string
+	}{
+		{
+			name: "title bullets subtitle null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "title_bullets",
+						"title": "Overview",
+						"subtitle": null,
+						"blocks": [
+							{
+								"type": "bullet_list",
+								"items": ["One"]
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].subtitle must not be null`,
+		},
+		{
+			name: "title blocks null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "title",
+						"title": "Hello",
+						"blocks": null
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks must not be null`,
+		},
+		{
+			name: "title bullets required blocks null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "title_bullets",
+						"title": "Overview",
+						"blocks": null
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks must not be null`,
+		},
+		{
+			name: "two column required columns null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "two_column",
+						"title": "Compare",
+						"columns": null
+					}
+				]
+			}`,
+			wantErr: `slides[0].columns must not be null`,
+		},
+		{
+			name: "paragraph items null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "closing",
+						"title": "Done",
+						"blocks": [
+							{
+								"type": "paragraph",
+								"text": "Summary",
+								"items": null
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks[0].items must not be null`,
+		},
+		{
+			name: "column blocks null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "two_column",
+						"title": "Compare",
+						"columns": [
+							{
+								"heading": "Left",
+								"blocks": null
+							},
+							{
+								"blocks": [
+									{
+										"type": "bullet_list",
+										"items": ["Two"]
+									}
+								]
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].columns[0].blocks must not be null`,
+		},
+		{
+			name: "table row cell null",
+			payload: `{
+				"version": "v1",
+				"slides": [
+					{
+						"layout": "table",
+						"title": "Metrics",
+						"blocks": [
+							{
+								"type": "table",
+								"header": ["Metric", "Value"],
+								"rows": [["Latency", null]]
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks[0].rows[0][1] must not be null`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParseJSON([]byte(test.payload))
+			if err == nil {
+				t.Fatal("ParseJSON() error = nil, want error")
+			}
+			if err.Error() != test.wantErr {
+				t.Fatalf("ParseJSON() error = %q, want %q", err.Error(), test.wantErr)
+			}
+		})
+	}
+}
