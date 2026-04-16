@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
+	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
@@ -63,6 +63,16 @@ func TestPlannerConfigured(t *testing.T) {
 		Planner: PlannerConfig{
 			Endpoint: "https://example.openai.azure.com/",
 		},
+	})
+	if service.PlannerConfigured() {
+		t.Fatal("PlannerConfigured() = true, want false when response client is missing")
+	}
+
+	service = NewService(nil, ServiceOptions{
+		Planner: PlannerConfig{
+			Endpoint: "https://example.openai.azure.com/",
+		},
+		ResponseClient: &stubResponseClient{},
 	})
 	if !service.PlannerConfigured() {
 		t.Fatal("PlannerConfigured() = false, want true")
@@ -582,7 +592,7 @@ func TestExecuteGenerationMapsBlobDownloadLimitErrorToOversizedAttachmentCode(t 
 	service := &Service{
 		blobs: &stubBlobStore{
 			downloadErrs: map[string]error{
-				"blob://large": fmt.Errorf("read blob blob://large: blob blob://large exceeds %d bytes", defaultMaxAttachmentBytes),
+				"blob://large": blobstorage.MaxBytesExceededError{BlobPath: "blob://large", MaxBytes: defaultMaxAttachmentBytes},
 			},
 		},
 		responses:      &stubResponseClient{},
@@ -807,7 +817,7 @@ func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string
 		return nil, err
 	}
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("blob %q exceeds %d bytes", blobPath, maxBytes)
+		return nil, blobstorage.MaxBytesExceededError{BlobPath: blobPath, MaxBytes: maxBytes}
 	}
 
 	return data, nil

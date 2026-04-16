@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
+	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
@@ -142,7 +143,7 @@ func NewService(db *pgxpool.Pool, options ...ServiceOptions) *Service {
 }
 
 func (s *Service) PlannerConfigured() bool {
-	return strings.TrimSpace(s.planner.Endpoint) != ""
+	return strings.TrimSpace(s.planner.Endpoint) != "" && s.responses != nil
 }
 
 func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) error {
@@ -640,11 +641,7 @@ func plannerRequestPreparationErrorCode(err error) string {
 }
 
 func exceedsBlobDownloadLimit(err error, maxBytes int64) bool {
-	if err == nil || maxBytes <= 0 {
-		return false
-	}
-
-	return strings.Contains(err.Error(), fmt.Sprintf(" exceeds %d bytes", maxBytes))
+	return blobstorage.IsMaxBytesExceeded(err, maxBytes)
 }
 
 func validateUUID(value, field string) error {
