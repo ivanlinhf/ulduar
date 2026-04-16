@@ -28,6 +28,8 @@ const (
 	providerImageDetailLevel  = "auto"
 	plannerUserRole           = "user"
 	plannerFailureInvalidJSON = "invalid_planner_output"
+	defaultMaxAttachmentBytes int64 = 20 << 20
+	runningGracePeriod              = time.Minute
 )
 
 const plannerDialectInstructions = `You are the Ulduar v1 presentation planner.
@@ -64,6 +66,7 @@ Return exactly one JSON object and nothing else.
 
 type BlobStore interface {
 	Download(ctx context.Context, blobPath string) ([]byte, error)
+	DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error)
 }
 
 type ResponseClient interface {
@@ -153,11 +156,26 @@ func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) er
 	switch Status(generation.Status) {
 	case StatusPending:
 		return s.executePendingGeneration(ctx, generation)
-	case StatusRunning, StatusCompleted, StatusFailed:
+	case StatusRunning:
+		return s.executeRunningGeneration(ctx, generation)
+	case StatusCompleted, StatusFailed:
 		return nil
 	default:
 		return fmt.Errorf("unsupported presentation generation status %q", generation.Status)
 	}
+}
+
+func (s *Service) executeRunningGeneration(ctx context.Context, generation repository.PresentationGeneration) error {
+	if !runningGenerationStale(generation, s.planner.RequestTimeout) {
+		return nil
+	}
+
+	return s.persistGenerationFailure(
+		ctx,
+		generation,
+		"planner_stale_running",
+		"presentation planner execution was interrupted and exceeded the allowed running window",
+	)
 }
 
 func (s *Service) executePendingGeneration(ctx context.Context, generation repository.PresentationGeneration) error {
@@ -319,8 +337,11 @@ func (s *Service) prepareAttachmentInput(ctx context.Context, asset repository.P
 	if s.blobs == nil {
 		return azureopenai.InputContentItem{}, fmt.Errorf("blob store is not configured")
 	}
+	if asset.SizeBytes > defaultMaxAttachmentBytes {
+		return azureopenai.InputContentItem{}, fmt.Errorf("input asset %s exceeds %d bytes", asset.ID, defaultMaxAttachmentBytes)
+	}
 
-	data, err := s.blobs.Download(ctx, asset.BlobPath)
+	data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, defaultMaxAttachmentBytes)
 	if err != nil {
 		return azureopenai.InputContentItem{}, fmt.Errorf("load input asset %s blob: %w", asset.ID, err)
 	}
@@ -545,6 +566,18 @@ func (s *Service) persistGenerationFailure(ctx context.Context, generation repos
 	}
 
 	return nil
+}
+
+func runningGenerationStale(generation repository.PresentationGeneration, requestTimeout time.Duration) bool {
+	if generation.StartedAt == nil {
+		return true
+	}
+
+	if requestTimeout <= 0 {
+		requestTimeout = 90 * time.Second
+	}
+
+	return time.Since(*generation.StartedAt) > requestTimeout+runningGracePeriod
 }
 
 func validateUUID(value, field string) error {

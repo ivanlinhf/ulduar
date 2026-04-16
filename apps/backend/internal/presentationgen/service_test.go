@@ -329,6 +329,71 @@ func TestExecuteGenerationRetriesRepairOnInvalidPlannerOutput(t *testing.T) {
 	}
 }
 
+func TestExecuteGenerationLeavesFreshRunningGenerationUntouched(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().UTC().Add(-90 * time.Second)
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Status:    string(StatusRunning),
+			StartedAt: &startedAt,
+		},
+	}
+
+	service := &Service{
+		planner:        PlannerConfig{RequestTimeout: 2 * time.Minute},
+		responses:      &stubResponseClient{},
+		generationRead: reader,
+		assetRead:      stubAssetReader{},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+	if len(reader.updateCalls) != 0 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 0", len(reader.updateCalls))
+	}
+}
+
+func TestExecuteGenerationFailsStaleRunningGeneration(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().UTC().Add(-(90*time.Second + runningGracePeriod + time.Second))
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+			StartedAt:     &startedAt,
+		},
+	}
+
+	service := &Service{
+		planner:        PlannerConfig{RequestTimeout: 90 * time.Second},
+		responses:      &stubResponseClient{},
+		generationRead: reader,
+		assetRead:      stubAssetReader{},
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	update := reader.updateCalls[0]
+	if update.Status != string(StatusFailed) {
+		t.Fatalf("update.Status = %q, want %q", update.Status, StatusFailed)
+	}
+	if update.ErrorCode != "planner_stale_running" {
+		t.Fatalf("update.ErrorCode = %q, want %q", update.ErrorCode, "planner_stale_running")
+	}
+}
+
 func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *testing.T) {
 	t.Parallel()
 
@@ -374,6 +439,33 @@ func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *tes
 	}
 	if !strings.Contains(update.ErrorMessage, "decode presentation document") {
 		t.Fatalf("update.ErrorMessage = %q, want decode failure", update.ErrorMessage)
+	}
+}
+
+func TestPrepareAttachmentInputRejectsOversizedAsset(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: stubBlobStore{
+			data: map[string][]byte{
+				"blob://large": []byte("ignored"),
+			},
+		},
+	}
+
+	_, err := service.prepareAttachmentInput(context.Background(), repository.PresentationGenerationAsset{
+		ID:        "asset-large",
+		Role:      string(AssetRoleInput),
+		BlobPath:  "blob://large",
+		MediaType: InputMediaTypePDF,
+		Filename:  "large.pdf",
+		SizeBytes: defaultMaxAttachmentBytes + 1,
+	})
+	if err == nil {
+		t.Fatal("prepareAttachmentInput() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("prepareAttachmentInput() error = %q, want size limit error", err.Error())
 	}
 }
 
@@ -463,6 +555,18 @@ func (s stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, err
 	data, ok := s.data[blobPath]
 	if !ok {
 		return nil, context.Canceled
+	}
+
+	return data, nil
+}
+
+func (s stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
+	data, err := s.Download(ctx, blobPath)
+	if err != nil {
+		return nil, err
+	}
+	if maxBytes > 0 && int64(len(data)) > maxBytes {
+		return nil, context.DeadlineExceeded
 	}
 
 	return data, nil
