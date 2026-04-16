@@ -259,6 +259,9 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	if content[2].Type != providerInputFileType || content[2].Filename != "notes.pdf" {
 		t.Fatalf("content[2] = %#v, want input file attachment", content[2])
 	}
+	if strings.ContainsAny(content[2].Filename, `/\`) {
+		t.Fatalf("content[2].Filename = %q, want sanitized basename without path separators", content[2].Filename)
+	}
 	if content[2].FileData != base64.StdEncoding.EncodeToString([]byte{4, 5, 6, 7}) {
 		t.Fatalf("content[2].FileData = %q, want encoded PDF bytes", content[2].FileData)
 	}
