@@ -86,6 +86,101 @@ func TestNormalizeAppliesDefaultsAndTrimsValues(t *testing.T) {
 	}
 }
 
+func TestNormalizeIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	document := Document{
+		Version: " v1 ",
+		Slides: []Slide{
+			{
+				Layout:   LayoutTitle,
+				Title:    " Welcome ",
+				Subtitle: testStringPtr(" FY2026 "),
+			},
+			{
+				Layout: LayoutTitleBullets,
+				Title:  " Overview ",
+				Blocks: []Block{
+					{
+						Type: BlockTypeParagraph,
+						Text: testStringPtr(" Summary "),
+					},
+					{
+						Type:  BlockTypeBulletList,
+						Items: []string{" One "},
+					},
+				},
+			},
+			{
+				Layout: LayoutTwoColumn,
+				Title:  " Compare ",
+				Columns: []Column{
+					{
+						Blocks: []Block{
+							{
+								Type:  BlockTypeBulletList,
+								Items: []string{" Left "},
+							},
+						},
+					},
+					{
+						Blocks: []Block{
+							{
+								Type:        BlockTypeQuote,
+								Text:        testStringPtr(" Right "),
+								Attribution: testStringPtr(" Notes "),
+							},
+						},
+					},
+				},
+			},
+			{
+				Layout: LayoutClosing,
+				Title:  " Thanks ",
+			},
+		},
+	}
+
+	normalized, err := Normalize(document)
+	if err != nil {
+		t.Fatalf("Normalize() first pass error = %v", err)
+	}
+
+	if err := Validate(normalized); err != nil {
+		t.Fatalf("Validate() normalized document error = %v", err)
+	}
+
+	renormalized, err := Normalize(normalized)
+	if err != nil {
+		t.Fatalf("Normalize() second pass error = %v", err)
+	}
+
+	if renormalized.Slides[0].Blocks != nil {
+		t.Fatalf("renormalized.Slides[0].Blocks = %#v, want nil for forbidden field", renormalized.Slides[0].Blocks)
+	}
+	if renormalized.Slides[0].Columns != nil {
+		t.Fatalf("renormalized.Slides[0].Columns = %#v, want nil for forbidden field", renormalized.Slides[0].Columns)
+	}
+	if renormalized.Slides[1].Blocks == nil {
+		t.Fatal("renormalized.Slides[1].Blocks = nil, want canonical empty-or-populated slice for allowed field")
+	}
+	if renormalized.Slides[2].Blocks != nil {
+		t.Fatalf("renormalized.Slides[2].Blocks = %#v, want nil for forbidden field", renormalized.Slides[2].Blocks)
+	}
+	if renormalized.Slides[2].Columns == nil {
+		t.Fatal("renormalized.Slides[2].Columns = nil, want populated columns slice")
+	}
+	if renormalized.Slides[2].Columns[1].Blocks[0].Items != nil {
+		t.Fatalf("renormalized.Slides[2].Columns[1].Blocks[0].Items = %#v, want nil for unsupported quote field", renormalized.Slides[2].Columns[1].Blocks[0].Items)
+	}
+	if renormalized.Slides[3].Blocks == nil {
+		t.Fatal("renormalized.Slides[3].Blocks = nil, want canonical empty slice for optional allowed field")
+	}
+	if len(renormalized.Slides[3].Blocks) != 0 {
+		t.Fatalf("len(renormalized.Slides[3].Blocks) = %d, want 0", len(renormalized.Slides[3].Blocks))
+	}
+}
+
 func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 	t.Parallel()
 

@@ -95,10 +95,8 @@ func Normalize(document Document) (Document, error) {
 
 func normalizeSlide(slide Slide, path string) (Slide, error) {
 	normalized := Slide{
-		Layout:  SlideLayout(strings.TrimSpace(string(slide.Layout))),
-		Title:   strings.TrimSpace(slide.Title),
-		Blocks:  []Block{},
-		Columns: []Column{},
+		Layout: SlideLayout(strings.TrimSpace(string(slide.Layout))),
+		Title:  strings.TrimSpace(slide.Title),
 	}
 	if slide.Subtitle != nil {
 		subtitle := strings.TrimSpace(*slide.Subtitle)
@@ -205,7 +203,6 @@ func normalizeSlide(slide Slide, path string) (Slide, error) {
 func normalizeColumn(column Column, path string, allowedBlockTypes []BlockType) (Column, error) {
 	normalized := Column{
 		Heading: strings.TrimSpace(column.Heading),
-		Blocks:  []Block{},
 	}
 
 	blocks, err := normalizeBlocks(column.Blocks, path+".blocks", allowedBlockTypes)
@@ -238,10 +235,7 @@ func normalizeBlocks(blocks []Block, path string, allowedBlockTypes []BlockType)
 
 func normalizeBlock(block Block, path string) (Block, error) {
 	normalized := Block{
-		Type:   BlockType(strings.TrimSpace(string(block.Type))),
-		Items:  []string{},
-		Header: []string{},
-		Rows:   [][]string{},
+		Type: BlockType(strings.TrimSpace(string(block.Type))),
 	}
 	if block.Text != nil {
 		text := strings.TrimSpace(*block.Text)
@@ -551,15 +545,15 @@ func rejectNullObjectField(values map[string]any, key string, path string) error
 }
 
 // rejectNullArrayField reports whether a field was present and rejects explicit nulls.
-// When present is false, the field was omitted. When present is true and err is nil,
-// callers may continue validating nested array elements only if the returned value is non-nil.
+// When present is false, the field was omitted. When err is nil, callers may continue
+// validating nested array elements only if the returned value is non-nil.
 func rejectNullArrayField(values map[string]any, key string, path string) ([]any, bool, error) {
 	value, ok := values[key]
 	if !ok {
 		return nil, false, nil
 	}
 	if value == nil {
-		return nil, false, validationError("%s must not be null", path)
+		return nil, true, validationError("%s must not be null", path)
 	}
 
 	array, ok := value.([]any)

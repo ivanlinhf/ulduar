@@ -17,6 +17,7 @@ Use this file as the default working guide for code agents in this repo.
 - `apps/backend`: Go HTTP API, chat orchestration, persistence, migrations
 - `apps/frontend`: React SPA
 - `docs/design.md`: v1 product and architecture constraints
+- `docs/presentation-dialect.md`: v1 presentation planner/compiler JSON contract
 - `README.md`: local setup, env vars, and verification commands
 - `compose.yaml` / `compose.wsl.yaml`: local full-stack startup
 
@@ -58,6 +59,7 @@ If you change request or response shapes, update backend, frontend, tests, and d
 ## Working Rules
 
 - Start with `README.md` and `docs/design.md` before making broad changes.
+- Load `docs/presentation-dialect.md` before changing presentation-planning or presentation-compilation behavior.
 - Prefer small, local edits that preserve the current architecture.
 - Keep backend changes compatible with concurrent anonymous sessions.
 - Keep attachment handling behind clear abstractions; broader file support is future work.
