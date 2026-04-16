@@ -9,17 +9,32 @@ import (
 	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
 )
 
+func setBaseEnv(tb testing.TB) {
+	tb.Helper()
+	tb.Setenv("APP_ENV", "development")
+	tb.Setenv("BACKEND_PORT", "8080")
+	tb.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
+	tb.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+	tb.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
+	tb.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
+	tb.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
+	tb.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+	tb.Setenv("AZURE_OPENAI_API_KEY", "secret")
+	tb.Setenv("AZURE_OPENAI_API_VERSION", "v1")
+	tb.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+}
+
+func setPresentationEnv(tb testing.TB) {
+	tb.Helper()
+	tb.Setenv("AZURE_OPENAI_PRESENTATION_ENDPOINT", "https://example.openai.azure.com/")
+	tb.Setenv("AZURE_OPENAI_PRESENTATION_API_KEY", "presentation-secret")
+	tb.Setenv("AZURE_OPENAI_PRESENTATION_API_VERSION", "v1")
+	tb.Setenv("AZURE_OPENAI_PRESENTATION_DEPLOYMENT", "gpt-5-chat")
+}
+
 func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
+	setBaseEnv(t)
 	t.Setenv("BACKEND_PORT", "8081")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
 	t.Setenv("BACKEND_REQUEST_TIMEOUT", "25s")
 	t.Setenv("AZURE_OPENAI_STREAM_TIMEOUT", "12m")
 
@@ -46,22 +61,26 @@ func TestLoadAppliesDefaultsAndParsesTimeouts(t *testing.T) {
 	if cfg.AzureOpenAIWebSearch {
 		t.Fatal("cfg.AzureOpenAIWebSearch = true, want false by default")
 	}
+	if cfg.Presentation.Endpoint != "" {
+		t.Fatalf("cfg.Presentation.Endpoint = %q, want empty by default", cfg.Presentation.Endpoint)
+	}
+	if cfg.Presentation.SystemPrompt != defaultOpenAISystemPrompt {
+		t.Fatalf("cfg.Presentation.SystemPrompt = %q", cfg.Presentation.SystemPrompt)
+	}
+	if cfg.Presentation.RequestTimeout != defaultOpenAIRequestTimeout {
+		t.Fatalf("cfg.Presentation.RequestTimeout = %v, want %v", cfg.Presentation.RequestTimeout, defaultOpenAIRequestTimeout)
+	}
+	if cfg.Presentation.StreamTimeout != defaultOpenAIStreamTimeout {
+		t.Fatalf("cfg.Presentation.StreamTimeout = %v, want %v", cfg.Presentation.StreamTimeout, defaultOpenAIStreamTimeout)
+	}
 	if cfg.Image.MaxReferenceImageBytes != imagegen.DefaultMaxReferenceImageBytes {
 		t.Fatalf("cfg.Image.MaxReferenceImageBytes = %d, want %d", cfg.Image.MaxReferenceImageBytes, imagegen.DefaultMaxReferenceImageBytes)
 	}
 }
 
 func TestLoadRejectsInvalidValues(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
+	setBaseEnv(t)
 	t.Setenv("BACKEND_PORT", "invalid")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
 
 	_, err := Load()
 	if err == nil {
@@ -106,16 +125,7 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 }
 
 func TestLoadUsesCustomSystemPromptOverride(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
-	t.Setenv("BACKEND_PORT", "8080")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	setBaseEnv(t)
 	t.Setenv("AZURE_OPENAI_SYSTEM_PROMPT", "Reply in plain text.")
 
 	cfg, err := Load()
@@ -129,16 +139,7 @@ func TestLoadUsesCustomSystemPromptOverride(t *testing.T) {
 }
 
 func TestLoadPreservesExplicitlyEmptySystemPrompt(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
-	t.Setenv("BACKEND_PORT", "8080")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	setBaseEnv(t)
 	t.Setenv("AZURE_OPENAI_SYSTEM_PROMPT", "")
 
 	cfg, err := Load()
@@ -152,16 +153,7 @@ func TestLoadPreservesExplicitlyEmptySystemPrompt(t *testing.T) {
 }
 
 func TestLoadEnablesWebSearchWhenConfigured(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
-	t.Setenv("BACKEND_PORT", "8080")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	setBaseEnv(t)
 	t.Setenv("AZURE_OPENAI_ENABLE_WEB_SEARCH", "true")
 
 	cfg, err := Load()
@@ -175,16 +167,7 @@ func TestLoadEnablesWebSearchWhenConfigured(t *testing.T) {
 }
 
 func TestLoadUsesConfiguredImageGenerationMaxReferenceImageBytes(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
-	t.Setenv("BACKEND_PORT", "8080")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	setBaseEnv(t)
 	t.Setenv("IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES", "1048576")
 
 	cfg, err := Load()
@@ -198,16 +181,7 @@ func TestLoadUsesConfiguredImageGenerationMaxReferenceImageBytes(t *testing.T) {
 }
 
 func TestLoadAppliesFluxDefaults(t *testing.T) {
-	t.Setenv("APP_ENV", "development")
-	t.Setenv("BACKEND_PORT", "8080")
-	t.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-	t.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-	t.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-	t.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-	t.Setenv("AZURE_OPENAI_API_KEY", "secret")
-	t.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+	setBaseEnv(t)
 	// No AZURE_FOUNDRY_* vars — image provider should be unconfigured with defaults intact.
 
 	cfg, err := Load()
@@ -236,16 +210,7 @@ func TestLoadAppliesFluxDefaults(t *testing.T) {
 func TestLoadValidatesFluxConfigWhenEndpointIsSet(t *testing.T) {
 	base := func(tb testing.TB) {
 		tb.Helper()
-		tb.Setenv("APP_ENV", "development")
-		tb.Setenv("BACKEND_PORT", "8080")
-		tb.Setenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ulduar?sslmode=disable")
-		tb.Setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
-		tb.Setenv("AZURE_STORAGE_ACCOUNT_KEY", "secret")
-		tb.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", "http://localhost:10000/devstoreaccount1")
-		tb.Setenv("AZURE_STORAGE_CONTAINER", "chat-attachments")
-		tb.Setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-		tb.Setenv("AZURE_OPENAI_API_KEY", "secret")
-		tb.Setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
+		setBaseEnv(tb)
 	}
 
 	t.Run("valid", func(t *testing.T) {
@@ -304,6 +269,105 @@ func TestLoadValidatesFluxConfigWhenEndpointIsSet(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "azure foundry flux request timeout") {
 			t.Fatalf("Load() error = %v", err)
+		}
+	})
+}
+
+func TestLoadValidatesPresentationConfig(t *testing.T) {
+	base := func(tb testing.TB) {
+		tb.Helper()
+		setBaseEnv(tb)
+	}
+
+	t.Run("custom timeouts and prompt", func(t *testing.T) {
+		base(t)
+		setPresentationEnv(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT", "Plan slides conservatively.")
+		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "45s")
+		t.Setenv("AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT", "6m")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Presentation.SystemPrompt != "Plan slides conservatively." {
+			t.Fatalf("cfg.Presentation.SystemPrompt = %q", cfg.Presentation.SystemPrompt)
+		}
+		if cfg.Presentation.RequestTimeout != 45*time.Second {
+			t.Fatalf("cfg.Presentation.RequestTimeout = %v", cfg.Presentation.RequestTimeout)
+		}
+		if cfg.Presentation.StreamTimeout != 6*time.Minute {
+			t.Fatalf("cfg.Presentation.StreamTimeout = %v", cfg.Presentation.StreamTimeout)
+		}
+	})
+
+	t.Run("missing api key", func(t *testing.T) {
+		base(t)
+		setPresentationEnv(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_API_KEY", "")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for missing presentation api key")
+		}
+		if !strings.Contains(err.Error(), "azure openai presentation api key") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("invalid endpoint", func(t *testing.T) {
+		base(t)
+		setPresentationEnv(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_ENDPOINT", "not-a-url")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for invalid presentation endpoint")
+		}
+		if !strings.Contains(err.Error(), "azure openai presentation endpoint") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("missing api version", func(t *testing.T) {
+		base(t)
+		setPresentationEnv(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_API_VERSION", "")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for missing presentation api version")
+		}
+		if !strings.Contains(err.Error(), "azure openai presentation api version") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("bad request timeout", func(t *testing.T) {
+		base(t)
+		setPresentationEnv(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "notaduration")
+
+		_, err := Load()
+		if err == nil {
+			t.Fatal("Load() error = nil, want error for bad presentation request timeout")
+		}
+		if !strings.Contains(err.Error(), "azure openai presentation request timeout") {
+			t.Fatalf("Load() error = %v", err)
+		}
+	})
+
+	t.Run("invalid timeout is ignored when planner is unset", func(t *testing.T) {
+		base(t)
+		t.Setenv("AZURE_OPENAI_PRESENTATION_REQUEST_TIMEOUT", "notaduration")
+		t.Setenv("AZURE_OPENAI_PRESENTATION_STREAM_TIMEOUT", "alsobad")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Presentation.Endpoint != "" {
+			t.Fatalf("cfg.Presentation.Endpoint = %q, want empty", cfg.Presentation.Endpoint)
 		}
 	})
 }
