@@ -493,6 +493,35 @@ func TestExecuteGenerationFailsWhenProviderReturnsFailedResponse(t *testing.T) {
 	if !strings.Contains(update.ErrorMessage, "server_error: planner backend unavailable") {
 		t.Fatalf("update.ErrorMessage = %q, want provider response details", update.ErrorMessage)
 	}
+	if got := string(update.DialectJSON); got != "" {
+		t.Fatalf("update.DialectJSON = %q, want empty", got)
+	}
+}
+
+func TestPersistGenerationFailurePreservesDialectJSON(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{}
+	service := &Service{
+		generationRead: reader,
+	}
+
+	err := service.persistGenerationFailure(context.Background(), repository.PresentationGeneration{
+		ID:            "22222222-2222-2222-2222-222222222222",
+		ProviderName:  plannerProviderName,
+		ProviderModel: "presentation-deployment",
+		DialectJSON:   []byte(`{"version":"v1","slides":[{"layout":"title","title":"Quarterly review"}]}`),
+	}, "provider_request_failed", "planner backend unavailable")
+	if err != nil {
+		t.Fatalf("persistGenerationFailure() error = %v", err)
+	}
+
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if got := string(reader.updateCalls[0].DialectJSON); got != `{"version":"v1","slides":[{"layout":"title","title":"Quarterly review"}]}` {
+		t.Fatalf("update.DialectJSON = %q", got)
+	}
 }
 
 func TestExecuteGenerationFailsWithOversizedAttachmentCode(t *testing.T) {

@@ -606,6 +606,7 @@ func (s *Service) persistGenerationFailure(ctx context.Context, generation repos
 		ErrorCode:     strings.TrimSpace(code),
 		ErrorMessage:  strings.TrimSpace(message),
 		CompletedAt:   &completedAt,
+		DialectJSON:   slices.Clone(generation.DialectJSON),
 	}); err != nil {
 		return fmt.Errorf("mark presentation generation failed: %w", err)
 	}
