@@ -603,7 +603,7 @@ func dereferenceString(value *string) string {
 func escapeXML(value string) string {
 	var buffer bytes.Buffer
 	if err := xml.EscapeText(&buffer, []byte(value)); err != nil {
-		panic(err)
+		panic(fmt.Sprintf("escape xml %q: %v", value, err))
 	}
 	return buffer.String()
 }
