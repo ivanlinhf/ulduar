@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/dbsqlc"
@@ -14,6 +15,7 @@ type PresentationGeneration struct {
 	ID            string
 	SessionID     string
 	Prompt        string
+	DialectJSON   []byte
 	ProviderName  string
 	ProviderModel string
 	ProviderJobID string
@@ -28,6 +30,7 @@ type PresentationGeneration struct {
 type CreatePresentationGenerationParams struct {
 	SessionID     string
 	Prompt        string
+	DialectJSON   []byte
 	ProviderName  string
 	ProviderModel string
 	ProviderJobID string
@@ -46,6 +49,7 @@ type UpdatePresentationGenerationStateParams struct {
 	ErrorCode     string
 	ErrorMessage  string
 	CompletedAt   *time.Time
+	DialectJSON   []byte
 }
 
 type ClaimPendingPresentationGenerationParams struct {
@@ -73,6 +77,7 @@ func (r *PresentationGenerationRepository) Create(ctx context.Context, params Cr
 	row, err := r.queries.CreatePresentationGeneration(ctx, dbsqlc.CreatePresentationGenerationParams{
 		SessionID:     sessionID,
 		Prompt:        params.Prompt,
+		DialectJson:   slices.Clone(params.DialectJSON),
 		ProviderName:  params.ProviderName,
 		ProviderModel: params.ProviderModel,
 		ProviderJobID: textValue(params.ProviderJobID),
@@ -223,6 +228,7 @@ func (r *PresentationGenerationRepository) UpdateState(ctx context.Context, para
 		ErrorCode:     textValue(params.ErrorCode),
 		ErrorMessage:  textValue(params.ErrorMessage),
 		CompletedAt:   timestamptzPointerValue(params.CompletedAt),
+		DialectJson:   slices.Clone(params.DialectJSON),
 	})
 	if err != nil {
 		return fmt.Errorf("update presentation generation %s: %w", params.ID, err)
@@ -249,6 +255,7 @@ func mapPresentationGeneration(row dbsqlc.PresentationGeneration) (PresentationG
 		ID:            row.ID.String(),
 		SessionID:     row.SessionID.String(),
 		Prompt:        row.Prompt,
+		DialectJSON:   slices.Clone(row.DialectJson),
 		ProviderName:  row.ProviderName,
 		ProviderModel: row.ProviderModel,
 		ProviderJobID: nullableText(row.ProviderJobID),

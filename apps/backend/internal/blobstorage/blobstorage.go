@@ -19,6 +19,24 @@ type Client struct {
 	ContainerName string
 }
 
+type MaxBytesExceededError struct {
+	BlobPath string
+	MaxBytes int64
+}
+
+func (e MaxBytesExceededError) Error() string {
+	return fmt.Sprintf("blob %s exceeds %d bytes", e.BlobPath, e.MaxBytes)
+}
+
+func IsMaxBytesExceeded(err error, maxBytes int64) bool {
+	if err == nil || maxBytes <= 0 {
+		return false
+	}
+
+	var exceededErr MaxBytesExceededError
+	return errors.As(err, &exceededErr) && exceededErr.MaxBytes == maxBytes
+}
+
 func Connect(accountName, accountKey, serviceURL, containerName string) (*Client, error) {
 	credential, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
@@ -88,7 +106,7 @@ func (c *Client) download(ctx context.Context, blobPath string, maxBytes int64) 
 		return nil, fmt.Errorf("read blob %s: %w", blobPath, err)
 	}
 	if maxBytes > 0 && int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("blob %s exceeds %d bytes", blobPath, maxBytes)
+		return nil, MaxBytesExceededError{BlobPath: blobPath, MaxBytes: maxBytes}
 	}
 
 	return data, nil

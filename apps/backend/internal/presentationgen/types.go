@@ -54,6 +54,7 @@ type Generation struct {
 	ID            string
 	SessionID     string
 	Prompt        string
+	DialectJSON   []byte
 	ProviderName  string
 	ProviderModel string
 	ProviderJobID string
