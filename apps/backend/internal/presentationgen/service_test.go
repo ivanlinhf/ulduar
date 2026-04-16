@@ -201,7 +201,7 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 			SortOrder:    1,
 			BlobPath:     "blob://pdf",
 			MediaType:    InputMediaTypePDF,
-			Filename:     "notes.pdf",
+			Filename:     "../unsafe/notes.pdf",
 			SizeBytes:    4,
 		},
 	}
@@ -439,6 +439,87 @@ func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *tes
 	}
 	if !strings.Contains(update.ErrorMessage, "decode presentation document") {
 		t.Fatalf("update.ErrorMessage = %q, want decode failure", update.ErrorMessage)
+	}
+}
+
+func TestExecuteGenerationFailsWithOversizedAttachmentCode(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a quarterly review deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+
+	service := &Service{
+		blobs:          stubBlobStore{data: map[string][]byte{"blob://large": {1, 2, 3}}},
+		responses:      &stubResponseClient{},
+		generationRead: reader,
+		assetRead: stubAssetReader{assets: []repository.PresentationGenerationAsset{{
+			ID:        "asset-large",
+			Role:      string(AssetRoleInput),
+			BlobPath:  "blob://large",
+			MediaType: InputMediaTypePDF,
+			Filename:  "large.pdf",
+			SizeBytes: defaultMaxAttachmentBytes + 1,
+		}}},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("ExecuteGeneration() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "prepare presentation planner request") {
+		t.Fatalf("ExecuteGeneration() error = %q, want request preparation failure", err.Error())
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if reader.updateCalls[0].ErrorCode != "input_asset_too_large" {
+		t.Fatalf("update.ErrorCode = %q, want %q", reader.updateCalls[0].ErrorCode, "input_asset_too_large")
+	}
+}
+
+func TestExecuteGenerationFailsWithUnsupportedMediaTypeCode(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a quarterly review deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+
+	service := &Service{
+		blobs:          stubBlobStore{data: map[string][]byte{"blob://doc": {1, 2, 3}}},
+		responses:      &stubResponseClient{},
+		generationRead: reader,
+		assetRead: stubAssetReader{assets: []repository.PresentationGenerationAsset{{
+			ID:        "asset-doc",
+			Role:      string(AssetRoleInput),
+			BlobPath:  "blob://doc",
+			MediaType: "text/plain",
+			Filename:  "notes.txt",
+			SizeBytes: 3,
+		}}},
+	}
+
+	err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("ExecuteGeneration() error = nil, want error")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if reader.updateCalls[0].ErrorCode != "input_asset_unsupported_media_type" {
+		t.Fatalf("update.ErrorCode = %q, want %q", reader.updateCalls[0].ErrorCode, "input_asset_unsupported_media_type")
 	}
 }
 

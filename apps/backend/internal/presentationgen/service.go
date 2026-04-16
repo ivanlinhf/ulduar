@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
+	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -30,6 +31,12 @@ const (
 	plannerFailureInvalidJSON = "invalid_planner_output"
 	defaultMaxAttachmentBytes int64 = 20 << 20
 	runningGracePeriod              = time.Minute
+)
+
+var (
+	errPlannerInputAssetTooLarge             = errors.New("presentation input asset too large")
+	errPlannerInputAssetDownload             = errors.New("presentation input asset download failed")
+	errPlannerInputAssetUnsupportedMediaType = errors.New("presentation input asset unsupported media type")
 )
 
 const plannerDialectInstructions = `You are the Ulduar v1 presentation planner.
@@ -202,7 +209,7 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 
 	request, err := s.newCreateResponseRequest(ctx, generation, assets, "")
 	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "prepare presentation planner request", "input_asset_read_failed", err)
+		return s.failGenerationWithCause(ctx, generation, "prepare presentation planner request", plannerRequestPreparationErrorCode(err), err)
 	}
 
 	response, dialectJSON, err := s.executePlannerRequest(ctx, request)
@@ -338,12 +345,12 @@ func (s *Service) prepareAttachmentInput(ctx context.Context, asset repository.P
 		return azureopenai.InputContentItem{}, fmt.Errorf("blob store is not configured")
 	}
 	if asset.SizeBytes > defaultMaxAttachmentBytes {
-		return azureopenai.InputContentItem{}, fmt.Errorf("input asset %s exceeds %d bytes", asset.ID, defaultMaxAttachmentBytes)
+		return azureopenai.InputContentItem{}, fmt.Errorf("%w: input asset %s exceeds %d bytes", errPlannerInputAssetTooLarge, asset.ID, defaultMaxAttachmentBytes)
 	}
 
 	data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, defaultMaxAttachmentBytes)
 	if err != nil {
-		return azureopenai.InputContentItem{}, fmt.Errorf("load input asset %s blob: %w", asset.ID, err)
+		return azureopenai.InputContentItem{}, fmt.Errorf("%w: load input asset %s blob: %w", errPlannerInputAssetDownload, asset.ID, err)
 	}
 
 	switch asset.MediaType {
@@ -357,10 +364,10 @@ func (s *Service) prepareAttachmentInput(ctx context.Context, asset repository.P
 		return azureopenai.InputContentItem{
 			Type:     providerInputFileType,
 			FileData: base64.StdEncoding.EncodeToString(data),
-			Filename: asset.Filename,
+			Filename: filenames.Sanitize(asset.Filename, "attachment.pdf"),
 		}, nil
 	default:
-		return azureopenai.InputContentItem{}, fmt.Errorf("unsupported attachment media type %q", asset.MediaType)
+		return azureopenai.InputContentItem{}, fmt.Errorf("%w: unsupported attachment media type %q", errPlannerInputAssetUnsupportedMediaType, asset.MediaType)
 	}
 }
 
@@ -578,6 +585,19 @@ func runningGenerationStale(generation repository.PresentationGeneration, reques
 	}
 
 	return time.Since(*generation.StartedAt) > requestTimeout+runningGracePeriod
+}
+
+func plannerRequestPreparationErrorCode(err error) string {
+	switch {
+	case errors.Is(err, errPlannerInputAssetTooLarge):
+		return "input_asset_too_large"
+	case errors.Is(err, errPlannerInputAssetDownload):
+		return "input_asset_download_failed"
+	case errors.Is(err, errPlannerInputAssetUnsupportedMediaType):
+		return "input_asset_unsupported_media_type"
+	default:
+		return "planner_request_prepare_failed"
+	}
 }
 
 func validateUUID(value, field string) error {
