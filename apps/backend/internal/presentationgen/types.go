@@ -50,6 +50,23 @@ type PlannerConfig struct {
 	StreamTimeout  time.Duration
 }
 
+type InputAssetUpload struct {
+	Filename string
+	Data     []byte
+}
+
+type CreateGenerationParams struct {
+	SessionID   string
+	Prompt      string
+	Attachments []InputAssetUpload
+}
+
+type Capabilities struct {
+	InputMediaTypes []string
+	OutputMediaType string
+	ProviderName    string
+}
+
 type Generation struct {
 	ID            string
 	SessionID     string
@@ -82,4 +99,10 @@ type Asset struct {
 type GenerationView struct {
 	Generation Generation
 	Assets     []Asset
+}
+
+type AssetContent struct {
+	Filename  string
+	MediaType string
+	Data      []byte
 }

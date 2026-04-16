@@ -14,17 +14,20 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationgen"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
 type Handler struct {
 	chatService            chatService
 	imageGenerationService imageGenerationService
+	presentationService    presentationGenerationService
 	options                HandlerOptions
 }
 
@@ -34,6 +37,8 @@ type HandlerOptions struct {
 	ImageGenerationPollInterval           time.Duration
 	ImageGenerationMaxReferenceImageBytes int64
 	ImageGenerationService                imageGenerationService
+	PresentationGenerationService         presentationGenerationService
+	PresentationGenerationPollInterval    time.Duration
 }
 
 type chatService interface {
@@ -51,6 +56,15 @@ type imageGenerationService interface {
 	ExecuteGeneration(ctx context.Context, generationID string) error
 	GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (imagegen.AssetContent, error)
 	GetImageContent(ctx context.Context, sessionID, generationID, imageID string) (imagegen.AssetContent, error)
+}
+
+type presentationGenerationService interface {
+	Capabilities() presentationgen.Capabilities
+	ProviderConfigured() bool
+	CreatePendingGeneration(ctx context.Context, params presentationgen.CreateGenerationParams) (presentationgen.GenerationView, error)
+	GetGeneration(ctx context.Context, sessionID, generationID string) (presentationgen.GenerationView, error)
+	ExecuteGeneration(ctx context.Context, generationID string) error
+	GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (presentationgen.AssetContent, error)
 }
 
 type errorResponse struct {
@@ -139,6 +153,48 @@ type createImageGenerationResponse struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type presentationGenerationCapabilitiesResponse struct {
+	InputMediaTypes []string `json:"inputMediaTypes"`
+	OutputMediaType string   `json:"outputMediaType"`
+	ProviderName    string   `json:"providerName,omitempty"`
+}
+
+type createPresentationGenerationJSONRequest struct {
+	Prompt string `json:"prompt"`
+}
+
+type createPresentationGenerationResponse struct {
+	GenerationID string    `json:"generationId"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type presentationGenerationResponse struct {
+	GenerationID  string                              `json:"generationId"`
+	SessionID     string                              `json:"sessionId"`
+	Status        string                              `json:"status"`
+	Prompt        string                              `json:"prompt"`
+	DialectJSON   json.RawMessage                     `json:"dialectJson,omitempty"`
+	ProviderName  string                              `json:"providerName,omitempty"`
+	ProviderModel string                              `json:"providerModel,omitempty"`
+	ErrorCode     string                              `json:"errorCode,omitempty"`
+	ErrorMessage  string                              `json:"errorMessage,omitempty"`
+	CreatedAt     time.Time                           `json:"createdAt"`
+	CompletedAt   *time.Time                          `json:"completedAt,omitempty"`
+	InputAssets   []presentationGenerationAssetResult `json:"inputAssets"`
+	OutputAssets  []presentationGenerationAssetResult `json:"outputAssets"`
+}
+
+type presentationGenerationAssetResult struct {
+	AssetID    string    `json:"assetId"`
+	Filename   string    `json:"filename"`
+	MediaType  string    `json:"mediaType"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	SHA256     string    `json:"sha256"`
+	CreatedAt  time.Time `json:"createdAt"`
+	ContentURL string    `json:"contentUrl,omitempty"`
+}
+
 type imageGenerationResponse struct {
 	GenerationID     string                       `json:"generationId"`
 	SessionID        string                       `json:"sessionId"`
@@ -190,6 +246,7 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 		MessageRequestTimeout:                 90 * time.Second,
 		ImageGenerationPollInterval:           time.Second,
 		ImageGenerationMaxReferenceImageBytes: imagegen.DefaultMaxReferenceImageBytes,
+		PresentationGenerationPollInterval:    time.Second,
 	}
 	if len(options) > 0 {
 		provided := options[0]
@@ -208,11 +265,18 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 		if provided.ImageGenerationService != nil {
 			handlerOptions.ImageGenerationService = provided.ImageGenerationService
 		}
+		if provided.PresentationGenerationService != nil {
+			handlerOptions.PresentationGenerationService = provided.PresentationGenerationService
+		}
+		if provided.PresentationGenerationPollInterval > 0 {
+			handlerOptions.PresentationGenerationPollInterval = provided.PresentationGenerationPollInterval
+		}
 	}
 
 	handler := &Handler{
 		chatService:            chatService,
 		imageGenerationService: handlerOptions.ImageGenerationService,
+		presentationService:    handlerOptions.PresentationGenerationService,
 		options:                handlerOptions,
 	}
 
@@ -223,10 +287,15 @@ func NewHandler(chatService chatService, options ...HandlerOptions) http.Handler
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/messages", handler.createMessageHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/runs/{runId}/stream", handler.streamRunHandler)
 	mux.HandleFunc("GET /api/v1/image-generations/capabilities", handler.imageGenerationCapabilitiesHandler)
+	mux.HandleFunc("GET /api/v1/presentation-generations/capabilities", handler.presentationGenerationCapabilitiesHandler)
 	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/image-generations", handler.createImageGenerationHandler)
+	mux.HandleFunc("POST /api/v1/sessions/{sessionId}/presentation-generations", handler.createPresentationGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}", handler.getImageGenerationHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}", handler.getPresentationGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/stream", handler.streamImageGenerationHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/stream", handler.streamPresentationGenerationHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content", handler.getImageGenerationAssetContentHandler)
+	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/assets/{assetId}/content", handler.getPresentationGenerationAssetContentHandler)
 	mux.HandleFunc("GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content", handler.getImageGenerationImageContentHandler)
 	mux.HandleFunc("/", notFoundHandler)
 
@@ -419,6 +488,19 @@ func (h *Handler) imageGenerationCapabilitiesHandler(w http.ResponseWriter, r *h
 	writeJSON(w, http.StatusOK, mapImageGenerationCapabilities(h.imageGenerationService.Capabilities()))
 }
 
+func (h *Handler) presentationGenerationCapabilitiesHandler(w http.ResponseWriter, r *http.Request) {
+	if h.presentationService == nil {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+	if !h.presentationService.ProviderConfigured() {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapPresentationGenerationCapabilities(h.presentationService.Capabilities()))
+}
+
 func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
 		writeImageGenerationUnavailable(r.Context(), w)
@@ -449,6 +531,36 @@ func (h *Handler) createImageGenerationHandler(w http.ResponseWriter, r *http.Re
 	})
 }
 
+func (h *Handler) createPresentationGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.presentationService == nil {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+	if !h.presentationService.ProviderConfigured() {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	params, err := decodeCreatePresentationGenerationRequest(w, r)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+	params.SessionID = r.PathValue("sessionId")
+
+	view, err := h.presentationService.CreatePendingGeneration(r.Context(), params)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, createPresentationGenerationResponse{
+		GenerationID: view.Generation.ID,
+		Status:       string(view.Generation.Status),
+		CreatedAt:    view.Generation.CreatedAt,
+	})
+}
+
 func (h *Handler) getImageGenerationHandler(w http.ResponseWriter, r *http.Request) {
 	if h.imageGenerationService == nil {
 		writeImageGenerationUnavailable(r.Context(), w)
@@ -462,6 +574,21 @@ func (h *Handler) getImageGenerationHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, mapImageGenerationResponse(view))
+}
+
+func (h *Handler) getPresentationGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.presentationService == nil {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	view, err := h.presentationService.GetGeneration(r.Context(), r.PathValue("sessionId"), r.PathValue("generationId"))
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapPresentationGenerationResponse(view))
 }
 
 func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r *http.Request) {
@@ -482,6 +609,26 @@ func (h *Handler) getImageGenerationAssetContentHandler(w http.ResponseWriter, r
 	}
 
 	writeAssetContent(r.Context(), w, content, "")
+}
+
+func (h *Handler) getPresentationGenerationAssetContentHandler(w http.ResponseWriter, r *http.Request) {
+	if h.presentationService == nil {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	content, err := h.presentationService.GetAssetContent(
+		r.Context(),
+		r.PathValue("sessionId"),
+		r.PathValue("generationId"),
+		r.PathValue("assetId"),
+	)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	writePresentationAssetContent(r.Context(), w, content, "")
 }
 
 func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r *http.Request) {
@@ -505,20 +652,28 @@ func (h *Handler) getImageGenerationImageContentHandler(w http.ResponseWriter, r
 }
 
 func writeAssetContent(ctx context.Context, w http.ResponseWriter, content imagegen.AssetContent, cacheControl string) {
-	if content.MediaType != "" {
-		w.Header().Set("Content-Type", content.MediaType)
+	writeBinaryContent(ctx, w, content.Filename, content.MediaType, content.Data, cacheControl, "image generation")
+}
+
+func writePresentationAssetContent(ctx context.Context, w http.ResponseWriter, content presentationgen.AssetContent, cacheControl string) {
+	writeBinaryContent(ctx, w, content.Filename, content.MediaType, content.Data, cacheControl, "presentation generation")
+}
+
+func writeBinaryContent(ctx context.Context, w http.ResponseWriter, filename, mediaType string, data []byte, cacheControl string, logLabel string) {
+	if mediaType != "" {
+		w.Header().Set("Content-Type", mediaType)
 	}
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content.Data)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 	if cacheControl != "" {
 		w.Header().Set("Cache-Control", cacheControl)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if content.Filename != "" {
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": content.Filename}))
+	if filename != "" {
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": filename}))
 	}
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(content.Data); err != nil {
-		slog.ErrorContext(ctx, "write image generation content", logFields(ctx, "error", err)...)
+	if _, err := w.Write(data); err != nil {
+		slog.ErrorContext(ctx, "write "+logLabel+" content", logFields(ctx, "error", err)...)
 	}
 }
 
@@ -631,6 +786,126 @@ func (h *Handler) streamImageGenerationHandler(w http.ResponseWriter, r *http.Re
 				return
 			}
 			slog.ErrorContext(r.Context(), "image generation stream failed", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (h *Handler) streamPresentationGenerationHandler(w http.ResponseWriter, r *http.Request) {
+	if h.presentationService == nil {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(r.Context(), w, http.StatusInternalServerError, "streaming_unsupported", "streaming is not supported")
+		return
+	}
+
+	sessionID := r.PathValue("sessionId")
+	generationID := r.PathValue("generationId")
+	streamStarted := false
+	emit := func(eventName string, view presentationgen.GenerationView) error {
+		if err := writeSSEEvent(w, eventName, mapPresentationGenerationResponse(view)); err != nil {
+			return err
+		}
+		streamStarted = true
+		flusher.Flush()
+		return nil
+	}
+
+	view, err := h.presentationService.GetGeneration(r.Context(), sessionID, generationID)
+	if err != nil {
+		writeServiceError(r.Context(), w, err)
+		return
+	}
+
+	if _, done := presentationGenerationTerminalEvent(view.Generation.Status); !done && !h.presentationService.ProviderConfigured() {
+		writePresentationGenerationUnavailable(r.Context(), w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if terminalEvent, done := presentationGenerationTerminalEvent(view.Generation.Status); done {
+		if err := emit(terminalEvent, view); err != nil {
+			slog.ErrorContext(r.Context(), "write presentation generation terminal event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+		}
+		return
+	}
+
+	runningEmitted := false
+	if view.Generation.Status == presentationgen.StatusPending {
+		if err := emit("presentation_generation.started", view); err != nil {
+			slog.ErrorContext(r.Context(), "write presentation generation started event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+	} else {
+		if err := emit("presentation_generation.running", view); err != nil {
+			slog.ErrorContext(r.Context(), "write presentation generation running event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+		runningEmitted = true
+	}
+
+	ticker := time.NewTicker(h.options.PresentationGenerationPollInterval)
+	defer ticker.Stop()
+
+	for {
+		execErr := h.presentationService.ExecuteGeneration(r.Context(), generationID)
+		view, err = h.presentationService.GetGeneration(r.Context(), sessionID, generationID)
+		if err != nil {
+			if !streamStarted {
+				writeServiceError(r.Context(), w, err)
+				return
+			}
+			slog.ErrorContext(r.Context(), "refresh presentation generation stream state", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			return
+		}
+
+		if view.Generation.Status == presentationgen.StatusFailed {
+			if err := emit("presentation_generation.failed", view); err != nil {
+				slog.ErrorContext(r.Context(), "write presentation generation failed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			}
+			return
+		}
+		if execErr != nil {
+			slog.ErrorContext(r.Context(), "presentation generation execution failed", logFields(r.Context(), "generation_id", generationID, "error", execErr)...)
+			return
+		}
+
+		switch view.Generation.Status {
+		case presentationgen.StatusPending:
+		case presentationgen.StatusRunning:
+			if !runningEmitted {
+				if err := emit("presentation_generation.running", view); err != nil {
+					slog.ErrorContext(r.Context(), "write presentation generation running event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+					return
+				}
+				runningEmitted = true
+			}
+		case presentationgen.StatusCompleted:
+			if err := emit("presentation_generation.completed", view); err != nil {
+				slog.ErrorContext(r.Context(), "write presentation generation completed event", logFields(r.Context(), "generation_id", generationID, "error", err)...)
+			}
+			return
+		default:
+			err := fmt.Errorf("unsupported presentation generation status %q", view.Generation.Status)
+			if !streamStarted {
+				writeServiceError(r.Context(), w, err)
+				return
+			}
+			slog.ErrorContext(r.Context(), "presentation generation stream failed", logFields(r.Context(), "generation_id", generationID, "error", err)...)
 			return
 		}
 
@@ -773,6 +1048,30 @@ func decodeCreateImageGenerationRequest(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+func decodeCreatePresentationGenerationRequest(w http.ResponseWriter, r *http.Request) (presentationgen.CreateGenerationParams, error) {
+	r.Body = http.MaxBytesReader(w, r.Body, chat.MaxMessageRequestBytes)
+
+	mediaType, err := optionalRequestMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		return presentationgen.CreateGenerationParams{}, chat.ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "invalid Content-Type header",
+		}
+	}
+
+	switch {
+	case mediaType == "" || mediaType == "application/json":
+		return decodeCreatePresentationGenerationJSONRequest(r)
+	case mediaType == "multipart/form-data":
+		return decodeCreatePresentationGenerationMultipartRequest(r)
+	default:
+		return presentationgen.CreateGenerationParams{}, chat.ValidationError{
+			StatusCode: http.StatusUnsupportedMediaType,
+			Message:    "Content-Type must be application/json or multipart/form-data",
+		}
+	}
+}
+
 // optionalRequestMediaType parses Content-Type when present and returns an empty
 // media type for missing headers so callers can apply their own defaults.
 func optionalRequestMediaType(header string) (string, error) {
@@ -851,6 +1150,48 @@ func decodeCreateImageGenerationMultipartRequest(r *http.Request, maxRequestByte
 	}, nil
 }
 
+func decodeCreatePresentationGenerationJSONRequest(r *http.Request) (presentationgen.CreateGenerationParams, error) {
+	defer r.Body.Close()
+
+	var body createPresentationGenerationJSONRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&body); err != nil {
+		return presentationgen.CreateGenerationParams{}, classifyDecodeError(err)
+	}
+
+	return presentationgen.CreateGenerationParams{
+		Prompt: body.Prompt,
+	}, nil
+}
+
+func decodeCreatePresentationGenerationMultipartRequest(r *http.Request) (presentationgen.CreateGenerationParams, error) {
+	if err := r.ParseMultipartForm(chat.MaxMessageRequestBytes); err != nil {
+		return presentationgen.CreateGenerationParams{}, classifyDecodeError(err)
+	}
+	defer r.MultipartForm.RemoveAll()
+
+	uploads := combineMultipartFileHeaders(r.MultipartForm.File["attachments"], r.MultipartForm.File["attachments[]"])
+	attachments, err := chat.ReadAttachments(uploads)
+	if err != nil {
+		return presentationgen.CreateGenerationParams{}, err
+	}
+
+	inputs := make([]presentationgen.InputAssetUpload, 0, len(attachments))
+	for _, attachment := range attachments {
+		inputs = append(inputs, presentationgen.InputAssetUpload{
+			Filename: attachment.Filename,
+			Data:     attachment.Data,
+		})
+	}
+
+	return presentationgen.CreateGenerationParams{
+		Prompt:      r.FormValue("prompt"),
+		Attachments: inputs,
+	}, nil
+}
+
 func decodeMultipartMessageRequest(r *http.Request) (chat.CreateMessageParams, error) {
 	if err := r.ParseMultipartForm(chat.MaxMessageRequestBytes); err != nil {
 		return chat.CreateMessageParams{}, classifyDecodeError(err)
@@ -900,6 +1241,20 @@ func readReferenceImages(fileSets ...[]*multipart.FileHeader) ([]imagegen.InputA
 	return uploads, nil
 }
 
+func combineMultipartFileHeaders(fileSets ...[]*multipart.FileHeader) []*multipart.FileHeader {
+	total := 0
+	for _, set := range fileSets {
+		total += len(set)
+	}
+
+	headers := make([]*multipart.FileHeader, 0, total)
+	for _, set := range fileSets {
+		headers = append(headers, set...)
+	}
+
+	return headers
+}
+
 func coalesceText(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -930,6 +1285,14 @@ func mapImageGenerationCapabilities(capabilities imagegen.Capabilities) imageGen
 		MaxReferenceImages: capabilities.MaxReferenceImages,
 		OutputImageCount:   capabilities.OutputImageCount,
 		ProviderName:       capabilities.ProviderName,
+	}
+}
+
+func mapPresentationGenerationCapabilities(capabilities presentationgen.Capabilities) presentationGenerationCapabilitiesResponse {
+	return presentationGenerationCapabilitiesResponse{
+		InputMediaTypes: slices.Clone(capabilities.InputMediaTypes),
+		OutputMediaType: capabilities.OutputMediaType,
+		ProviderName:    capabilities.ProviderName,
 	}
 }
 
@@ -974,6 +1337,48 @@ func mapImageGenerationResponse(view imagegen.GenerationView) imageGenerationRes
 	}
 }
 
+func mapPresentationGenerationResponse(view presentationgen.GenerationView) presentationGenerationResponse {
+	inputAssets := make([]presentationGenerationAssetResult, 0, len(view.Assets))
+	outputAssets := make([]presentationGenerationAssetResult, 0, len(view.Assets))
+	for _, asset := range view.Assets {
+		item := presentationGenerationAssetResult{
+			AssetID:   asset.ID,
+			Filename:  asset.Filename,
+			MediaType: asset.MediaType,
+			SizeBytes: asset.SizeBytes,
+			SHA256:    asset.SHA256,
+			CreatedAt: asset.CreatedAt,
+		}
+		if asset.Role == presentationgen.AssetRoleOutput {
+			item.ContentURL = presentationGenerationAssetContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
+			outputAssets = append(outputAssets, item)
+			continue
+		}
+		inputAssets = append(inputAssets, item)
+	}
+
+	var dialectJSON json.RawMessage
+	if len(view.Generation.DialectJSON) > 0 {
+		dialectJSON = json.RawMessage(view.Generation.DialectJSON)
+	}
+
+	return presentationGenerationResponse{
+		GenerationID:  view.Generation.ID,
+		SessionID:     view.Generation.SessionID,
+		Status:        string(view.Generation.Status),
+		Prompt:        view.Generation.Prompt,
+		DialectJSON:   dialectJSON,
+		ProviderName:  view.Generation.ProviderName,
+		ProviderModel: view.Generation.ProviderModel,
+		ErrorCode:     view.Generation.ErrorCode,
+		ErrorMessage:  view.Generation.ErrorMessage,
+		CreatedAt:     view.Generation.CreatedAt,
+		CompletedAt:   view.Generation.CompletedAt,
+		InputAssets:   inputAssets,
+		OutputAssets:  outputAssets,
+	}
+}
+
 func mapImageGenerationResolutions(resolutions []imagegen.Resolution) []imageGenerationResolution {
 	mapped := make([]imageGenerationResolution, 0, len(resolutions))
 	for _, resolution := range resolutions {
@@ -1000,6 +1405,16 @@ func imageGenerationImageContentURL(sessionID, generationID, imageID string) str
 		"/content"
 }
 
+func presentationGenerationAssetContentURL(sessionID, generationID, assetID string) string {
+	return "/api/v1/sessions/" +
+		url.PathEscape(sessionID) +
+		"/presentation-generations/" +
+		url.PathEscape(generationID) +
+		"/assets/" +
+		url.PathEscape(assetID) +
+		"/content"
+}
+
 func imageGenerationTerminalEvent(status imagegen.Status) (string, bool) {
 	switch status {
 	case imagegen.StatusCompleted:
@@ -1011,8 +1426,23 @@ func imageGenerationTerminalEvent(status imagegen.Status) (string, bool) {
 	}
 }
 
+func presentationGenerationTerminalEvent(status presentationgen.Status) (string, bool) {
+	switch status {
+	case presentationgen.StatusCompleted:
+		return "presentation_generation.completed", true
+	case presentationgen.StatusFailed:
+		return "presentation_generation.failed", true
+	default:
+		return "", false
+	}
+}
+
 func writeImageGenerationUnavailable(ctx context.Context, w http.ResponseWriter) {
 	writeJSONError(ctx, w, http.StatusServiceUnavailable, "service_unavailable", "image generation is not configured")
+}
+
+func writePresentationGenerationUnavailable(ctx context.Context, w http.ResponseWriter) {
+	writeJSONError(ctx, w, http.StatusServiceUnavailable, "service_unavailable", "presentation generation is not configured")
 }
 
 func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
@@ -1025,6 +1455,12 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error) {
 	var imageValidationErr imagegen.ValidationError
 	if errors.As(err, &imageValidationErr) {
 		writeJSONError(ctx, w, imageValidationErr.StatusCode, errorCodeForStatus(imageValidationErr.StatusCode), imageValidationErr.Message)
+		return
+	}
+
+	var presentationValidationErr presentationgen.ValidationError
+	if errors.As(err, &presentationValidationErr) {
+		writeJSONError(ctx, w, presentationValidationErr.StatusCode, errorCodeForStatus(presentationValidationErr.StatusCode), presentationValidationErr.Message)
 		return
 	}
 
@@ -1179,9 +1615,10 @@ func shouldBypassTimeoutBuffering(r *http.Request) bool {
 		parts[imageGenerationAssetContentIndexVersion] == "v1" &&
 		parts[imageGenerationAssetContentIndexSessions] == "sessions" &&
 		parts[imageGenerationAssetContentIndexSessionID] != "" &&
-		parts[imageGenerationAssetContentIndexGenerations] == "image-generations" &&
+		(parts[imageGenerationAssetContentIndexGenerations] == "image-generations" ||
+			parts[imageGenerationAssetContentIndexGenerations] == "presentation-generations") &&
 		parts[imageGenerationAssetContentIndexGenerationID] != "" &&
-		(resourceType == "assets" || resourceType == "images") &&
+		(resourceType == "assets" || (parts[imageGenerationAssetContentIndexGenerations] == "image-generations" && resourceType == "images")) &&
 		parts[imageGenerationAssetContentIndexAssetID] != "" &&
 		parts[imageGenerationAssetContentIndexContent] == "content"
 }

@@ -128,6 +128,7 @@ func main() {
 			MessageRequestTimeout:                 cfg.MessageRequestTimeout,
 			ImageGenerationService:                imageService,
 			ImageGenerationMaxReferenceImageBytes: cfg.Image.MaxReferenceImageBytes,
+			PresentationGenerationService:         presentationService,
 		}),
 		ErrorLog:          slog.NewLogLogger(logger.With("component", "http_server").Handler(), slog.LevelError),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,

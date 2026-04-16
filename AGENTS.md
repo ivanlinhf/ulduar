@@ -54,6 +54,14 @@ Image generation (`AZURE_FOUNDRY_ENDPOINT` required for capabilities and create;
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/assets/{assetId}/content`
 - `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}/images/{imageId}/content`
 
+Presentation generation (`AZURE_OPENAI_PRESENTATION_ENDPOINT` required for capabilities and create; stream returns 503 for non-terminal generations without a configured planner; read-only retrieval/content endpoints remain available for existing completed generations):
+
+- `GET /api/v1/presentation-generations/capabilities`
+- `POST /api/v1/sessions/{sessionId}/presentation-generations`
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}`
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/stream`
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/assets/{assetId}/content`
+
 If you change request or response shapes, update backend, frontend, tests, and docs together.
 
 ## Working Rules
