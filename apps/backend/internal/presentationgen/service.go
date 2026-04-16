@@ -131,15 +131,8 @@ func mapAssets(records []repository.PresentationGenerationAsset) []Asset {
 }
 
 func validateUUID(value, field string) error {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ValidationError{
-			StatusCode: http.StatusBadRequest,
-			Message:    fmt.Sprintf("%s is required", field),
-		}
-	}
 	var parsed pgtype.UUID
-	if err := parsed.Scan(trimmed); err != nil {
+	if err := parsed.Scan(strings.TrimSpace(value)); err != nil {
 		return ValidationError{
 			StatusCode: http.StatusBadRequest,
 			Message:    fmt.Sprintf("%s must be a valid UUID", field),

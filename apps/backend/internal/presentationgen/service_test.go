@@ -2,6 +2,7 @@ package presentationgen
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -136,8 +137,30 @@ func TestGetGenerationMapsRepositoryNotFound(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
-	if validationErr.StatusCode != 404 {
-		t.Fatalf("validationErr.StatusCode = %d, want 404", validationErr.StatusCode)
+	if validationErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("validationErr.StatusCode = %d, want %d", validationErr.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestGetGenerationReturnsValidationErrorForEmptySessionID(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{}
+
+	_, err := service.GetGeneration(context.Background(), "   ", "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("GetGeneration() error = nil, want error")
+	}
+
+	validationErr, ok := err.(ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if validationErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("validationErr.StatusCode = %d, want %d", validationErr.StatusCode, http.StatusBadRequest)
+	}
+	if validationErr.Message != "sessionId must be a valid UUID" {
+		t.Fatalf("validationErr.Message = %q, want %q", validationErr.Message, "sessionId must be a valid UUID")
 	}
 }
 
