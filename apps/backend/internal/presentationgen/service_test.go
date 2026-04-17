@@ -945,14 +945,10 @@ type stubAssetReader struct {
 	assets            []repository.PresentationGenerationAsset
 	assetByID         repository.PresentationGenerationAsset
 	expectedSessionID string
-	lastAssetID       string
-	lastSessionID     string
 	err               error
 }
 
 func (s stubAssetReader) GetByIDAndSession(_ context.Context, assetID string, sessionID string) (repository.PresentationGenerationAsset, error) {
-	s.lastAssetID = assetID
-	s.lastSessionID = sessionID
 	if s.err != nil {
 		return repository.PresentationGenerationAsset{}, s.err
 	}
