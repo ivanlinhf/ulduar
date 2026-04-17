@@ -651,7 +651,7 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 
 	outputAsset, err := prepareOutputAsset(dialectJSON)
 	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "compile output presentation", "invalid_planner_output", err)
+		return s.failGenerationWithCause(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err)
 	}
 
 	tx, err := s.beginWriteTxFn(ctx)
@@ -955,6 +955,9 @@ func (s *Service) persistGenerationFailure(ctx context.Context, generation repos
 }
 
 func (s *Service) cleanupBlobs(blobPaths []string) {
+	if len(blobPaths) == 0 {
+		return
+	}
 	if s.blobs == nil {
 		return
 	}
