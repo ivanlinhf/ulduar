@@ -367,6 +367,7 @@ function createSelectedAttachment(file: File): SelectedPresentationAttachment {
 }
 
 function mapOutputAsset(payload: PresentationGenerationResponse): PresentationTurnOutputAsset | undefined {
+  // v1 produces a single downloadable PPTX output asset for each presentation generation.
   const asset = payload.outputAssets[0];
   if (!asset) {
     return undefined;
