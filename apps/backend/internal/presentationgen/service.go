@@ -649,11 +649,6 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"))
 	}
 
-	outputAsset, err := prepareOutputAsset(dialectJSON)
-	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err)
-	}
-
 	tx, err := s.beginWriteTxFn(ctx)
 	if err != nil {
 		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
@@ -668,6 +663,12 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return nil
 	}
 	generation = lockedGeneration
+
+	outputAsset, err := prepareOutputAsset(dialectJSON)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err)
+	}
 
 	providerModel := resolvedPlannerModel(response, generation.ProviderModel)
 	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)

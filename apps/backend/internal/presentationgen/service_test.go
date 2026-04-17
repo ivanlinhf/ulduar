@@ -299,6 +299,46 @@ func TestGetAssetContentRejectsInvalidStoredSize(t *testing.T) {
 	}
 }
 
+func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Date(2026, 4, 17, 6, 0, 0, 0, time.UTC)
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:          "22222222-2222-2222-2222-222222222222",
+			SessionID:   "11111111-1111-1111-1111-111111111111",
+			Status:      string(StatusCompleted),
+			CompletedAt: &completedAt,
+		},
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+	}
+
+	err := service.completeGeneration(context.Background(), repository.PresentationGeneration{
+		ID:        "22222222-2222-2222-2222-222222222222",
+		SessionID: "11111111-1111-1111-1111-111111111111",
+		Status:    string(StatusRunning),
+	}, azureopenai.Response{}, []byte("not-json"))
+	if err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if len(tx.createAssetCalls) != 0 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 0", len(tx.createAssetCalls))
+	}
+	if len(tx.updateCalls) != 0 {
+		t.Fatalf("len(tx.updateCalls) = %d, want 0", len(tx.updateCalls))
+	}
+	if len(blobs.uploadCalls) != 0 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected transaction rollback when generation is already terminal")
+	}
+}
+
 func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormalizedJSON(t *testing.T) {
 	t.Parallel()
 
@@ -902,20 +942,33 @@ func (s *stubGenerationReader) UpdateState(_ context.Context, params repository.
 }
 
 type stubAssetReader struct {
-	assets    []repository.PresentationGenerationAsset
-	assetByID repository.PresentationGenerationAsset
-	err       error
+	assets            []repository.PresentationGenerationAsset
+	assetByID         repository.PresentationGenerationAsset
+	expectedSessionID string
+	lastAssetID       string
+	lastSessionID     string
+	err               error
 }
 
-func (s stubAssetReader) GetByIDAndSession(context.Context, string, string) (repository.PresentationGenerationAsset, error) {
+func (s stubAssetReader) GetByIDAndSession(_ context.Context, assetID string, sessionID string) (repository.PresentationGenerationAsset, error) {
+	s.lastAssetID = assetID
+	s.lastSessionID = sessionID
 	if s.err != nil {
 		return repository.PresentationGenerationAsset{}, s.err
 	}
 	if s.assetByID.ID != "" {
-		return s.assetByID, nil
+		if s.assetByID.ID == assetID && (s.expectedSessionID == "" || s.expectedSessionID == sessionID) {
+			return s.assetByID, nil
+		}
+		return repository.PresentationGenerationAsset{}, repository.ErrNotFound
 	}
-	if len(s.assets) > 0 {
-		return s.assets[0], nil
+	for _, asset := range s.assets {
+		if asset.ID == assetID {
+			if s.expectedSessionID != "" && s.expectedSessionID != sessionID {
+				return repository.PresentationGenerationAsset{}, repository.ErrNotFound
+			}
+			return asset, nil
+		}
 	}
 	return repository.PresentationGenerationAsset{}, repository.ErrNotFound
 }
