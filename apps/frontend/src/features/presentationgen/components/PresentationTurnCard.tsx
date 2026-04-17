@@ -3,7 +3,7 @@ import { useState } from "react";
 import { downloadPresentationGenerationAsset } from "../../../lib/api";
 import { ActionTooltip } from "../../chat/components/ActionTooltip";
 import { IconDownload, IconSpinner } from "../../chat/components/icons";
-import { compactMediaType } from "../utils";
+import { compactMediaType, formatPresentationOutputMediaType } from "../utils";
 import type { PresentationTurn, PresentationTurnOutputAsset } from "../types";
 
 // Keep the blob URL alive briefly so the browser can start the download before revoking it.
@@ -96,7 +96,7 @@ function PresentationTurnOutputCard({ asset }: PresentationTurnOutputCardProps) 
     <div className="presentation-turn-output-card">
       <div className="presentation-turn-output-file">
         <strong>{asset.filename}</strong>
-        <span>{compactMediaType(asset.mediaType)}</span>
+        <span>{formatPresentationOutputMediaType(asset.mediaType)}</span>
       </div>
       <div
         className="image-turn-output-toolbar"

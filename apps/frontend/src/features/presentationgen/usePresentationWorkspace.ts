@@ -27,6 +27,9 @@ import type {
   SelectedPresentationAttachment,
 } from "./types";
 
+const maxTransportRecoveryRetries = 3;
+const transportRecoveryBaseDelayMs = 1000;
+
 export function usePresentationWorkspace(capabilities: PresentationGenerationCapabilitiesResponse) {
   const [bootstrapState, setBootstrapState] = useState<PresentationBootstrapState>("idle");
   const [submissionState, setSubmissionState] = useState<PresentationSubmissionState>("idle");
@@ -42,6 +45,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentToastTimeoutRef = useRef<number | null>(null);
   const attachmentsRef = useRef<SelectedPresentationAttachment[]>([]);
+  const mountedRef = useRef(true);
+  const transportRecoveryRetryCountRef = useRef(0);
+  const transportRecoveryTimeoutRef = useRef<number | null>(null);
 
   const inputAccept = useMemo(
     () => buildPresentationAttachmentAccept(capabilities.inputMediaTypes),
@@ -69,13 +75,16 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
   }, [attachments]);
 
   useEffect(() => {
+    mountedRef.current = true;
     void bootstrapSession();
 
     return () => {
+      mountedRef.current = false;
       if (attachmentToastTimeoutRef.current !== null) {
         window.clearTimeout(attachmentToastTimeoutRef.current);
         attachmentToastTimeoutRef.current = null;
       }
+      clearTransportRecoveryTimeout();
       closeStream();
     };
     // bootstrapSession is defined in the same hook scope and only needs to run once on mount
@@ -85,6 +94,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
   async function bootstrapSession() {
     closeStream();
     clearAttachmentToast();
+    resetTransportRecovery();
     setBootstrapState("loading");
     setSubmissionState("idle");
     setScreenError("");
@@ -96,6 +106,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
 
     try {
       const session = await createSession();
+      if (!mountedRef.current) {
+        return;
+      }
       startTransition(() => {
         setSessionId(session.sessionId);
         setBootstrapState("ready");
@@ -130,6 +143,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     setPrompt("");
     setAttachments([]);
     attachmentsRef.current = [];
+    resetTransportRecovery();
 
     const pendingTurn: PresentationTurn = {
       id: turnId,
@@ -162,6 +176,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
       const generationId = created.generationId;
 
       function markTurnRunning() {
+        if (!mountedRef.current) {
+          return;
+        }
         setTurns((prev) =>
           prev.map((turn) => (turn.id === turnId ? { ...turn, status: "running" } : turn)),
         );
@@ -181,19 +198,33 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     generationId: string,
     markTurnRunning: () => void,
   ) {
+    if (!mountedRef.current) {
+      return;
+    }
+
     streamCleanupRef.current = streamPresentationGeneration(sessionId, generationId, {
       onStarted: () => {
+        resetTransportRecovery();
         markTurnRunning();
       },
       onRunning: () => {
+        resetTransportRecovery();
         markTurnRunning();
       },
       onCompleted: (payload) => {
+        if (!mountedRef.current) {
+          return;
+        }
+        resetTransportRecovery();
         completeTurn(turnId, payload);
         closeStream();
         setSubmissionState("idle");
       },
       onFailed: (payload) => {
+        if (!mountedRef.current) {
+          return;
+        }
+        resetTransportRecovery();
         failTurn(turnId, payload.errorMessage ?? "Presentation generation failed");
         closeStream();
         setSubmissionState("idle");
@@ -211,21 +242,52 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     markTurnRunning: () => void,
     fallbackMessage: string,
   ) {
+    if (!mountedRef.current) {
+      return;
+    }
+
     try {
       const latest = await getPresentationGeneration(sessionId, generationId);
+      if (!mountedRef.current) {
+        return;
+      }
       if (latest.status === "completed") {
+        resetTransportRecovery();
         completeTurn(turnId, latest);
         closeStream();
         setSubmissionState("idle");
       } else if (latest.status === "failed") {
+        resetTransportRecovery();
         failTurn(turnId, latest.errorMessage ?? fallbackMessage);
         closeStream();
         setSubmissionState("idle");
       } else {
-        markTurnRunning();
-        openStream(turnId, sessionId, generationId, markTurnRunning);
+        const nextRetryCount = transportRecoveryRetryCountRef.current + 1;
+        if (nextRetryCount > maxTransportRecoveryRetries) {
+          resetTransportRecovery();
+          failTurn(turnId, fallbackMessage);
+          closeStream();
+          setSubmissionState("idle");
+          return;
+        }
+
+        transportRecoveryRetryCountRef.current = nextRetryCount;
+        closeStream();
+        clearTransportRecoveryTimeout();
+        transportRecoveryTimeoutRef.current = window.setTimeout(() => {
+          transportRecoveryTimeoutRef.current = null;
+          if (!mountedRef.current) {
+            return;
+          }
+          markTurnRunning();
+          openStream(turnId, sessionId, generationId, markTurnRunning);
+        }, transportRecoveryBaseDelayMs * 2 ** (nextRetryCount - 1));
       }
     } catch {
+      if (!mountedRef.current) {
+        return;
+      }
+      resetTransportRecovery();
       failTurn(turnId, fallbackMessage);
       closeStream();
       setSubmissionState("idle");
@@ -309,6 +371,20 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
   function closeStream() {
     streamCleanupRef.current?.();
     streamCleanupRef.current = null;
+  }
+
+  function clearTransportRecoveryTimeout() {
+    if (transportRecoveryTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(transportRecoveryTimeoutRef.current);
+    transportRecoveryTimeoutRef.current = null;
+  }
+
+  function resetTransportRecovery() {
+    clearTransportRecoveryTimeout();
+    transportRecoveryRetryCountRef.current = 0;
   }
 
   function clearAttachmentToastTimeout() {

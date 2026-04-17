@@ -6,6 +6,8 @@ export { compactMediaType } from "../chat/utils";
 export { createLocalId, formatBytes, toErrorMessage } from "../../lib/utils";
 
 const fallbackAllowedLabel = "JPEG, PNG, WebP images and PDFs";
+const presentationOutputMediaTypePPTX =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 export function buildPresentationAttachmentAccept(inputMediaTypes: string[]) {
   return inputMediaTypes.join(",");
@@ -31,6 +33,14 @@ export function validatePresentationAttachments(files: File[], inputMediaTypes: 
   }
 
   return "";
+}
+
+export function formatPresentationOutputMediaType(mediaType: string) {
+  if (mediaType === presentationOutputMediaTypePPTX) {
+    return "PPTX";
+  }
+
+  return compactMediaType(mediaType);
 }
 
 function formatPresentationAllowedTypes(inputMediaTypes: string[]) {

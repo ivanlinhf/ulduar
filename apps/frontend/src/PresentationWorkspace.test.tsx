@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import * as api from "./lib/api";
@@ -48,6 +48,7 @@ describe("PresentationWorkspace", () => {
     api.getPresentationGenerationCapabilities,
   );
   const mockedCreatePresentationGeneration = vi.mocked(api.createPresentationGeneration);
+  const mockedGetPresentationGeneration = vi.mocked(api.getPresentationGeneration);
   const mockedDownloadPresentationGenerationAsset = vi.mocked(
     api.downloadPresentationGenerationAsset,
   );
@@ -113,6 +114,15 @@ describe("PresentationWorkspace", () => {
       outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       providerName: "azure-openai",
     });
+    mockedGetPresentationGeneration.mockResolvedValue({
+      generationId: "gen-default",
+      sessionId: "22222222-2222-2222-2222-222222222222",
+      status: "running",
+      prompt: "Running deck",
+      createdAt: "2026-03-31T10:02:00Z",
+      inputAssets: [],
+      outputAssets: [],
+    });
     mockedDownloadPresentationGenerationAsset.mockResolvedValue(
       new Blob(["pptx"], {
         type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -123,6 +133,10 @@ describe("PresentationWorkspace", () => {
       presentationStreamHandlers = handlers;
       return vi.fn();
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("submits prompt plus optional image/pdf references and downloads the completed PPTX", async () => {
@@ -184,6 +198,7 @@ describe("PresentationWorkspace", () => {
       await waitFor(() => {
         expect(screen.getByText("completed")).toBeInTheDocument();
         expect(screen.getByText("quarterly-review.pptx")).toBeInTheDocument();
+        expect(screen.getByText("PPTX")).toBeInTheDocument();
       });
 
       await user.click(
@@ -273,6 +288,93 @@ describe("PresentationWorkspace", () => {
       expect(screen.getByText("failed")).toBeInTheDocument();
       expect(screen.getByText("planner returned invalid output")).toBeInTheDocument();
     });
+  });
+
+  it(
+    "backs off and stops retrying after repeated transport failures while the backend still reports running",
+    async () => {
+    mockedCreatePresentationGeneration.mockResolvedValue({
+      generationId: "gen-66666666-6666-6666-6666-666666666666",
+      status: "pending",
+      createdAt: "2026-03-31T10:02:00Z",
+    });
+
+      const user = userEvent.setup();
+      render(<App />);
+      await screen.findByText("Ready for the next turn.");
+      await openPresentationWorkspace(user);
+
+      await user.type(screen.getByLabelText("Presentation prompt"), "Deck with unstable stream");
+      await user.click(screen.getByRole("button", { name: "Generate" }));
+
+      await waitFor(() => {
+        expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(1);
+      });
+
+      vi.useFakeTimers();
+
+      let expectedGetCalls = 0;
+      for (const delay of [1000, 2000, 4000]) {
+        await act(async () => {
+          presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
+          await Promise.resolve();
+        });
+        expectedGetCalls += 1;
+
+        expect(mockedGetPresentationGeneration).toHaveBeenCalledTimes(expectedGetCalls);
+
+        await act(async () => {
+          vi.advanceTimersByTime(delay);
+          await Promise.resolve();
+        });
+
+        expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(expectedGetCalls + 1);
+      }
+
+      await act(async () => {
+        presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
+        await Promise.resolve();
+      });
+
+      expect(mockedGetPresentationGeneration).toHaveBeenCalledTimes(4);
+      expect(screen.getByText("failed")).toBeInTheDocument();
+      expect(screen.getByText("Streaming connection closed before completion")).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
+
+      expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(4);
+    },
+    10000,
+  );
+
+  it("does not retry stream recovery after the workspace unmounts", async () => {
+    mockedCreatePresentationGeneration.mockResolvedValue({
+      generationId: "gen-77777777-7777-7777-7777-777777777777",
+      status: "pending",
+      createdAt: "2026-03-31T10:02:00Z",
+    });
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("Ready for the next turn.");
+    await openPresentationWorkspace(user);
+
+    await user.type(screen.getByLabelText("Presentation prompt"), "Deck that unmounts");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    view.unmount();
+
+    act(() => {
+      presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
+    });
+
+    expect(mockedGetPresentationGeneration).not.toHaveBeenCalled();
+    expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(1);
   });
 
   async function openPresentationWorkspace(user: ReturnType<typeof userEvent.setup>) {
