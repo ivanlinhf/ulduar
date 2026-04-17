@@ -16,13 +16,16 @@ vi.mock("./lib/api", () => ({
 vi.mock("./lib/config", () => ({
   apiBaseURL: "http://localhost:8080",
   isImageGenerationEnabled: true,
+  isPresentationGenerationEnabled: false,
   frontendConfig: {
     apiBaseURL: "http://localhost:8080",
     isImageGenerationEnabled: true,
+    isPresentationGenerationEnabled: false,
   },
   createFrontendConfig: vi.fn(() => ({
     apiBaseURL: "http://localhost:8080",
     isImageGenerationEnabled: true,
+    isPresentationGenerationEnabled: false,
   })),
 }));
 

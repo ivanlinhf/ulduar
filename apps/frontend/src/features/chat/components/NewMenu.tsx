@@ -2,31 +2,42 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } f
 
 import { IconNewChat } from "./icons";
 
-type MenuItemKey = "new-chat" | "new-image";
+type MenuItemKey = "new-chat" | "new-image" | "new-presentation";
 
 type NewMenuProps = {
   isImageGenerationEnabled: boolean;
   isImageGenerationAvailable?: boolean;
+  isPresentationGenerationEnabled?: boolean;
+  isPresentationGenerationAvailable?: boolean;
   onNewChat: () => void;
   onNewImage?: () => void;
+  onNewPresentation?: () => void;
 };
 
 export function NewMenu({
   isImageGenerationEnabled,
   isImageGenerationAvailable = true,
+  isPresentationGenerationEnabled = false,
+  isPresentationGenerationAvailable = true,
   onNewChat,
   onNewImage,
+  onNewPresentation,
 }: NewMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const newChatRef = useRef<HTMLButtonElement>(null);
   const newImageRef = useRef<HTMLButtonElement>(null);
+  const newPresentationRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   // Tracks which item holds tabIndex=0 in the roving tabindex scheme.
   const [activeKey, setActiveKey] = useState<MenuItemKey | null>(null);
   const focusLastOnOpenRef = useRef(false);
   const canCreateImage = isImageGenerationEnabled && isImageGenerationAvailable && typeof onNewImage === "function";
+  const canCreatePresentation =
+    isPresentationGenerationEnabled &&
+    isPresentationGenerationAvailable &&
+    typeof onNewPresentation === "function";
 
   // Returns the ordered list of enabled item keys (disabled items excluded).
   const getEnabledKeys = useCallback((): MenuItemKey[] => {
@@ -34,13 +45,17 @@ export function NewMenu({
     if (canCreateImage) {
       keys.push("new-image");
     }
+    if (canCreatePresentation) {
+      keys.push("new-presentation");
+    }
     return keys;
-  }, [canCreateImage]);
+  }, [canCreateImage, canCreatePresentation]);
 
   function focusItem(key: MenuItemKey) {
     setActiveKey(key);
     if (key === "new-chat") newChatRef.current?.focus();
     else if (key === "new-image") newImageRef.current?.focus();
+    else if (key === "new-presentation") newPresentationRef.current?.focus();
   }
 
   function open() {
@@ -225,6 +240,25 @@ export function NewMenu({
             }}
           >
             New Image
+          </button>
+        )}
+
+        {isPresentationGenerationEnabled && (
+          <button
+            ref={newPresentationRef}
+            role="menuitem"
+            type="button"
+            className="new-menu-item"
+            tabIndex={canCreatePresentation && activeKey === "new-presentation" ? 0 : -1}
+            disabled={!canCreatePresentation}
+            aria-disabled={!canCreatePresentation ? "true" : undefined}
+            onClick={() => {
+              triggerRef.current?.focus();
+              onNewPresentation?.();
+              close();
+            }}
+          >
+            New Presentation
           </button>
         )}
       </div>

@@ -11,16 +11,18 @@ import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfi
 import { useChatApp } from "./features/chat/useChatApp";
 import { ImageWorkspace } from "./features/imagegen/components/ImageWorkspace";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
-import { isImageGenerationEnabled } from "./lib/config";
+import { isImageGenerationEnabled, isPresentationGenerationEnabled } from "./lib/config";
 import { useImageGenerationBootstrap } from "./lib/imageGeneration";
+import { usePresentationGenerationBootstrap } from "./lib/presentationGeneration";
 
-export type WorkspaceMode = "chat" | "image";
+export type WorkspaceMode = "chat" | "image" | "presentation";
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceMode>("chat");
   const [newImageKey, setNewImageKey] = useState(0);
   const chat = useChatApp();
   const imageGeneration = useImageGenerationBootstrap(isImageGenerationEnabled);
+  const presentationGeneration = usePresentationGenerationBootstrap(isPresentationGenerationEnabled);
   const turnCount = chat.messages.filter((message) => message.role === "user").length;
   const update = useFrontendUpdate(turnCount);
   const isAnyDialogOpen = chat.isExpandedComposerOpen || update.isReloadConfirmationOpen;
@@ -33,6 +35,10 @@ export default function App() {
   function handleNewImage() {
     setWorkspace("image");
     setNewImageKey((k) => k + 1);
+  }
+
+  function handleNewPresentation() {
+    setWorkspace("presentation");
   }
 
   const imageCapabilities =
@@ -49,6 +55,7 @@ export default function App() {
         aria-hidden={isAnyDialogOpen ? "true" : undefined}
         data-workspace={workspace}
         data-image-generation-bootstrap-state={imageGeneration.status}
+        data-presentation-generation-bootstrap-state={presentationGeneration.status}
       >
         {workspace === "image" && imageCapabilities ? (
           <ImageWorkspace
@@ -94,8 +101,11 @@ export default function App() {
                 <NewMenu
                   isImageGenerationEnabled={isImageGenerationEnabled}
                   isImageGenerationAvailable={imageGeneration.status === "available"}
+                  isPresentationGenerationEnabled={isPresentationGenerationEnabled}
+                  isPresentationGenerationAvailable={presentationGeneration.status === "available"}
                   onNewChat={handleNewChat}
                   onNewImage={handleNewImage}
+                  onNewPresentation={handleNewPresentation}
                 />
               </div>
             </header>
