@@ -10,8 +10,12 @@ vi.mock("./lib/api", () => ({
   getPresentationGenerationCapabilities: vi.fn(),
   createMessage: vi.fn(),
   createImageGeneration: vi.fn(),
+  createPresentationGeneration: vi.fn(),
+  getPresentationGeneration: vi.fn(),
   streamRun: vi.fn(),
   streamImageGeneration: vi.fn(),
+  streamPresentationGeneration: vi.fn(),
+  downloadPresentationGenerationAsset: vi.fn(),
 }));
 
 vi.mock("./lib/config", () => ({

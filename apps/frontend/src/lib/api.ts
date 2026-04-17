@@ -94,9 +94,17 @@ export type PresentationGenerationCapabilitiesResponse = {
   providerName?: string;
 };
 
+export type PresentationGenerationStatus = "pending" | "running" | "completed" | "failed";
+
 export type CreateImageGenerationResponse = {
   generationId: string;
   status: ImageGenerationStatus;
+  createdAt: string;
+};
+
+export type CreatePresentationGenerationResponse = {
+  generationId: string;
+  status: PresentationGenerationStatus;
   createdAt: string;
 };
 
@@ -128,6 +136,32 @@ export type ImageGenerationResponse = {
   completedAt?: string;
   inputAssets: ImageGenerationAssetResponse[];
   outputAssets: ImageGenerationAssetResponse[];
+};
+
+export type PresentationGenerationAssetResponse = {
+  assetId: string;
+  filename: string;
+  mediaType: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+  contentUrl?: string;
+};
+
+export type PresentationGenerationResponse = {
+  generationId: string;
+  sessionId: string;
+  status: PresentationGenerationStatus;
+  prompt: string;
+  dialectJson?: unknown;
+  providerName?: string;
+  providerModel?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt: string;
+  completedAt?: string;
+  inputAssets: PresentationGenerationAssetResponse[];
+  outputAssets: PresentationGenerationAssetResponse[];
 };
 
 export type ImageGenerationStreamEventName =
@@ -168,6 +202,14 @@ export type ImageGenerationStreamHandlers = {
   onRunning?: (payload: ImageGenerationStreamEventPayload) => void;
   onCompleted?: (payload: ImageGenerationStreamEventPayload) => void;
   onFailed?: (payload: ImageGenerationStreamEventPayload) => void;
+  onTransportError?: (message: string) => void;
+};
+
+export type PresentationGenerationStreamHandlers = {
+  onStarted?: (payload: PresentationGenerationResponse) => void;
+  onRunning?: (payload: PresentationGenerationResponse) => void;
+  onCompleted?: (payload: PresentationGenerationResponse) => void;
+  onFailed?: (payload: PresentationGenerationResponse) => void;
   onTransportError?: (message: string) => void;
 };
 
@@ -265,9 +307,51 @@ export async function createImageGeneration(input: {
   });
 }
 
+export async function createPresentationGeneration(input: {
+  sessionId: string;
+  prompt: string;
+  attachments?: File[];
+}): Promise<CreatePresentationGenerationResponse> {
+  const { sessionId, prompt, attachments = [] } = input;
+  const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations`;
+
+  if (attachments.length === 0) {
+    return requestJSON<CreatePresentationGenerationResponse>(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    });
+  }
+
+  const formData = new FormData();
+  formData.set("prompt", prompt);
+  for (const file of attachments) {
+    formData.append("attachments", file);
+  }
+
+  return requestJSON<CreatePresentationGenerationResponse>(path, {
+    method: "POST",
+    body: formData,
+  });
+}
+
 export async function getImageGeneration(sessionId: string, generationId: string): Promise<ImageGenerationResponse> {
   return requestJSON<ImageGenerationResponse>(
     `/api/v1/sessions/${encodeURIComponent(sessionId)}/image-generations/${encodeURIComponent(generationId)}`,
+    {
+      method: "GET",
+    },
+  );
+}
+
+export async function getPresentationGeneration(
+  sessionId: string,
+  generationId: string,
+): Promise<PresentationGenerationResponse> {
+  return requestJSON<PresentationGenerationResponse>(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations/${encodeURIComponent(generationId)}`,
     {
       method: "GET",
     },
@@ -366,6 +450,65 @@ export function streamImageGeneration(
   };
 }
 
+export function streamPresentationGeneration(
+  sessionId: string,
+  generationId: string,
+  handlers: PresentationGenerationStreamHandlers,
+): () => void {
+  const url = `${apiBaseURL}/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations/${encodeURIComponent(generationId)}/stream`;
+  const source = new EventSource(url);
+  let closed = false;
+  let terminal = false;
+
+  source.addEventListener("presentation_generation.started", (event) => {
+    handlers.onStarted?.(parsePayload<PresentationGenerationResponse>(event));
+  });
+
+  source.addEventListener("presentation_generation.running", (event) => {
+    handlers.onRunning?.(parsePayload<PresentationGenerationResponse>(event));
+  });
+
+  source.addEventListener("presentation_generation.completed", (event) => {
+    terminal = true;
+    handlers.onCompleted?.(parsePayload<PresentationGenerationResponse>(event));
+    source.close();
+  });
+
+  source.addEventListener("presentation_generation.failed", (event) => {
+    terminal = true;
+    handlers.onFailed?.(parsePayload<PresentationGenerationResponse>(event));
+    source.close();
+  });
+
+  source.onerror = () => {
+    if (closed || terminal) {
+      return;
+    }
+
+    terminal = true;
+    handlers.onTransportError?.("Streaming connection closed before completion");
+    source.close();
+  };
+
+  return () => {
+    closed = true;
+    source.close();
+  };
+}
+
+export async function downloadPresentationGenerationAsset(
+  sessionId: string,
+  generationId: string,
+  assetId: string,
+): Promise<Blob> {
+  return requestBlob(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations/${encodeURIComponent(generationId)}/assets/${encodeURIComponent(assetId)}/content`,
+    {
+      method: "GET",
+    },
+  );
+}
+
 async function requestJSON<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(apiBaseURL + path, init);
   if (!response.ok) {
@@ -373,6 +516,15 @@ async function requestJSON<T>(path: string, init: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+async function requestBlob(path: string, init: RequestInit): Promise<Blob> {
+  const response = await fetch(apiBaseURL + path, init);
+  if (!response.ok) {
+    throw new APIError(response.status, await readErrorMessage(response));
+  }
+
+  return response.blob();
 }
 
 async function readErrorMessage(response: Response): Promise<string> {

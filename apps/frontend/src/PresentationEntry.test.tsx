@@ -16,6 +16,11 @@ vi.mock("./lib/api", async (importOriginal) => {
     getImageGenerationCapabilities: vi.fn(),
     getPresentationGenerationCapabilities: vi.fn(),
     createMessage: vi.fn(),
+    createPresentationGeneration: vi.fn(),
+    getPresentationGeneration: vi.fn(),
+    streamImageGeneration: vi.fn(),
+    streamPresentationGeneration: vi.fn(),
+    downloadPresentationGenerationAsset: vi.fn(),
     streamRun: vi.fn(),
   };
 });

@@ -1,0 +1,49 @@
+.presentation-composer .composer-input {
+  padding-right: 164px;
+}
+
+.presentation-composer-controls {
+  justify-content: space-between;
+}
+
+.presentation-turn-card {
+  gap: 14px;
+}
+
+.presentation-turn-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presentation-turn-output-card {
+  display: grid;
+  gap: 10px;
+}
+
+.presentation-turn-output-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 32rem);
+  max-width: 100%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(56, 44, 30, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 247, 239, 0.94)),
+    var(--surface-strong);
+}
+
+.presentation-turn-output-file strong {
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.presentation-turn-output-file span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

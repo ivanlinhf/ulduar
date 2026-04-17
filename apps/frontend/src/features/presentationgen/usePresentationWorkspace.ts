@@ -1,0 +1,377 @@
+import {
+  startTransition,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type SubmitEvent,
+} from "react";
+
+import {
+  createPresentationGeneration,
+  createSession,
+  getPresentationGeneration,
+  streamPresentationGeneration,
+  type PresentationGenerationAssetResponse,
+  type PresentationGenerationCapabilitiesResponse,
+  type PresentationGenerationResponse,
+} from "../../lib/api";
+import { attachmentToastDurationMs, buildPresentationAttachmentAccept, createLocalId, toErrorMessage, validatePresentationAttachments } from "./utils";
+import type {
+  PresentationBootstrapState,
+  PresentationSubmissionState,
+  PresentationTurn,
+  PresentationTurnOutputAsset,
+  SelectedPresentationAttachment,
+} from "./types";
+
+export function usePresentationWorkspace(capabilities: PresentationGenerationCapabilitiesResponse) {
+  const [bootstrapState, setBootstrapState] = useState<PresentationBootstrapState>("idle");
+  const [submissionState, setSubmissionState] = useState<PresentationSubmissionState>("idle");
+  const [sessionId, setSessionId] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<SelectedPresentationAttachment[]>([]);
+  const [screenError, setScreenError] = useState("");
+  const [attachmentToast, setAttachmentToast] = useState("");
+  const [turns, setTurns] = useState<PresentationTurn[]>([]);
+
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentToastTimeoutRef = useRef<number | null>(null);
+  const attachmentsRef = useRef<SelectedPresentationAttachment[]>([]);
+
+  const inputAccept = useMemo(
+    () => buildPresentationAttachmentAccept(capabilities.inputMediaTypes),
+    [capabilities.inputMediaTypes],
+  );
+  const busy = bootstrapState === "loading" || submissionState !== "idle";
+  const canSubmit = prompt.trim() !== "" && !busy && bootstrapState === "ready";
+  const generateButtonLabel =
+    submissionState === "streaming"
+      ? "Generating..."
+      : submissionState === "submitting"
+        ? "Submitting..."
+        : "Generate";
+  const workspaceSubtitle =
+    submissionState !== "idle"
+      ? "Generating presentation..."
+      : bootstrapState === "loading"
+        ? "Creating session..."
+        : bootstrapState === "error"
+          ? "Unable to create session."
+          : "Ready to generate.";
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    void bootstrapSession();
+
+    return () => {
+      if (attachmentToastTimeoutRef.current !== null) {
+        window.clearTimeout(attachmentToastTimeoutRef.current);
+        attachmentToastTimeoutRef.current = null;
+      }
+      closeStream();
+    };
+    // bootstrapSession is defined in the same hook scope and only needs to run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function bootstrapSession() {
+    closeStream();
+    clearAttachmentToast();
+    setBootstrapState("loading");
+    setSubmissionState("idle");
+    setScreenError("");
+    setPrompt("");
+    setAttachments([]);
+    attachmentsRef.current = [];
+    setSessionId("");
+    setTurns([]);
+
+    try {
+      const session = await createSession();
+      startTransition(() => {
+        setSessionId(session.sessionId);
+        setBootstrapState("ready");
+      });
+    } catch (error) {
+      setBootstrapState("error");
+      setScreenError(toErrorMessage(error, "Failed to create a presentation session"));
+    }
+  }
+
+  async function submitGeneration() {
+    if (!canSubmit || sessionId === "") {
+      return;
+    }
+
+    const validationError = validatePresentationAttachments(
+      attachmentsRef.current.map((attachment) => attachment.file),
+      capabilities.inputMediaTypes,
+    );
+    if (validationError) {
+      showAttachmentToast(validationError);
+      return;
+    }
+
+    const draftPrompt = prompt;
+    const draftAttachments = attachmentsRef.current;
+    const draftSessionId = sessionId;
+    const turnId = createLocalId("turn");
+
+    setScreenError("");
+    setSubmissionState("submitting");
+    setPrompt("");
+    setAttachments([]);
+    attachmentsRef.current = [];
+
+    const pendingTurn: PresentationTurn = {
+      id: turnId,
+      generationId: "",
+      prompt: draftPrompt,
+      inputAttachments: draftAttachments.map(({ id, file }) => ({
+        id,
+        filename: file.name,
+        mediaType: file.type,
+      })),
+      status: "pending",
+    };
+    setTurns((prev) => [...prev, pendingTurn]);
+
+    try {
+      const created = await createPresentationGeneration({
+        sessionId: draftSessionId,
+        prompt: draftPrompt,
+        attachments: draftAttachments.map((attachment) => attachment.file),
+      });
+
+      setTurns((prev) =>
+        prev.map((turn) =>
+          turn.id === turnId ? { ...turn, generationId: created.generationId } : turn,
+        ),
+      );
+
+      setSubmissionState("streaming");
+      closeStream();
+      const generationId = created.generationId;
+
+      function markTurnRunning() {
+        setTurns((prev) =>
+          prev.map((turn) => (turn.id === turnId ? { ...turn, status: "running" } : turn)),
+        );
+      }
+
+      streamCleanupRef.current = streamPresentationGeneration(draftSessionId, generationId, {
+        onStarted: () => {
+          markTurnRunning();
+        },
+        onRunning: () => {
+          markTurnRunning();
+        },
+        onCompleted: (payload) => {
+          completeTurn(turnId, payload);
+          closeStream();
+          setSubmissionState("idle");
+        },
+        onFailed: (payload) => {
+          failTurn(turnId, payload.errorMessage ?? "Presentation generation failed");
+          closeStream();
+          setSubmissionState("idle");
+        },
+        onTransportError: (message) => {
+          void reconcileTransportError(turnId, draftSessionId, generationId, message);
+        },
+      });
+    } catch (error) {
+      const errorMessage = toErrorMessage(error, "Failed to submit presentation generation");
+      failTurn(turnId, errorMessage);
+      setSubmissionState("idle");
+    }
+  }
+
+  async function reconcileTransportError(
+    turnId: string,
+    sessionId: string,
+    generationId: string,
+    fallbackMessage: string,
+  ) {
+    try {
+      const latest = await getPresentationGeneration(sessionId, generationId);
+      if (latest.status === "completed") {
+        completeTurn(turnId, latest);
+      } else if (latest.status === "failed") {
+        failTurn(turnId, latest.errorMessage ?? fallbackMessage);
+      } else {
+        failTurn(turnId, fallbackMessage);
+      }
+    } catch {
+      failTurn(turnId, fallbackMessage);
+    } finally {
+      closeStream();
+      setSubmissionState("idle");
+    }
+  }
+
+  function completeTurn(turnId: string, payload: PresentationGenerationResponse) {
+    const outputAsset = mapOutputAsset(payload);
+    setTurns((prev) =>
+      prev.map((turn) =>
+        turn.id === turnId ? { ...turn, status: "completed", outputAsset, errorMessage: undefined } : turn,
+      ),
+    );
+  }
+
+  function failTurn(turnId: string, errorMessage: string) {
+    setTurns((prev) =>
+      prev.map((turn) => (turn.id === turnId ? { ...turn, status: "failed", errorMessage } : turn)),
+    );
+  }
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitGeneration();
+  }
+
+  function handlePromptChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    setPrompt(event.target.value);
+  }
+
+  function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+
+    if (event.key === "Enter" && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      void submitGeneration();
+    }
+  }
+
+  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) {
+      return;
+    }
+
+    const next = [...attachmentsRef.current, ...files.map((file) => createSelectedAttachment(file))];
+    const validationError = validatePresentationAttachments(
+      next.map((attachment) => attachment.file),
+      capabilities.inputMediaTypes,
+    );
+    if (validationError) {
+      showAttachmentToast(validationError);
+      return;
+    }
+
+    clearAttachmentToast();
+    setScreenError("");
+    attachmentsRef.current = next;
+    setAttachments(next);
+  }
+
+  function openFilePicker() {
+    if (busy) {
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((current) => {
+      const next = current.filter((attachment) => attachment.id !== id);
+      attachmentsRef.current = next;
+      return next;
+    });
+  }
+
+  function closeStream() {
+    streamCleanupRef.current?.();
+    streamCleanupRef.current = null;
+  }
+
+  function clearAttachmentToastTimeout() {
+    if (attachmentToastTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(attachmentToastTimeoutRef.current);
+    attachmentToastTimeoutRef.current = null;
+  }
+
+  function clearAttachmentToast() {
+    clearAttachmentToastTimeout();
+    setAttachmentToast("");
+  }
+
+  function showAttachmentToast(message: string) {
+    clearAttachmentToastTimeout();
+    setAttachmentToast(message);
+    attachmentToastTimeoutRef.current = window.setTimeout(() => {
+      attachmentToastTimeoutRef.current = null;
+      setAttachmentToast("");
+    }, attachmentToastDurationMs);
+  }
+
+  return {
+    attachmentToast,
+    attachments,
+    bootstrapState,
+    busy,
+    canSubmit,
+    composerRef,
+    fileInputRef,
+    generateButtonLabel,
+    handleFileSelection,
+    handlePromptChange,
+    handlePromptKeyDown,
+    handleSubmit,
+    inputAccept,
+    openFilePicker,
+    prompt,
+    removeAttachment,
+    screenError,
+    sessionId,
+    submissionState,
+    turns,
+    workspaceSubtitle,
+  };
+}
+
+function createSelectedAttachment(file: File): SelectedPresentationAttachment {
+  return {
+    id: createLocalId("attachment"),
+    file,
+  };
+}
+
+function mapOutputAsset(payload: PresentationGenerationResponse): PresentationTurnOutputAsset | undefined {
+  const asset = payload.outputAssets.find((candidate) => candidate.contentUrl) ?? payload.outputAssets[0];
+  if (!asset) {
+    return undefined;
+  }
+
+  return mapPresentationOutputAsset(payload.sessionId, payload.generationId, asset);
+}
+
+function mapPresentationOutputAsset(
+  sessionId: string,
+  generationId: string,
+  asset: PresentationGenerationAssetResponse,
+): PresentationTurnOutputAsset {
+  return {
+    assetId: asset.assetId,
+    filename: asset.filename,
+    mediaType: asset.mediaType,
+    contentUrl: asset.contentUrl,
+    sessionId,
+    generationId,
+  };
+}
