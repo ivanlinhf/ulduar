@@ -7,18 +7,21 @@ describe("createFrontendConfig", () => {
     expect(createFrontendConfig({})).toEqual({
       apiBaseURL: "http://localhost:8080",
       isImageGenerationEnabled: false,
+      isPresentationGenerationEnabled: false,
     });
   });
 
-  it("parses the image generation flag and normalizes the API base URL", () => {
+  it("parses the generation flags and normalizes the API base URL", () => {
     expect(
       createFrontendConfig({
         VITE_API_BASE_URL: "https://example.com/",
         VITE_IMAGE_GENERATION_ENABLED: " true ",
+        VITE_PRESENTATION_GENERATION_ENABLED: " TRUE ",
       }),
     ).toEqual({
       apiBaseURL: "https://example.com",
       isImageGenerationEnabled: true,
+      isPresentationGenerationEnabled: true,
     });
   });
 });

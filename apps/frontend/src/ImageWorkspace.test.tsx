@@ -7,6 +7,7 @@ vi.mock("./lib/api", () => ({
   createSession: vi.fn(),
   getSession: vi.fn(),
   getImageGenerationCapabilities: vi.fn(),
+  getPresentationGenerationCapabilities: vi.fn(),
   createMessage: vi.fn(),
   createImageGeneration: vi.fn(),
   streamRun: vi.fn(),
@@ -16,13 +17,16 @@ vi.mock("./lib/api", () => ({
 vi.mock("./lib/config", () => ({
   apiBaseURL: "http://localhost:8080",
   isImageGenerationEnabled: true,
+  isPresentationGenerationEnabled: false,
   frontendConfig: {
     apiBaseURL: "http://localhost:8080",
     isImageGenerationEnabled: true,
+    isPresentationGenerationEnabled: false,
   },
   createFrontendConfig: vi.fn(() => ({
     apiBaseURL: "http://localhost:8080",
     isImageGenerationEnabled: true,
+    isPresentationGenerationEnabled: false,
   })),
 }));
 

@@ -9,8 +9,11 @@ function renderNewMenu(props: Partial<ComponentProps<typeof NewMenu>> = {}) {
   const defaults = {
     isImageGenerationEnabled: false,
     isImageGenerationAvailable: false,
+    isPresentationGenerationEnabled: false,
+    isPresentationGenerationAvailable: false,
     onNewChat: vi.fn(),
     onNewImage: vi.fn(),
+    onNewPresentation: vi.fn(),
   };
   return render(<NewMenu {...defaults} {...props} />);
 }
@@ -160,6 +163,12 @@ describe("NewMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "New Image" })).not.toBeInTheDocument();
   });
 
+  it("does not render New Presentation item when isPresentationGenerationEnabled is false", async () => {
+    renderNewMenu({ isPresentationGenerationEnabled: false });
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(screen.queryByRole("menuitem", { name: "New Presentation" })).not.toBeInTheDocument();
+  });
+
   it("renders New Image item as enabled when isImageGenerationEnabled and isImageGenerationAvailable are true", async () => {
     const onNewImage = vi.fn();
     renderNewMenu({ isImageGenerationEnabled: true, isImageGenerationAvailable: true, onNewImage });
@@ -191,6 +200,38 @@ describe("NewMenu", () => {
     const item = screen.getByRole("menuitem", { name: "New Image" });
     expect(item).toHaveAttribute("aria-disabled", "true");
     expect(item).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("renders New Presentation item as enabled when the feature is available", async () => {
+    const onNewPresentation = vi.fn();
+    renderNewMenu({
+      isPresentationGenerationEnabled: true,
+      isPresentationGenerationAvailable: true,
+      onNewPresentation,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const item = screen.getByRole("menuitem", { name: "New Presentation" });
+    expect(item).not.toHaveAttribute("aria-disabled");
+
+    await userEvent.click(item);
+    expect(onNewPresentation).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders New Presentation item as disabled when the backend is unavailable", async () => {
+    const onNewPresentation = vi.fn();
+    renderNewMenu({
+      isPresentationGenerationEnabled: true,
+      isPresentationGenerationAvailable: false,
+      onNewPresentation,
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    const item = screen.getByRole("menuitem", { name: "New Presentation" });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(item);
+    expect(onNewPresentation).not.toHaveBeenCalled();
   });
 
   it("skips disabled items in arrow-key navigation", async () => {

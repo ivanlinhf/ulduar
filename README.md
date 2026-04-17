@@ -102,6 +102,8 @@ Container/entrypoint and frontend build settings:
   Optional frontend build version identifier used for update detection. Manual local dev defaults to a fresh dev-server version when unset. Container and CI builds should set this explicitly.
 - `VITE_IMAGE_GENERATION_ENABLED`
   Optional frontend-owned rollout flag for image-generation UI. Default `false`.
+- `VITE_PRESENTATION_GENERATION_ENABLED`
+  Optional frontend-owned rollout flag for presentation-generation UI. Default `false`.
 
 Reference files:
 
@@ -186,6 +188,7 @@ cd apps/frontend
 export VITE_API_BASE_URL=http://localhost:8080
 export VITE_APP_VERSION=local-dev
 export VITE_IMAGE_GENERATION_ENABLED=false
+export VITE_PRESENTATION_GENERATION_ENABLED=false
 npm install
 npm run dev
 ```
@@ -223,6 +226,20 @@ To enable image generation locally:
 - Set `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` before starting the backend.
 
 The image generation layer uses a pluggable provider interface. Azure AI Foundry FLUX (FLUX.2-pro) is the initial configured provider, selected automatically when `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set. Chat still uses Azure OpenAI Responses API; image generation uses the configured image provider independently.
+
+### Optional presentation generation in dev/test
+
+Presentation generation is guarded by two independent gates that must both be enabled for the future UI to work:
+
+1. **Frontend flag** — `VITE_PRESENTATION_GENERATION_ENABLED` controls whether the presentation-generation entry point is built into the frontend bundle. When unset or `false`, the `New` button does not show `New Presentation`.
+2. **Backend provider** — `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` control whether the backend presentation generation endpoints are active. When these are unset, the capabilities and create endpoints return `503 Service Unavailable`.
+
+These gates are independent. Setting the frontend flag without a backend provider makes the `New Presentation` entry visible, but after `GET /api/v1/presentation-generations/capabilities` returns `503 Service Unavailable` the frontend treats presentation generation as unavailable: `New Presentation` stays visible but disabled and the presentation workspace cannot be entered. Setting the backend provider without the frontend flag keeps presentation generation hidden in the UI.
+
+To enable the presentation-generation foundation locally:
+
+- Set `VITE_PRESENTATION_GENERATION_ENABLED=true` when starting the frontend.
+- Set `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` before starting the backend.
 
 Supported v1 image generation modes:
 
@@ -302,7 +319,7 @@ If you want an env file for compose-oriented values, start from:
 cp .env.compose.example .env.compose
 ```
 
-The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs, plus `VITE_IMAGE_GENERATION_ENABLED`, which keeps image-generation UI rollout default-off unless you opt in. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
+The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs, plus `VITE_IMAGE_GENERATION_ENABLED` and `VITE_PRESENTATION_GENERATION_ENABLED`, which keep image-generation and presentation-generation UI rollout default-off unless you opt in. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
 
 Then start the stack with that env file:
 

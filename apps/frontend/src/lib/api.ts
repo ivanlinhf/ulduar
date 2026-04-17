@@ -88,6 +88,12 @@ export type ImageGenerationCapabilitiesResponse = {
   providerName?: string;
 };
 
+export type PresentationGenerationCapabilitiesResponse = {
+  inputMediaTypes: string[];
+  outputMediaType: string;
+  providerName?: string;
+};
+
 export type CreateImageGenerationResponse = {
   generationId: string;
   status: ImageGenerationStatus;
@@ -181,6 +187,15 @@ export async function getImageGenerationCapabilities(): Promise<ImageGenerationC
   return requestJSON<ImageGenerationCapabilitiesResponse>("/api/v1/image-generations/capabilities", {
     method: "GET",
   });
+}
+
+export async function getPresentationGenerationCapabilities(): Promise<PresentationGenerationCapabilitiesResponse> {
+  return requestJSON<PresentationGenerationCapabilitiesResponse>(
+    "/api/v1/presentation-generations/capabilities",
+    {
+      method: "GET",
+    },
+  );
 }
 
 export async function createMessage(input: {

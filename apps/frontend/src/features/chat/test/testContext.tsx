@@ -9,6 +9,9 @@ export function setupAppTestContext() {
   const mockedCreateSession = vi.mocked(api.createSession);
   const mockedGetSession = vi.mocked(api.getSession);
   const mockedGetImageGenerationCapabilities = vi.mocked(api.getImageGenerationCapabilities);
+  const mockedGetPresentationGenerationCapabilities = vi.mocked(
+    api.getPresentationGenerationCapabilities,
+  );
   const mockedCreateMessage = vi.mocked(api.createMessage);
   const mockedStreamRun = vi.mocked(api.streamRun);
   const mockedFetch = vi.fn<typeof fetch>();
@@ -41,6 +44,11 @@ export function setupAppTestContext() {
       maxReferenceImages: 4,
       outputImageCount: 1,
       providerName: "azure-foundry",
+    });
+    mockedGetPresentationGenerationCapabilities.mockResolvedValue({
+      inputMediaTypes: ["application/pdf"],
+      outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      providerName: "azure-openai",
     });
     mockedStreamRun.mockImplementation((_sessionId, _runId, handlers) => {
       streamHandlers = handlers;
@@ -94,6 +102,7 @@ export function setupAppTestContext() {
     mockedCreateSession,
     mockedFetch,
     mockedGetImageGenerationCapabilities,
+    mockedGetPresentationGenerationCapabilities,
     mockedGetSession,
     renderApp,
     requireStreamHandlers,
