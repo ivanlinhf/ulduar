@@ -1167,7 +1167,8 @@ func decodeCreatePresentationGenerationJSONRequest(r *http.Request) (presentatio
 }
 
 func decodeCreatePresentationGenerationMultipartRequest(r *http.Request) (presentationgen.CreateGenerationParams, error) {
-	if err := r.ParseMultipartForm(chat.MaxMessageRequestBytes); err != nil {
+	multipartMemoryLimit := min(chat.MaxMessageRequestBytes, imageGenerationMultipartMemoryBytes)
+	if err := r.ParseMultipartForm(multipartMemoryLimit); err != nil {
 		return presentationgen.CreateGenerationParams{}, classifyDecodeError(err)
 	}
 	defer r.MultipartForm.RemoveAll()

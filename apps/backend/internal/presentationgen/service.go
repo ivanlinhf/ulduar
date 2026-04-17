@@ -873,11 +873,7 @@ func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, 
 		}
 	}
 
-	maxBytes := assetRecord.SizeBytes
-	if maxBytes <= 0 {
-		maxBytes = defaultMaxAttachmentBytes
-	}
-	data, err := s.blobs.DownloadWithinLimit(ctx, assetRecord.BlobPath, maxBytes)
+	data, err := s.blobs.DownloadWithinLimit(ctx, assetRecord.BlobPath, assetRecord.SizeBytes)
 	if err != nil {
 		return AssetContent{}, fmt.Errorf("download presentation generation asset: %w", err)
 	}
