@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -183,6 +184,161 @@ func TestGetGenerationReturnsValidationErrorForEmptySessionID(t *testing.T) {
 	}
 }
 
+func TestCreatePendingGenerationStoresPromptAndInputAssets(t *testing.T) {
+	t.Parallel()
+
+	tx := &stubWriteTx{
+		session: repository.Session{ID: "11111111-1111-1111-1111-111111111111"},
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Status:    string(StatusPending),
+			CreatedAt: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
+		},
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+	}
+
+	view, err := service.CreatePendingGeneration(context.Background(), CreateGenerationParams{
+		SessionID: "11111111-1111-1111-1111-111111111111",
+		Prompt:    " Build a quarterly review deck ",
+		Attachments: []InputAssetUpload{
+			{Filename: "reference.png", Data: testPNGData()},
+			{Filename: "../notes.pdf", Data: []byte("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePendingGeneration() error = %v", err)
+	}
+
+	if tx.createGenerationParams.Prompt != "Build a quarterly review deck" {
+		t.Fatalf("tx.createGenerationParams.Prompt = %q", tx.createGenerationParams.Prompt)
+	}
+	if len(tx.createAssetCalls) != 2 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 2", len(tx.createAssetCalls))
+	}
+	if !tx.committed {
+		t.Fatal("transaction was not committed")
+	}
+	if len(blobs.uploadCalls) != 2 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
+	}
+	if view.Generation.ID != "22222222-2222-2222-2222-222222222222" {
+		t.Fatalf("view.Generation.ID = %q", view.Generation.ID)
+	}
+	if len(view.Assets) != 2 {
+		t.Fatalf("len(view.Assets) = %d, want 2", len(view.Assets))
+	}
+}
+
+func TestGetAssetContentReturnsOutputAsset(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			data: map[string][]byte{
+				"blob://output": []byte("pptx-data"),
+			},
+		},
+		assetRead: stubAssetReader{
+			assetByID: repository.PresentationGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         string(AssetRoleOutput),
+				BlobPath:     "blob://output",
+				MediaType:    OutputMediaTypePPTX,
+				Filename:     "final.pptx",
+				SizeBytes:    int64(len("pptx-data")),
+			},
+		},
+	}
+
+	content, err := service.GetAssetContent(context.Background(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333")
+	if err != nil {
+		t.Fatalf("GetAssetContent() error = %v", err)
+	}
+	if content.MediaType != OutputMediaTypePPTX {
+		t.Fatalf("content.MediaType = %q", content.MediaType)
+	}
+	if string(content.Data) != "pptx-data" {
+		t.Fatalf("content.Data = %q", string(content.Data))
+	}
+}
+
+func TestGetAssetContentRejectsInvalidStoredSize(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			data: map[string][]byte{
+				"blob://output": []byte("pptx-data"),
+			},
+		},
+		assetRead: stubAssetReader{
+			assetByID: repository.PresentationGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         string(AssetRoleOutput),
+				BlobPath:     "blob://output",
+				MediaType:    OutputMediaTypePPTX,
+				Filename:     "final.pptx",
+				SizeBytes:    0,
+			},
+		},
+	}
+
+	_, err := service.GetAssetContent(context.Background(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333")
+	if err == nil {
+		t.Fatal("GetAssetContent() error = nil, want invalid size error")
+	}
+	if !strings.Contains(err.Error(), "presentation generation asset size is invalid") {
+		t.Fatalf("GetAssetContent() error = %q", err.Error())
+	}
+}
+
+func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Date(2026, 4, 17, 6, 0, 0, 0, time.UTC)
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:          "22222222-2222-2222-2222-222222222222",
+			SessionID:   "11111111-1111-1111-1111-111111111111",
+			Status:      string(StatusCompleted),
+			CompletedAt: &completedAt,
+		},
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+	}
+
+	err := service.completeGeneration(context.Background(), repository.PresentationGeneration{
+		ID:        "22222222-2222-2222-2222-222222222222",
+		SessionID: "11111111-1111-1111-1111-111111111111",
+		Status:    string(StatusRunning),
+	}, azureopenai.Response{}, []byte("not-json"))
+	if err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if len(tx.createAssetCalls) != 0 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 0", len(tx.createAssetCalls))
+	}
+	if len(tx.updateCalls) != 0 {
+		t.Fatalf("len(tx.updateCalls) = %d, want 0", len(tx.updateCalls))
+	}
+	if len(blobs.uploadCalls) != 0 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected transaction rollback when generation is already terminal")
+	}
+}
+
 func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormalizedJSON(t *testing.T) {
 	t.Parallel()
 
@@ -228,6 +384,15 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 			}`,
 		}},
 	}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
 
 	service := &Service{
 		planner: PlannerConfig{
@@ -238,6 +403,7 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 		responses:      client,
 		generationRead: reader,
 		assetRead:      stubAssetReader{assets: assets},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
 	}
 
 	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
@@ -278,10 +444,10 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 		t.Fatalf("content[2].FileData = %q, want encoded PDF bytes", content[2].FileData)
 	}
 
-	if len(reader.updateCalls) != 1 {
-		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	if len(tx.updateCalls) != 1 {
+		t.Fatalf("len(tx.updateCalls) = %d, want 1", len(tx.updateCalls))
 	}
-	update := reader.updateCalls[0]
+	update := tx.updateCalls[0]
 	if update.Status != string(StatusCompleted) {
 		t.Fatalf("update.Status = %q, want %q", update.Status, StatusCompleted)
 	}
@@ -293,6 +459,19 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	}
 	if got := string(update.DialectJSON); got != `{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review","subtitle":"FY2026 Q1"}]}` {
 		t.Fatalf("update.DialectJSON = %s", got)
+	}
+	if len(tx.createAssetCalls) != 1 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 1", len(tx.createAssetCalls))
+	}
+	if tx.createAssetCalls[0].Filename != "final.pptx" {
+		t.Fatalf("tx.createAssetCalls[0].Filename = %q", tx.createAssetCalls[0].Filename)
+	}
+	blobStore := service.blobs.(*stubBlobStore)
+	if len(blobStore.uploadCalls) != 1 {
+		t.Fatalf("len(blobStore.uploadCalls) = %d, want 1", len(blobStore.uploadCalls))
+	}
+	if blobStore.uploadCalls[0].contentType != OutputMediaTypePPTX {
+		t.Fatalf("blobStore.uploadCalls[0].contentType = %q", blobStore.uploadCalls[0].contentType)
 	}
 }
 
@@ -314,12 +493,23 @@ func TestExecuteGenerationRetriesRepairOnInvalidPlannerOutput(t *testing.T) {
 			{OutputText: `{"version":"v1","slides":[{"layout":"title","title":"Fixed title"}]}`},
 		},
 	}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
 
 	service := &Service{
 		planner:        PlannerConfig{Deployment: "presentation-deployment"},
 		responses:      client,
 		generationRead: reader,
 		assetRead:      stubAssetReader{},
+		blobs:          &stubBlobStore{},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
 	}
 
 	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
@@ -339,8 +529,8 @@ func TestExecuteGenerationRetriesRepairOnInvalidPlannerOutput(t *testing.T) {
 	if !strings.Contains(repairInput[1].Content[0].Text, `slides[0].title is required`) {
 		t.Fatalf("repair prompt = %q, want validation error details", repairInput[1].Content[0].Text)
 	}
-	if len(reader.updateCalls) != 1 || reader.updateCalls[0].Status != string(StatusCompleted) {
-		t.Fatalf("updateCalls = %#v, want completed update after repair", reader.updateCalls)
+	if len(tx.updateCalls) != 1 || tx.updateCalls[0].Status != string(StatusCompleted) {
+		t.Fatalf("updateCalls = %#v, want completed update after repair", tx.updateCalls)
 	}
 }
 
@@ -752,8 +942,31 @@ func (s *stubGenerationReader) UpdateState(_ context.Context, params repository.
 }
 
 type stubAssetReader struct {
-	assets []repository.PresentationGenerationAsset
-	err    error
+	assets            []repository.PresentationGenerationAsset
+	assetByID         repository.PresentationGenerationAsset
+	expectedSessionID string
+	err               error
+}
+
+func (s stubAssetReader) GetByIDAndSession(_ context.Context, assetID string, sessionID string) (repository.PresentationGenerationAsset, error) {
+	if s.err != nil {
+		return repository.PresentationGenerationAsset{}, s.err
+	}
+	if s.assetByID.ID != "" {
+		if s.assetByID.ID == assetID && (s.expectedSessionID == "" || s.expectedSessionID == sessionID) {
+			return s.assetByID, nil
+		}
+		return repository.PresentationGenerationAsset{}, repository.ErrNotFound
+	}
+	for _, asset := range s.assets {
+		if asset.ID == assetID {
+			if s.expectedSessionID != "" && s.expectedSessionID != sessionID {
+				return repository.PresentationGenerationAsset{}, repository.ErrNotFound
+			}
+			return asset, nil
+		}
+	}
+	return repository.PresentationGenerationAsset{}, repository.ErrNotFound
 }
 
 func (s stubAssetReader) ListByGeneration(context.Context, string) ([]repository.PresentationGenerationAsset, error) {
@@ -796,6 +1009,33 @@ type stubBlobStore struct {
 	data          map[string][]byte
 	downloadErrs  map[string]error
 	downloadCalls []string
+	uploadCalls   []stubUploadCall
+	deleteCalls   []string
+}
+
+type stubUploadCall struct {
+	blobPath    string
+	data        []byte
+	contentType string
+}
+
+func (s *stubBlobStore) Upload(_ context.Context, blobPath string, data []byte, contentType string) error {
+	s.uploadCalls = append(s.uploadCalls, stubUploadCall{
+		blobPath:    blobPath,
+		data:        append([]byte(nil), data...),
+		contentType: contentType,
+	})
+	if s.data == nil {
+		s.data = map[string][]byte{}
+	}
+	s.data[blobPath] = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *stubBlobStore) Delete(_ context.Context, blobPath string) error {
+	s.deleteCalls = append(s.deleteCalls, blobPath)
+	delete(s.data, blobPath)
+	return nil
 }
 
 func (s *stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, error) {
@@ -809,6 +1049,113 @@ func (s *stubBlobStore) Download(_ context.Context, blobPath string) ([]byte, er
 	}
 
 	return data, nil
+}
+
+type stubWriteTx struct {
+	session                repository.Session
+	generation             repository.PresentationGeneration
+	lockedGeneration       repository.PresentationGeneration
+	createGenerationErr    error
+	createAssetErr         error
+	lockErr                error
+	updateErr              error
+	commitErr              error
+	rollbackErr            error
+	createGenerationParams repository.CreatePresentationGenerationParams
+	createAssetCalls       []repository.CreatePresentationGenerationAssetParams
+	updateCalls            []repository.UpdatePresentationGenerationStateParams
+	committed              bool
+	rolledBack             bool
+}
+
+func (s *stubWriteTx) GetSession(context.Context, string) (repository.Session, error) {
+	if s.session.ID == "" {
+		return repository.Session{}, repository.ErrNotFound
+	}
+	return s.session, nil
+}
+
+func (s *stubWriteTx) CreateGeneration(_ context.Context, params repository.CreatePresentationGenerationParams) (repository.PresentationGeneration, error) {
+	if s.createGenerationErr != nil {
+		return repository.PresentationGeneration{}, s.createGenerationErr
+	}
+	s.createGenerationParams = params
+	if s.generation.ID != "" {
+		generation := s.generation
+		generation.Prompt = params.Prompt
+		generation.Status = params.Status
+		return generation, nil
+	}
+	return repository.PresentationGeneration{
+		ID:        "generated-presentation",
+		SessionID: params.SessionID,
+		Prompt:    params.Prompt,
+		Status:    params.Status,
+	}, nil
+}
+
+func (s *stubWriteTx) CreateGenerationAsset(_ context.Context, params repository.CreatePresentationGenerationAssetParams) (repository.PresentationGenerationAsset, error) {
+	if s.createAssetErr != nil {
+		return repository.PresentationGenerationAsset{}, s.createAssetErr
+	}
+	s.createAssetCalls = append(s.createAssetCalls, params)
+	return repository.PresentationGenerationAsset{
+		ID:           fmt.Sprintf("asset-%d", len(s.createAssetCalls)),
+		GenerationID: params.GenerationID,
+		Role:         params.Role,
+		SortOrder:    params.SortOrder,
+		BlobPath:     params.BlobPath,
+		MediaType:    params.MediaType,
+		Filename:     params.Filename,
+		SizeBytes:    params.SizeBytes,
+		Sha256:       params.Sha256,
+		CreatedAt:    time.Now().UTC(),
+	}, nil
+}
+
+func (s *stubWriteTx) LockGenerationForUpdate(context.Context, string) (repository.PresentationGeneration, error) {
+	if s.lockErr != nil {
+		return repository.PresentationGeneration{}, s.lockErr
+	}
+	if s.lockedGeneration.ID != "" {
+		return s.lockedGeneration, nil
+	}
+	return s.generation, nil
+}
+
+func (s *stubWriteTx) UpdateGenerationState(_ context.Context, params repository.UpdatePresentationGenerationStateParams) error {
+	if s.updateErr != nil {
+		return s.updateErr
+	}
+	s.updateCalls = append(s.updateCalls, params)
+	return nil
+}
+
+func (s *stubWriteTx) Commit(context.Context) error {
+	if s.commitErr != nil {
+		return s.commitErr
+	}
+	s.committed = true
+	return nil
+}
+
+func (s *stubWriteTx) Rollback(context.Context) error {
+	s.rolledBack = true
+	return s.rollbackErr
+}
+
+func testPNGData() []byte {
+	return []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
 }
 
 func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {

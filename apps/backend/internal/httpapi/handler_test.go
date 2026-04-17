@@ -15,6 +15,7 @@ import (
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationgen"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
@@ -528,6 +529,11 @@ func TestShouldBypassTimeoutBuffering(t *testing.T) {
 		{
 			name: "image generation image content",
 			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/image-generations/55555555-5555-5555-5555-555555555555/images/77777777-7777-7777-7777-777777777777/content", nil),
+			want: true,
+		},
+		{
+			name: "presentation generation asset content",
+			req:  httptest.NewRequest(http.MethodGet, "/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content", nil),
 			want: true,
 		},
 		{
@@ -1272,6 +1278,352 @@ func TestStreamImageGenerationHandlerReturnsServiceUnavailableWhenProviderMissin
 	}
 }
 
+func TestPresentationGenerationCapabilitiesHandler(t *testing.T) {
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		capabilities: presentationgen.Capabilities{
+			InputMediaTypes: presentationgen.SupportedInputMediaTypes(),
+			OutputMediaType: presentationgen.OutputMediaTypePPTX,
+			ProviderName:    "azure-openai",
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/presentation-generations/capabilities", nil)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var payload presentationGenerationCapabilitiesResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.InputMediaTypes) != 4 {
+		t.Fatalf("len(payload.InputMediaTypes) = %d", len(payload.InputMediaTypes))
+	}
+	if payload.OutputMediaType != presentationgen.OutputMediaTypePPTX {
+		t.Fatalf("payload.OutputMediaType = %q", payload.OutputMediaType)
+	}
+}
+
+func TestPresentationGenerationCapabilitiesHandlerReturnsServiceUnavailableWithoutProvider(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/presentation-generations/capabilities", nil)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{
+		PresentationGenerationService: &fakePresentationGenerationService{},
+	}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestCreatePresentationGenerationHandlerJSONFlow(t *testing.T) {
+	var received presentationgen.CreateGenerationParams
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		createPendingGenerationFn: func(_ context.Context, params presentationgen.CreateGenerationParams) (presentationgen.GenerationView, error) {
+			received = params
+			return presentationgen.GenerationView{
+				Generation: presentationgen.Generation{
+					ID:        "55555555-5555-5555-5555-555555555555",
+					SessionID: params.SessionID,
+					Status:    presentationgen.StatusPending,
+					CreatedAt: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC),
+				},
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations",
+		strings.NewReader(`{"prompt":"build a quarterly review deck"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+	if received.SessionID != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("received.SessionID = %q", received.SessionID)
+	}
+	if received.Prompt != "build a quarterly review deck" {
+		t.Fatalf("received.Prompt = %q", received.Prompt)
+	}
+}
+
+func TestCreatePresentationGenerationHandlerMultipartFlow(t *testing.T) {
+	var received presentationgen.CreateGenerationParams
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		createPendingGenerationFn: func(_ context.Context, params presentationgen.CreateGenerationParams) (presentationgen.GenerationView, error) {
+			received = params
+			return presentationgen.GenerationView{
+				Generation: presentationgen.Generation{
+					ID:        "55555555-5555-5555-5555-555555555555",
+					SessionID: params.SessionID,
+					Status:    presentationgen.StatusPending,
+					CreatedAt: time.Date(2026, 4, 16, 9, 5, 0, 0, time.UTC),
+				},
+			}, nil
+		},
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("prompt", "build a quarterly review deck"); err != nil {
+		t.Fatalf("WriteField(prompt): %v", err)
+	}
+	imagePart, err := writer.CreateFormFile("attachments", "reference.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile(image): %v", err)
+	}
+	if _, err := io.Copy(imagePart, bytes.NewReader(testPNGData())); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+	pdfPart, err := writer.CreateFormFile("attachments[]", "notes.pdf")
+	if err != nil {
+		t.Fatalf("CreateFormFile(pdf): %v", err)
+	}
+	if _, err := io.Copy(pdfPart, strings.NewReader("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")); err != nil {
+		t.Fatalf("write pdf: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations",
+		body,
+	)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	recorder := httptest.NewRecorder()
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+	if len(received.Attachments) != 2 {
+		t.Fatalf("len(received.Attachments) = %d", len(received.Attachments))
+	}
+	if received.Attachments[0].Filename != "reference.png" {
+		t.Fatalf("received.Attachments[0].Filename = %q", received.Attachments[0].Filename)
+	}
+}
+
+func TestCreatePresentationGenerationHandlerMultipartRejectsGIF(t *testing.T) {
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("prompt", "build a quarterly review deck"); err != nil {
+		t.Fatalf("WriteField(prompt): %v", err)
+	}
+	part, err := writer.CreateFormFile("attachments", "reference.gif")
+	if err != nil {
+		t.Fatalf("CreateFormFile(gif): %v", err)
+	}
+	if _, err := io.Copy(part, bytes.NewReader(testGIFData())); err != nil {
+		t.Fatalf("write gif: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations",
+		body,
+	)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	recorder := httptest.NewRecorder()
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
+	}
+
+	var payload errorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error != `attachment "reference.gif" has unsupported media type "image/gif"` {
+		t.Fatalf("payload.Error = %q", payload.Error)
+	}
+}
+
+func TestGetPresentationGenerationHandlerIncludesScopedOutputContentURL(t *testing.T) {
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		getGenerationFn: func(_ context.Context, sessionID, generationID string) (presentationgen.GenerationView, error) {
+			return testPresentationGenerationView(sessionID, generationID, presentationgen.StatusCompleted), nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var payload presentationGenerationResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.OutputAssets) != 1 {
+		t.Fatalf("len(payload.OutputAssets) = %d", len(payload.OutputAssets))
+	}
+	wantURL := "/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content"
+	if payload.OutputAssets[0].ContentURL != wantURL {
+		t.Fatalf("payload.OutputAssets[0].ContentURL = %q, want %q", payload.OutputAssets[0].ContentURL, wantURL)
+	}
+	if string(payload.DialectJSON) != `{"version":"v1","slides":[{"layout":"title","title":"Quarterly review"}]}` {
+		t.Fatalf("payload.DialectJSON = %s", string(payload.DialectJSON))
+	}
+}
+
+func TestGetPresentationGenerationAssetContentHandler(t *testing.T) {
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		getAssetContentFn: func(_ context.Context, sessionID, generationID, assetID string) (presentationgen.AssetContent, error) {
+			if sessionID != "11111111-1111-1111-1111-111111111111" {
+				t.Fatalf("sessionID = %q", sessionID)
+			}
+			if generationID != "55555555-5555-5555-5555-555555555555" {
+				t.Fatalf("generationID = %q", generationID)
+			}
+			if assetID != "77777777-7777-7777-7777-777777777777" {
+				t.Fatalf("assetID = %q", assetID)
+			}
+			return presentationgen.AssetContent{
+				Filename:  "final.pptx",
+				MediaType: presentationgen.OutputMediaTypePPTX,
+				Data:      []byte("pptx-data"),
+			}, nil
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != presentationgen.OutputMediaTypePPTX {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), []byte("pptx-data")) {
+		t.Fatalf("body bytes mismatch")
+	}
+}
+
+func TestStreamPresentationGenerationHandlerSuccessFlow(t *testing.T) {
+	getCalls := 0
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		getGenerationFn: func(_ context.Context, sessionID, generationID string) (presentationgen.GenerationView, error) {
+			getCalls++
+			switch getCalls {
+			case 1:
+				return testPresentationGenerationView(sessionID, generationID, presentationgen.StatusPending), nil
+			case 2:
+				return testPresentationGenerationView(sessionID, generationID, presentationgen.StatusRunning), nil
+			default:
+				return testPresentationGenerationView(sessionID, generationID, presentationgen.StatusCompleted), nil
+			}
+		},
+		executeGenerationFn: func(context.Context, string) error { return nil },
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/stream",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{
+		PresentationGenerationService:      service,
+		PresentationGenerationPollInterval: time.Millisecond,
+	}).ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	for _, fragment := range []string{
+		"event: presentation_generation.started",
+		"event: presentation_generation.running",
+		"event: presentation_generation.completed",
+		`"contentUrl":"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/assets/77777777-7777-7777-7777-777777777777/content"`,
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("stream body missing %q:\n%s", fragment, body)
+		}
+	}
+}
+
+func TestStreamPresentationGenerationHandlerFailureFlow(t *testing.T) {
+	getCalls := 0
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+		getGenerationFn: func(_ context.Context, sessionID, generationID string) (presentationgen.GenerationView, error) {
+			getCalls++
+			view := testPresentationGenerationView(sessionID, generationID, presentationgen.StatusPending)
+			if getCalls > 1 {
+				view.Generation.Status = presentationgen.StatusFailed
+				view.Generation.ErrorCode = "provider_request_failed"
+				view.Generation.ErrorMessage = "provider request failed"
+			}
+			return view, nil
+		},
+		executeGenerationFn: func(context.Context, string) error { return errors.New("provider request failed") },
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations/55555555-5555-5555-5555-555555555555/stream",
+		nil,
+	)
+
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	body := recorder.Body.String()
+	for _, fragment := range []string{
+		"event: presentation_generation.started",
+		"event: presentation_generation.failed",
+		`"errorCode":"provider_request_failed"`,
+	} {
+		if !strings.Contains(body, fragment) {
+			t.Fatalf("stream body missing %q:\n%s", fragment, body)
+		}
+	}
+}
+
 type fakeChatService struct {
 	createSessionFn func(ctx context.Context) (repository.Session, error)
 	getSessionFn    func(ctx context.Context, sessionID string) (chat.SessionView, error)
@@ -1364,6 +1716,51 @@ func (f *fakeImageGenerationService) GetImageContent(ctx context.Context, sessio
 	return f.getImageContentFn(ctx, sessionID, generationID, imageID)
 }
 
+type fakePresentationGenerationService struct {
+	providerConfigured        bool
+	capabilities              presentationgen.Capabilities
+	createPendingGenerationFn func(ctx context.Context, params presentationgen.CreateGenerationParams) (presentationgen.GenerationView, error)
+	getGenerationFn           func(ctx context.Context, sessionID, generationID string) (presentationgen.GenerationView, error)
+	executeGenerationFn       func(ctx context.Context, generationID string) error
+	getAssetContentFn         func(ctx context.Context, sessionID, generationID, assetID string) (presentationgen.AssetContent, error)
+}
+
+func (f *fakePresentationGenerationService) Capabilities() presentationgen.Capabilities {
+	return f.capabilities
+}
+
+func (f *fakePresentationGenerationService) ProviderConfigured() bool {
+	return f.providerConfigured
+}
+
+func (f *fakePresentationGenerationService) CreatePendingGeneration(ctx context.Context, params presentationgen.CreateGenerationParams) (presentationgen.GenerationView, error) {
+	if f.createPendingGenerationFn == nil {
+		return presentationgen.GenerationView{}, errors.New("unexpected CreatePendingGeneration call")
+	}
+	return f.createPendingGenerationFn(ctx, params)
+}
+
+func (f *fakePresentationGenerationService) GetGeneration(ctx context.Context, sessionID, generationID string) (presentationgen.GenerationView, error) {
+	if f.getGenerationFn == nil {
+		return presentationgen.GenerationView{}, errors.New("unexpected GetGeneration call")
+	}
+	return f.getGenerationFn(ctx, sessionID, generationID)
+}
+
+func (f *fakePresentationGenerationService) ExecuteGeneration(ctx context.Context, generationID string) error {
+	if f.executeGenerationFn == nil {
+		return errors.New("unexpected ExecuteGeneration call")
+	}
+	return f.executeGenerationFn(ctx, generationID)
+}
+
+func (f *fakePresentationGenerationService) GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (presentationgen.AssetContent, error) {
+	if f.getAssetContentFn == nil {
+		return presentationgen.AssetContent{}, errors.New("unexpected GetAssetContent call")
+	}
+	return f.getAssetContentFn(ctx, sessionID, generationID, assetID)
+}
+
 func testGenerationView(generationID string, status imagegen.Status) imagegen.GenerationView {
 	return imagegen.GenerationView{
 		Generation: imagegen.Generation{
@@ -1379,6 +1776,46 @@ func testGenerationView(generationID string, status imagegen.Status) imagegen.Ge
 	}
 }
 
+func testPresentationGenerationView(sessionID, generationID string, status presentationgen.Status) presentationgen.GenerationView {
+	completedAt := time.Date(2026, 4, 16, 9, 12, 0, 0, time.UTC)
+	view := presentationgen.GenerationView{
+		Generation: presentationgen.Generation{
+			ID:          generationID,
+			SessionID:   sessionID,
+			Status:      status,
+			Prompt:      "build a quarterly review deck",
+			DialectJSON: []byte(`{"version":"v1","slides":[{"layout":"title","title":"Quarterly review"}]}`),
+			CreatedAt:   time.Date(2026, 4, 16, 9, 10, 0, 0, time.UTC),
+		},
+		Assets: []presentationgen.Asset{
+			{
+				ID:           "66666666-6666-6666-6666-666666666666",
+				GenerationID: generationID,
+				Role:         presentationgen.AssetRoleInput,
+				Filename:     "reference.png",
+				MediaType:    "image/png",
+				SizeBytes:    68,
+				SHA256:       "input-sha",
+				CreatedAt:    time.Date(2026, 4, 16, 9, 10, 0, 0, time.UTC),
+			},
+			{
+				ID:           "77777777-7777-7777-7777-777777777777",
+				GenerationID: generationID,
+				Role:         presentationgen.AssetRoleOutput,
+				Filename:     "final.pptx",
+				MediaType:    presentationgen.OutputMediaTypePPTX,
+				SizeBytes:    4096,
+				SHA256:       "output-sha",
+				CreatedAt:    completedAt,
+			},
+		},
+	}
+	if status == presentationgen.StatusCompleted {
+		view.Generation.CompletedAt = &completedAt
+	}
+	return view
+}
+
 func testPNGData() []byte {
 	return []byte{
 		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -1390,5 +1827,21 @@ func testPNGData() []byte {
 		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
 		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
 		0x42, 0x60, 0x82,
+	}
+}
+
+func testGIFData() []byte {
+	return []byte{
+		0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+		0x01, 0x00, 0x01, 0x00,
+		0x80, 0x00, 0x00,
+		0x00, 0x00, 0x00,
+		0xff, 0xff, 0xff,
+		0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
+		0x2c, 0x00, 0x00, 0x00, 0x00,
+		0x01, 0x00, 0x01, 0x00,
+		0x00,
+		0x02, 0x02, 0x44, 0x01, 0x00,
+		0x3b,
 	}
 }

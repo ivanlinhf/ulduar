@@ -358,6 +358,37 @@ Returns the raw bytes of an output-role generation asset.
 
 Returns the raw bytes of an output-role generation image. Served with a long-lived immutable cache header.
 
+### Presentation generation endpoints
+
+Provider-dependent endpoints return `503 Service Unavailable` when no presentation planner is configured. This applies to `GET /api/v1/presentation-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/presentation-generations`, and the stream endpoint while a generation is still non-terminal. Read-only retrieval endpoints for existing completed generations, including the generation record and stored output asset content, remain available without an active planner.
+
+#### `GET /api/v1/presentation-generations/capabilities`
+
+Returns the supported input attachment media types, the output PPTX media type, and the provider name.
+
+#### `POST /api/v1/sessions/{sessionId}/presentation-generations`
+
+Accepts either:
+
+- `application/json` (or missing `Content-Type`, which defaults to JSON)
+  - JSON fields: `prompt`
+- `multipart/form-data`
+  - Multipart fields: `prompt` plus zero or more image/PDF files under `attachments` (or `attachments[]` for repeated parts)
+
+Returns `202 Accepted` with a `generationId` and initial `status`.
+
+#### `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}`
+
+Returns the generation record, normalized presentation dialect JSON when available, and its asset list (input attachments and the generated PPTX output).
+
+#### `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/stream`
+
+Streams generation progress via SSE. Events include status transitions and, on completion, the generated PPTX asset identifier.
+
+#### `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/assets/{assetId}/content`
+
+Returns the raw bytes of an output-role generated PPTX asset.
+
 ## Frontend Behavior
 
 ### Startup

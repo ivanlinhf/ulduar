@@ -2,7 +2,9 @@ package presentationgen
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +17,10 @@ import (
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
 	"github.com/ivanlin/ulduar/apps/backend/internal/filenames"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationcompiler/pptx"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,7 +34,9 @@ const (
 	providerImageDetailLevel        = "auto"
 	plannerUserRole                 = "user"
 	plannerFailureInvalidJSON       = "invalid_planner_output"
+	defaultMaxAttachments           = 5
 	defaultMaxAttachmentBytes int64 = 20 << 20
+	defaultOutputFilename           = "final.pptx"
 	runningGracePeriod              = time.Minute
 )
 
@@ -74,6 +80,8 @@ Return exactly one JSON object and nothing else.
 - Use attachments only as reference context. Do not embed uploaded assets in the JSON output.`
 
 type BlobStore interface {
+	Upload(ctx context.Context, blobPath string, data []byte, contentType string) error
+	Delete(ctx context.Context, blobPath string) error
 	Download(ctx context.Context, blobPath string) ([]byte, error)
 	DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error)
 }
@@ -90,11 +98,23 @@ type generationReader interface {
 }
 
 type assetReader interface {
+	GetByIDAndSession(ctx context.Context, assetID string, sessionID string) (repository.PresentationGenerationAsset, error)
 	ListByGeneration(ctx context.Context, generationID string) ([]repository.PresentationGenerationAsset, error)
 	ListByGenerationAndSession(ctx context.Context, generationID string, sessionID string) ([]repository.PresentationGenerationAsset, error)
 }
 
+type writeTx interface {
+	GetSession(ctx context.Context, sessionID string) (repository.Session, error)
+	CreateGeneration(ctx context.Context, params repository.CreatePresentationGenerationParams) (repository.PresentationGeneration, error)
+	CreateGenerationAsset(ctx context.Context, params repository.CreatePresentationGenerationAssetParams) (repository.PresentationGenerationAsset, error)
+	LockGenerationForUpdate(ctx context.Context, generationID string) (repository.PresentationGeneration, error)
+	UpdateGenerationState(ctx context.Context, params repository.UpdatePresentationGenerationStateParams) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 type Service struct {
+	beginWriteTxFn func(ctx context.Context) (writeTx, error)
 	planner        PlannerConfig
 	blobs          BlobStore
 	responses      ResponseClient
@@ -135,6 +155,14 @@ func NewService(db *pgxpool.Pool, options ...ServiceOptions) *Service {
 		responses: resolvedOptions.ResponseClient,
 	}
 	if db != nil {
+		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
+			tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("begin transaction: %w", err)
+			}
+
+			return repositoryWriteTx{tx: tx}, nil
+		}
 		service.generationRead = repository.NewPresentationGenerationRepository(db)
 		service.assetRead = repository.NewPresentationGenerationAssetRepository(db)
 	}
@@ -142,8 +170,102 @@ func NewService(db *pgxpool.Pool, options ...ServiceOptions) *Service {
 	return service
 }
 
+func (s *Service) Capabilities() Capabilities {
+	return Capabilities{
+		InputMediaTypes: SupportedInputMediaTypes(),
+		OutputMediaType: OutputMediaTypePPTX,
+		ProviderName:    plannerProviderName,
+	}
+}
+
+func (s *Service) ProviderConfigured() bool {
+	return s.PlannerConfigured()
+}
+
 func (s *Service) PlannerConfigured() bool {
 	return strings.TrimSpace(s.planner.Endpoint) != "" && s.responses != nil
+}
+
+func (s *Service) CreatePendingGeneration(ctx context.Context, params CreateGenerationParams) (GenerationView, error) {
+	if err := validateUUID(params.SessionID, "sessionId"); err != nil {
+		return GenerationView{}, err
+	}
+
+	prompt, preparedAssets, err := validateCreateGenerationParams(params)
+	if err != nil {
+		return GenerationView{}, err
+	}
+	if s.beginWriteTxFn == nil {
+		return GenerationView{}, fmt.Errorf("presentation generation service is not configured")
+	}
+
+	tx, err := s.beginWriteTxFn(ctx)
+	if err != nil {
+		return GenerationView{}, err
+	}
+
+	committed := false
+	uploadedBlobPaths := make([]string, 0, len(preparedAssets))
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+			s.cleanupBlobs(uploadedBlobPaths)
+		}
+	}()
+
+	if _, err := tx.GetSession(ctx, params.SessionID); err != nil {
+		return GenerationView{}, mapRepositoryError(err, "session not found")
+	}
+
+	generationRecord, err := tx.CreateGeneration(ctx, repository.CreatePresentationGenerationParams{
+		SessionID:     params.SessionID,
+		Prompt:        prompt,
+		ProviderName:  "",
+		ProviderModel: "",
+		Status:        string(StatusPending),
+	})
+	if err != nil {
+		return GenerationView{}, fmt.Errorf("create presentation generation: %w", err)
+	}
+
+	if len(preparedAssets) > 0 && s.blobs == nil {
+		return GenerationView{}, fmt.Errorf("blob store is not configured")
+	}
+
+	assetRecords := make([]repository.PresentationGenerationAsset, 0, len(preparedAssets))
+	for index, asset := range preparedAssets {
+		blobPath := buildInputBlobPath(params.SessionID, generationRecord.ID, index, asset)
+		if err := s.blobs.Upload(ctx, blobPath, asset.Data, asset.MediaType); err != nil {
+			return GenerationView{}, fmt.Errorf("store attachment %q: %w", asset.Filename, err)
+		}
+		uploadedBlobPaths = append(uploadedBlobPaths, blobPath)
+
+		assetRecord, err := tx.CreateGenerationAsset(ctx, repository.CreatePresentationGenerationAssetParams{
+			GenerationID: generationRecord.ID,
+			Role:         string(AssetRoleInput),
+			SortOrder:    int64(index),
+			BlobPath:     blobPath,
+			MediaType:    asset.MediaType,
+			Filename:     asset.Filename,
+			SizeBytes:    asset.SizeBytes,
+			Sha256:       asset.SHA256,
+		})
+		if err != nil {
+			return GenerationView{}, fmt.Errorf("persist attachment %q: %w", asset.Filename, err)
+		}
+
+		assetRecords = append(assetRecords, assetRecord)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return GenerationView{}, fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+
+	return GenerationView{
+		Generation: mapGeneration(generationRecord),
+		Assets:     mapAssets(assetRecords),
+	}, nil
 }
 
 func (s *Service) ExecuteGeneration(ctx context.Context, generationID string) error {
@@ -219,19 +341,7 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 		return s.failGenerationWithCause(ctx, generation, "plan presentation", plannerErrorCode(err), err)
 	}
 
-	completedAt := time.Now().UTC()
-	if err := s.generationRead.UpdateState(ctx, repository.UpdatePresentationGenerationStateParams{
-		ID:            generation.ID,
-		ProviderName:  plannerProviderName,
-		ProviderModel: resolvedPlannerModel(response, generation.ProviderModel),
-		Status:        string(StatusCompleted),
-		CompletedAt:   &completedAt,
-		DialectJSON:   dialectJSON,
-	}); err != nil {
-		return s.failGenerationWithCause(ctx, generation, "persist completed presentation generation", "persist_generation_state_failed", err)
-	}
-
-	return nil
+	return s.completeGeneration(ctx, generation, response, dialectJSON)
 }
 
 func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai.CreateResponseRequest) (azureopenai.Response, []byte, error) {
@@ -523,6 +633,192 @@ func extractResponseText(response azureopenai.Response) string {
 	return builder.String()
 }
 
+type preparedAsset struct {
+	Filename  string
+	MediaType string
+	SizeBytes int64
+	SHA256    string
+	Data      []byte
+}
+
+func (s *Service) completeGeneration(ctx context.Context, generation repository.PresentationGeneration, response azureopenai.Response, dialectJSON []byte) error {
+	if s.beginWriteTxFn == nil {
+		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"))
+	}
+	if s.blobs == nil {
+		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"))
+	}
+
+	tx, err := s.beginWriteTxFn(ctx)
+	if err != nil {
+		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
+	}
+	lockedGeneration, err := tx.LockGenerationForUpdate(ctx, generation.ID)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "lock presentation generation for output persistence", "persist_output_failed", err)
+	}
+	if Status(lockedGeneration.Status) != StatusRunning || lockedGeneration.CompletedAt != nil {
+		_ = tx.Rollback(ctx)
+		return nil
+	}
+	generation = lockedGeneration
+
+	outputAsset, err := prepareOutputAsset(dialectJSON)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err)
+	}
+
+	providerModel := resolvedPlannerModel(response, generation.ProviderModel)
+	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
+	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
+		_ = tx.Rollback(ctx)
+		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", err)
+	}
+	rollbackAndCleanup := func() {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs([]string{blobPath})
+	}
+
+	if _, err := tx.CreateGenerationAsset(ctx, repository.CreatePresentationGenerationAssetParams{
+		GenerationID: generation.ID,
+		Role:         string(AssetRoleOutput),
+		SortOrder:    0,
+		BlobPath:     blobPath,
+		MediaType:    outputAsset.MediaType,
+		Filename:     outputAsset.Filename,
+		SizeBytes:    outputAsset.SizeBytes,
+		Sha256:       outputAsset.SHA256,
+	}); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "persist output asset", "persist_output_failed", err)
+	}
+
+	completedAt := time.Now().UTC()
+	if err := tx.UpdateGenerationState(ctx, repository.UpdatePresentationGenerationStateParams{
+		ID:            generation.ID,
+		ProviderName:  plannerProviderName,
+		ProviderModel: providerModel,
+		ProviderJobID: generation.ProviderJobID,
+		Status:        string(StatusCompleted),
+		CompletedAt:   &completedAt,
+		DialectJSON:   dialectJSON,
+	}); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "mark presentation generation completed", "persist_output_failed", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		rollbackAndCleanup()
+		return s.failGenerationWithCause(ctx, generation, "commit output persistence transaction", "persist_output_failed", err)
+	}
+
+	return nil
+}
+
+func validateCreateGenerationParams(params CreateGenerationParams) (string, []preparedAsset, error) {
+	prompt := strings.TrimSpace(params.Prompt)
+	if prompt == "" {
+		return "", nil, ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "prompt is required",
+		}
+	}
+	if len(params.Attachments) > defaultMaxAttachments {
+		return "", nil, ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("too many attachments: maximum %d files", defaultMaxAttachments),
+		}
+	}
+
+	preparedAssets := make([]preparedAsset, 0, len(params.Attachments))
+	for _, upload := range params.Attachments {
+		asset, err := prepareInputAsset(upload)
+		if err != nil {
+			return "", nil, err
+		}
+		preparedAssets = append(preparedAssets, asset)
+	}
+
+	return prompt, preparedAssets, nil
+}
+
+func prepareInputAsset(upload InputAssetUpload) (preparedAsset, error) {
+	filename := filenames.Sanitize(upload.Filename, "attachment")
+	if len(upload.Data) == 0 {
+		return preparedAsset{}, ValidationError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("attachment %q is empty", filename),
+		}
+	}
+	if int64(len(upload.Data)) > defaultMaxAttachmentBytes {
+		return preparedAsset{}, ValidationError{
+			StatusCode: http.StatusRequestEntityTooLarge,
+			Message:    fmt.Sprintf("attachment %q exceeds %d bytes", filename, defaultMaxAttachmentBytes),
+		}
+	}
+
+	mediaType := strings.ToLower(strings.TrimSpace(http.DetectContentType(upload.Data)))
+	switch mediaType {
+	case InputMediaTypeJPEG, InputMediaTypePNG, InputMediaTypeWEBP, InputMediaTypePDF:
+	default:
+		return preparedAsset{}, ValidationError{
+			StatusCode: http.StatusUnsupportedMediaType,
+			Message:    fmt.Sprintf("attachment %q has unsupported media type %q", filename, mediaType),
+		}
+	}
+
+	sum := sha256.Sum256(upload.Data)
+	return preparedAsset{
+		Filename:  filename,
+		MediaType: mediaType,
+		SizeBytes: int64(len(upload.Data)),
+		SHA256:    hex.EncodeToString(sum[:]),
+		Data:      slices.Clone(upload.Data),
+	}, nil
+}
+
+func prepareOutputAsset(dialectJSON []byte) (preparedAsset, error) {
+	document, err := presentationdialect.ParseJSON(dialectJSON)
+	if err != nil {
+		return preparedAsset{}, fmt.Errorf("decode normalized presentation document: %w", err)
+	}
+	data, err := pptx.Compile(document)
+	if err != nil {
+		return preparedAsset{}, fmt.Errorf("compile pptx: %w", err)
+	}
+
+	sum := sha256.Sum256(data)
+	return preparedAsset{
+		Filename:  defaultOutputFilename,
+		MediaType: OutputMediaTypePPTX,
+		SizeBytes: int64(len(data)),
+		SHA256:    hex.EncodeToString(sum[:]),
+		Data:      data,
+	}, nil
+}
+
+func buildInputBlobPath(sessionID, generationID string, index int, asset preparedAsset) string {
+	return fmt.Sprintf(
+		"sessions/%s/presentation-generations/%s/inputs/%02d-%s-%s",
+		sessionID,
+		generationID,
+		index+1,
+		asset.SHA256[:16],
+		asset.Filename,
+	)
+}
+
+func buildOutputBlobPath(sessionID, generationID, filename string) string {
+	return fmt.Sprintf(
+		"sessions/%s/presentation-generations/%s/outputs/%s",
+		sessionID,
+		generationID,
+		filenames.Sanitize(filename, defaultOutputFilename),
+	)
+}
+
 func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID string) (GenerationView, error) {
 	if err := validateUUID(sessionID, "sessionId"); err != nil {
 		return GenerationView{}, err
@@ -547,6 +843,49 @@ func (s *Service) GetGeneration(ctx context.Context, sessionID, generationID str
 	return GenerationView{
 		Generation: mapGeneration(generationRecord),
 		Assets:     mapAssets(assetRecords),
+	}, nil
+}
+
+func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, assetID string) (AssetContent, error) {
+	if err := validateUUID(sessionID, "sessionId"); err != nil {
+		return AssetContent{}, err
+	}
+	if err := validateUUID(generationID, "generationId"); err != nil {
+		return AssetContent{}, err
+	}
+	if err := validateUUID(assetID, "assetId"); err != nil {
+		return AssetContent{}, err
+	}
+	if s.assetRead == nil {
+		return AssetContent{}, fmt.Errorf("presentation generation service is not configured")
+	}
+	if s.blobs == nil {
+		return AssetContent{}, fmt.Errorf("blob store is not configured")
+	}
+
+	assetRecord, err := s.assetRead.GetByIDAndSession(ctx, assetID, sessionID)
+	if err != nil {
+		return AssetContent{}, mapRepositoryError(err, "presentation generation asset not found")
+	}
+	if assetRecord.GenerationID != generationID || AssetRole(assetRecord.Role) != AssetRoleOutput {
+		return AssetContent{}, ValidationError{
+			StatusCode: http.StatusNotFound,
+			Message:    "presentation generation asset not found",
+		}
+	}
+	if assetRecord.SizeBytes <= 0 {
+		return AssetContent{}, fmt.Errorf("presentation generation asset size is invalid")
+	}
+
+	data, err := s.blobs.DownloadWithinLimit(ctx, assetRecord.BlobPath, assetRecord.SizeBytes)
+	if err != nil {
+		return AssetContent{}, fmt.Errorf("download presentation generation asset: %w", err)
+	}
+
+	return AssetContent{
+		Filename:  assetRecord.Filename,
+		MediaType: assetRecord.MediaType,
+		Data:      data,
 	}, nil
 }
 
@@ -613,6 +952,54 @@ func (s *Service) persistGenerationFailure(ctx context.Context, generation repos
 	}
 
 	return nil
+}
+
+func (s *Service) cleanupBlobs(blobPaths []string) {
+	if len(blobPaths) == 0 {
+		return
+	}
+	if s.blobs == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	for _, blobPath := range blobPaths {
+		_ = s.blobs.Delete(ctx, blobPath)
+	}
+}
+
+type repositoryWriteTx struct {
+	tx pgx.Tx
+}
+
+func (t repositoryWriteTx) GetSession(ctx context.Context, sessionID string) (repository.Session, error) {
+	return repository.NewSessionRepository(t.tx).GetByID(ctx, sessionID)
+}
+
+func (t repositoryWriteTx) CreateGeneration(ctx context.Context, params repository.CreatePresentationGenerationParams) (repository.PresentationGeneration, error) {
+	return repository.NewPresentationGenerationRepository(t.tx).Create(ctx, params)
+}
+
+func (t repositoryWriteTx) CreateGenerationAsset(ctx context.Context, params repository.CreatePresentationGenerationAssetParams) (repository.PresentationGenerationAsset, error) {
+	return repository.NewPresentationGenerationAssetRepository(t.tx).Create(ctx, params)
+}
+
+func (t repositoryWriteTx) LockGenerationForUpdate(ctx context.Context, generationID string) (repository.PresentationGeneration, error) {
+	return repository.NewPresentationGenerationRepository(t.tx).LockForUpdate(ctx, generationID)
+}
+
+func (t repositoryWriteTx) UpdateGenerationState(ctx context.Context, params repository.UpdatePresentationGenerationStateParams) error {
+	return repository.NewPresentationGenerationRepository(t.tx).UpdateState(ctx, params)
+}
+
+func (t repositoryWriteTx) Commit(ctx context.Context) error {
+	return t.tx.Commit(ctx)
+}
+
+func (t repositoryWriteTx) Rollback(ctx context.Context) error {
+	return t.tx.Rollback(ctx)
 }
 
 func runningGenerationStale(generation repository.PresentationGeneration, requestTimeout time.Duration) bool {

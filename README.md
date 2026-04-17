@@ -265,6 +265,21 @@ Session-scoped:
 
 When no provider is configured, `GET /api/v1/image-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/image-generations` return `503 Service Unavailable`, and the stream endpoint returns `503 Service Unavailable` for non-terminal generations. `GET /api/v1/sessions/{sessionId}/image-generations/{generationId}` remains available to fetch an existing generation record regardless of provider configuration, while asset/image download endpoints remain available only when stored outputs exist.
 
+Presentation generation endpoints:
+
+Non-session-scoped:
+
+- `GET /api/v1/presentation-generations/capabilities` — returns supported input media types, the output PPTX media type, and provider info
+
+Session-scoped:
+
+- `POST /api/v1/sessions/{sessionId}/presentation-generations` — submit a new presentation generation request; JSON accepts `prompt` only, while `multipart/form-data` accepts `prompt` plus optional image/PDF attachments
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}` — poll generation status, normalized presentation dialect JSON, and asset list
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/stream` — SSE stream for generation progress
+- `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/assets/{assetId}/content` — download a generated PPTX asset
+
+When no presentation planner is configured, `GET /api/v1/presentation-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/presentation-generations` return `503 Service Unavailable`, and the stream endpoint returns `503 Service Unavailable` for non-terminal generations. `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}` remains available to fetch an existing generation record regardless of planner configuration, while asset download endpoints remain available only when stored outputs exist.
+
 ### Option 2: Use `compose.yaml`
 
 The repository includes [compose.yaml](compose.yaml) for:
