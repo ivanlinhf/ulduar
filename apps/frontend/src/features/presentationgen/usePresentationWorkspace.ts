@@ -229,7 +229,6 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
       failTurn(turnId, fallbackMessage);
       closeStream();
       setSubmissionState("idle");
-      return;
     }
   }
 
