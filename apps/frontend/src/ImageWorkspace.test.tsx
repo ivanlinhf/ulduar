@@ -7,6 +7,7 @@ vi.mock("./lib/api", () => ({
   createSession: vi.fn(),
   getSession: vi.fn(),
   getImageGenerationCapabilities: vi.fn(),
+  getPresentationGenerationCapabilities: vi.fn(),
   createMessage: vi.fn(),
   createImageGeneration: vi.fn(),
   streamRun: vi.fn(),
