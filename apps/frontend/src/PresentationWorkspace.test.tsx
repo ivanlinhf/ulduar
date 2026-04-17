@@ -223,6 +223,7 @@ describe("PresentationWorkspace", () => {
         "animated.gif uses an unsupported file type. Only JPEG, PNG, WebP images and PDFs are allowed.",
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText("animated.gif · GIF")).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Presentation prompt"), "Deck with invalid reference");
     await user.click(screen.getByRole("button", { name: "Generate" }));

@@ -19,7 +19,6 @@ export type PresentationTurnOutputAsset = {
   assetId: string;
   filename: string;
   mediaType: string;
-  contentUrl?: string;
   sessionId: string;
   generationId: string;
 };

@@ -167,27 +167,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
         );
       }
 
-      streamCleanupRef.current = streamPresentationGeneration(draftSessionId, generationId, {
-        onStarted: () => {
-          markTurnRunning();
-        },
-        onRunning: () => {
-          markTurnRunning();
-        },
-        onCompleted: (payload) => {
-          completeTurn(turnId, payload);
-          closeStream();
-          setSubmissionState("idle");
-        },
-        onFailed: (payload) => {
-          failTurn(turnId, payload.errorMessage ?? "Presentation generation failed");
-          closeStream();
-          setSubmissionState("idle");
-        },
-        onTransportError: (message) => {
-          void reconcileTransportError(turnId, draftSessionId, generationId, message);
-        },
-      });
+      openStream(turnId, draftSessionId, generationId, markTurnRunning);
     } catch (error) {
       const errorMessage = toErrorMessage(error, "Failed to submit presentation generation");
       failTurn(turnId, errorMessage);
@@ -195,27 +175,63 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     }
   }
 
+  function openStream(
+    turnId: string,
+    sessionId: string,
+    generationId: string,
+    markTurnRunning: () => void,
+  ) {
+    streamCleanupRef.current = streamPresentationGeneration(sessionId, generationId, {
+      onStarted: () => {
+        markTurnRunning();
+      },
+      onRunning: () => {
+        markTurnRunning();
+      },
+      onCompleted: (payload) => {
+        completeTurn(turnId, payload);
+        closeStream();
+        setSubmissionState("idle");
+      },
+      onFailed: (payload) => {
+        failTurn(turnId, payload.errorMessage ?? "Presentation generation failed");
+        closeStream();
+        setSubmissionState("idle");
+      },
+      onTransportError: (message) => {
+        void reconcileTransportError(turnId, sessionId, generationId, markTurnRunning, message);
+      },
+    });
+  }
+
   async function reconcileTransportError(
     turnId: string,
     sessionId: string,
     generationId: string,
+    markTurnRunning: () => void,
     fallbackMessage: string,
   ) {
     try {
       const latest = await getPresentationGeneration(sessionId, generationId);
       if (latest.status === "completed") {
         completeTurn(turnId, latest);
+        closeStream();
+        setSubmissionState("idle");
       } else if (latest.status === "failed") {
         failTurn(turnId, latest.errorMessage ?? fallbackMessage);
+        closeStream();
+        setSubmissionState("idle");
       } else {
-        failTurn(turnId, fallbackMessage);
+        markTurnRunning();
+        openStream(turnId, sessionId, generationId, markTurnRunning);
       }
     } catch {
       failTurn(turnId, fallbackMessage);
-    } finally {
       closeStream();
       setSubmissionState("idle");
+      return;
     }
+
   }
 
   function completeTurn(turnId: string, payload: PresentationGenerationResponse) {
@@ -353,7 +369,7 @@ function createSelectedAttachment(file: File): SelectedPresentationAttachment {
 }
 
 function mapOutputAsset(payload: PresentationGenerationResponse): PresentationTurnOutputAsset | undefined {
-  const asset = payload.outputAssets.find((candidate) => candidate.contentUrl) ?? payload.outputAssets[0];
+  const asset = payload.outputAssets[0];
   if (!asset) {
     return undefined;
   }
@@ -370,7 +386,6 @@ function mapPresentationOutputAsset(
     assetId: asset.assetId,
     filename: asset.filename,
     mediaType: asset.mediaType,
-    contentUrl: asset.contentUrl,
     sessionId,
     generationId,
   };

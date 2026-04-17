@@ -6,6 +6,9 @@ import { IconDownload, IconSpinner } from "../../chat/components/icons";
 import { compactMediaType } from "../utils";
 import type { PresentationTurn, PresentationTurnOutputAsset } from "../types";
 
+// Keep the blob URL alive briefly so the browser can start the download before revoking it.
+const downloadURLCleanupDelayMs = 1000;
+
 type PresentationTurnCardProps = {
   turn: PresentationTurn;
 };
@@ -82,7 +85,7 @@ function PresentationTurnOutputCard({ asset }: PresentationTurnOutputCardProps) 
       link.remove();
       window.setTimeout(() => {
         URL.revokeObjectURL(downloadUrl);
-      }, 1000);
+      }, downloadURLCleanupDelayMs);
       setDownloadState("idle");
     } catch {
       setDownloadState("failed");
