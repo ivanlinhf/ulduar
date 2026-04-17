@@ -273,7 +273,7 @@ Non-session-scoped:
 
 Session-scoped:
 
-- `POST /api/v1/sessions/{sessionId}/presentation-generations` — submit a new presentation generation request with a prompt and optional image/PDF attachments
+- `POST /api/v1/sessions/{sessionId}/presentation-generations` — submit a new presentation generation request; JSON accepts `prompt` only, while `multipart/form-data` accepts `prompt` plus optional image/PDF attachments
 - `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}` — poll generation status, normalized presentation dialect JSON, and asset list
 - `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/stream` — SSE stream for generation progress
 - `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}/assets/{assetId}/content` — download a generated PPTX asset

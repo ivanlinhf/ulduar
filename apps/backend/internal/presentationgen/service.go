@@ -872,6 +872,9 @@ func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, 
 			Message:    "presentation generation asset not found",
 		}
 	}
+	if assetRecord.SizeBytes <= 0 {
+		return AssetContent{}, fmt.Errorf("presentation generation asset size is invalid")
+	}
 
 	data, err := s.blobs.DownloadWithinLimit(ctx, assetRecord.BlobPath, assetRecord.SizeBytes)
 	if err != nil {

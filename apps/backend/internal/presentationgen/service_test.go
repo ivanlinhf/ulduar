@@ -268,6 +268,37 @@ func TestGetAssetContentReturnsOutputAsset(t *testing.T) {
 	}
 }
 
+func TestGetAssetContentRejectsInvalidStoredSize(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		blobs: &stubBlobStore{
+			data: map[string][]byte{
+				"blob://output": []byte("pptx-data"),
+			},
+		},
+		assetRead: stubAssetReader{
+			assetByID: repository.PresentationGenerationAsset{
+				ID:           "33333333-3333-3333-3333-333333333333",
+				GenerationID: "22222222-2222-2222-2222-222222222222",
+				Role:         string(AssetRoleOutput),
+				BlobPath:     "blob://output",
+				MediaType:    OutputMediaTypePPTX,
+				Filename:     "final.pptx",
+				SizeBytes:    0,
+			},
+		},
+	}
+
+	_, err := service.GetAssetContent(context.Background(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333")
+	if err == nil {
+		t.Fatal("GetAssetContent() error = nil, want invalid size error")
+	}
+	if !strings.Contains(err.Error(), "presentation generation asset size is invalid") {
+		t.Fatalf("GetAssetContent() error = %q", err.Error())
+	}
+}
+
 func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormalizedJSON(t *testing.T) {
 	t.Parallel()
 
