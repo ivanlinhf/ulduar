@@ -1173,23 +1173,40 @@ func decodeCreatePresentationGenerationMultipartRequest(r *http.Request) (presen
 	defer r.MultipartForm.RemoveAll()
 
 	uploads := combineMultipartFileHeaders(r.MultipartForm.File["attachments"], r.MultipartForm.File["attachments[]"])
-	attachments, err := chat.ReadAttachments(uploads)
+	inputs, err := readPresentationInputUploads(uploads)
 	if err != nil {
 		return presentationgen.CreateGenerationParams{}, err
-	}
-
-	inputs := make([]presentationgen.InputAssetUpload, 0, len(attachments))
-	for _, attachment := range attachments {
-		inputs = append(inputs, presentationgen.InputAssetUpload{
-			Filename: attachment.Filename,
-			Data:     attachment.Data,
-		})
 	}
 
 	return presentationgen.CreateGenerationParams{
 		Prompt:      r.FormValue("prompt"),
 		Attachments: inputs,
 	}, nil
+}
+
+func readPresentationInputUploads(headers []*multipart.FileHeader) ([]presentationgen.InputAssetUpload, error) {
+	attachments, err := chat.ReadAttachments(headers)
+	if err != nil {
+		return nil, err
+	}
+
+	supportedMediaTypes := presentationgen.SupportedInputMediaTypes()
+	inputs := make([]presentationgen.InputAssetUpload, 0, len(attachments))
+	for _, attachment := range attachments {
+		if !slices.Contains(supportedMediaTypes, attachment.MediaType) {
+			return nil, presentationgen.ValidationError{
+				StatusCode: http.StatusUnsupportedMediaType,
+				Message:    fmt.Sprintf("attachment %q has unsupported media type %q", attachment.Filename, attachment.MediaType),
+			}
+		}
+
+		inputs = append(inputs, presentationgen.InputAssetUpload{
+			Filename: attachment.Filename,
+			Data:     attachment.Data,
+		})
+	}
+
+	return inputs, nil
 }
 
 func decodeMultipartMessageRequest(r *http.Request) (chat.CreateMessageParams, error) {

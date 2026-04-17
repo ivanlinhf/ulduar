@@ -1421,6 +1421,50 @@ func TestCreatePresentationGenerationHandlerMultipartFlow(t *testing.T) {
 	}
 }
 
+func TestCreatePresentationGenerationHandlerMultipartRejectsGIF(t *testing.T) {
+	service := &fakePresentationGenerationService{
+		providerConfigured: true,
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("prompt", "build a quarterly review deck"); err != nil {
+		t.Fatalf("WriteField(prompt): %v", err)
+	}
+	part, err := writer.CreateFormFile("attachments", "reference.gif")
+	if err != nil {
+		t.Fatalf("CreateFormFile(gif): %v", err)
+	}
+	if _, err := io.Copy(part, bytes.NewReader(testGIFData())); err != nil {
+		t.Fatalf("write gif: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/sessions/11111111-1111-1111-1111-111111111111/presentation-generations",
+		body,
+	)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	recorder := httptest.NewRecorder()
+	NewHandler(&fakeChatService{}, HandlerOptions{PresentationGenerationService: service}).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
+	}
+
+	var payload errorResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error != `attachment "reference.gif" has unsupported media type "image/gif"` {
+		t.Fatalf("payload.Error = %q", payload.Error)
+	}
+}
+
 func TestGetPresentationGenerationHandlerIncludesScopedOutputContentURL(t *testing.T) {
 	service := &fakePresentationGenerationService{
 		providerConfigured: true,
@@ -1783,5 +1827,21 @@ func testPNGData() []byte {
 		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
 		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
 		0x42, 0x60, 0x82,
+	}
+}
+
+func testGIFData() []byte {
+	return []byte{
+		0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+		0x01, 0x00, 0x01, 0x00,
+		0x80, 0x00, 0x00,
+		0x00, 0x00, 0x00,
+		0xff, 0xff, 0xff,
+		0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00,
+		0x2c, 0x00, 0x00, 0x00, 0x00,
+		0x01, 0x00, 0x01, 0x00,
+		0x00,
+		0x02, 0x02, 0x44, 0x01, 0x00,
+		0x3b,
 	}
 }
