@@ -231,7 +231,6 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
       setSubmissionState("idle");
       return;
     }
-
   }
 
   function completeTurn(turnId: string, payload: PresentationGenerationResponse) {
