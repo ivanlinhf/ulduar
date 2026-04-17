@@ -114,6 +114,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
         setBootstrapState("ready");
       });
     } catch (error) {
+      if (!mountedRef.current) {
+        return;
+      }
       setBootstrapState("error");
       setScreenError(toErrorMessage(error, "Failed to create a presentation session"));
     }
@@ -164,6 +167,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
         prompt: draftPrompt,
         attachments: draftAttachments.map((attachment) => attachment.file),
       });
+      if (!mountedRef.current) {
+        return;
+      }
 
       setTurns((prev) =>
         prev.map((turn) =>
@@ -187,6 +193,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
       openStream(turnId, draftSessionId, generationId, markTurnRunning);
     } catch (error) {
       const errorMessage = toErrorMessage(error, "Failed to submit presentation generation");
+      if (!mountedRef.current) {
+        return;
+      }
       failTurn(turnId, errorMessage);
       setSubmissionState("idle");
     }

@@ -317,15 +317,14 @@ describe("PresentationWorkspace", () => {
       for (const delay of [1000, 2000, 4000]) {
         await act(async () => {
           presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
-          await Promise.resolve();
         });
         expectedGetCalls += 1;
 
+        await flushPendingPromises();
         expect(mockedGetPresentationGeneration).toHaveBeenCalledTimes(expectedGetCalls);
 
         await act(async () => {
-          vi.advanceTimersByTime(delay);
-          await Promise.resolve();
+          await vi.advanceTimersByTimeAsync(delay);
         });
 
         expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(expectedGetCalls + 1);
@@ -333,9 +332,9 @@ describe("PresentationWorkspace", () => {
 
       await act(async () => {
         presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
-        await Promise.resolve();
       });
 
+      await flushPendingPromises();
       expect(mockedGetPresentationGeneration).toHaveBeenCalledTimes(4);
       expect(screen.getByText("failed")).toBeInTheDocument();
       expect(screen.getByText("Streaming connection closed before completion")).toBeInTheDocument();
@@ -381,5 +380,11 @@ describe("PresentationWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "New" }));
     await user.click(screen.getByRole("menuitem", { name: "New Presentation" }));
     await screen.findByText("Ready to generate.");
+  }
+
+  async function flushPendingPromises(count = 3) {
+    for (let index = 0; index < count; index += 1) {
+      await Promise.resolve();
+    }
   }
 });

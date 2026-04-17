@@ -1,3 +1,4 @@
+import { formatBytes } from "../../lib/utils";
 import { maxAttachmentBytes, maxAttachmentCount } from "../chat/constants";
 import { compactMediaType } from "../chat/utils";
 
@@ -28,7 +29,7 @@ export function validatePresentationAttachments(files: File[], inputMediaTypes: 
       return `${file.name} is empty.`;
     }
     if (file.size > maxAttachmentBytes) {
-      return `${file.name} exceeds the 20 MB attachment limit.`;
+      return `${file.name} exceeds the ${formatBytes(maxAttachmentBytes)} attachment limit.`;
     }
   }
 
