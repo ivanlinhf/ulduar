@@ -423,6 +423,9 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	if got := client.requests[0].Instructions; !strings.Contains(got, "presentation-system-prompt") || !strings.Contains(got, "Return exactly one JSON object and nothing else.") {
 		t.Fatalf("request instructions = %q, want system prompt plus planner dialect instructions", got)
 	}
+	if len(client.requests[0].Tools) != 0 {
+		t.Fatalf("len(client.requests[0].Tools) = %d, want 0 by default", len(client.requests[0].Tools))
+	}
 
 	content := requestInput[0].Content
 	if len(content) != 3 {
@@ -472,6 +475,61 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	}
 	if blobStore.uploadCalls[0].contentType != OutputMediaTypePPTX {
 		t.Fatalf("blobStore.uploadCalls[0].contentType = %q", blobStore.uploadCalls[0].contentType)
+	}
+}
+
+func TestExecuteGenerationIncludesWebSearchToolWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a market overview deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+	client := &stubResponseClient{
+		responses: []azureopenai.Response{{
+			Model:      "gpt-5-presentation",
+			OutputText: `{"version":"v1","slides":[{"layout":"title","title":"Market overview"}]}`,
+		}},
+	}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
+
+	service := &Service{
+		planner: PlannerConfig{
+			Deployment: "presentation-deployment",
+		},
+		blobs:          &stubBlobStore{},
+		responses:      client,
+		webSearch:      true,
+		generationRead: reader,
+		assetRead:      stubAssetReader{},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+
+	if len(client.requests) != 1 {
+		t.Fatalf("len(client.requests) = %d, want 1", len(client.requests))
+	}
+	if len(client.requests[0].Tools) != 1 {
+		t.Fatalf("len(client.requests[0].Tools) = %d, want 1", len(client.requests[0].Tools))
+	}
+	if client.requests[0].Tools[0].Type != "web_search" {
+		t.Fatalf("client.requests[0].Tools[0].Type = %q, want web_search", client.requests[0].Tools[0].Type)
 	}
 }
 
