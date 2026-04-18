@@ -91,21 +91,36 @@ func TestGetGeneration(t *testing.T) {
 	service := &Service{
 		generationRead: &stubGenerationReader{
 			generation: repository.PresentationGeneration{
-				ID:            "22222222-2222-2222-2222-222222222222",
-				SessionID:     "11111111-1111-1111-1111-111111111111",
-				Prompt:        "build a quarterly review deck",
-				DialectJSON:   []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review"}]}`),
-				ProviderName:  "azure-openai",
-				ProviderModel: "gpt-5-chat",
-				ProviderJobID: "job-123",
-				Status:        string(StatusCompleted),
-				CreatedAt:     createdAt,
-				StartedAt:     &startedAt,
-				CompletedAt:   &completedAt,
+				ID:                "22222222-2222-2222-2222-222222222222",
+				SessionID:         "11111111-1111-1111-1111-111111111111",
+				Prompt:            "build a quarterly review deck",
+				PlannerOutputJSON: []byte(`{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"cover_hero","title":"Quarterly review","blocks":[{"type":"image","assetRef":"attachment:reference"}]}]}`),
+				DialectJSON:       []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review"}]}`),
+				ProviderName:      "azure-openai",
+				ProviderModel:     "gpt-5-chat",
+				ProviderJobID:     "job-123",
+				Status:            string(StatusCompleted),
+				CreatedAt:         createdAt,
+				StartedAt:         &startedAt,
+				CompletedAt:       &completedAt,
 			},
 		},
 		assetRead: stubAssetReader{
 			assets: []repository.PresentationGenerationAsset{
+				{
+					ID:            "44444444-4444-4444-4444-444444444444",
+					GenerationID:  "22222222-2222-2222-2222-222222222222",
+					Role:          string(AssetRoleResolved),
+					AssetRef:      "attachment:reference",
+					SourceType:    string(AssetSourceTypeInputAsset),
+					SourceAssetID: "33333333-3333-3333-3333-333333333333",
+					BlobPath:      "sessions/s1/presentation-generations/g1/inputs/01-reference.png",
+					MediaType:     InputMediaTypePNG,
+					Filename:      "reference.png",
+					SizeBytes:     1024,
+					Sha256:        "resolved-sha",
+					CreatedAt:     completedAt,
+				},
 				{
 					ID:           "33333333-3333-3333-3333-333333333333",
 					GenerationID: "22222222-2222-2222-2222-222222222222",
@@ -133,11 +148,17 @@ func TestGetGeneration(t *testing.T) {
 	if string(view.Generation.DialectJSON) != `{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review"}]}` {
 		t.Fatalf("view.Generation.DialectJSON = %s", string(view.Generation.DialectJSON))
 	}
-	if len(view.Assets) != 1 {
-		t.Fatalf("len(view.Assets) = %d, want 1", len(view.Assets))
+	if string(view.Generation.PlannerOutputJSON) != `{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"cover_hero","title":"Quarterly review","blocks":[{"type":"image","assetRef":"attachment:reference"}]}]}` {
+		t.Fatalf("view.Generation.PlannerOutputJSON = %s", string(view.Generation.PlannerOutputJSON))
 	}
-	if view.Assets[0].MediaType != OutputMediaTypePPTX {
-		t.Fatalf("view.Assets[0].MediaType = %q", view.Assets[0].MediaType)
+	if len(view.Assets) != 2 {
+		t.Fatalf("len(view.Assets) = %d, want 2", len(view.Assets))
+	}
+	if view.Assets[0].Role != AssetRoleResolved || view.Assets[0].AssetRef != "attachment:reference" {
+		t.Fatalf("view.Assets[0] = %#v", view.Assets[0])
+	}
+	if view.Assets[1].MediaType != OutputMediaTypePPTX {
+		t.Fatalf("view.Assets[1].MediaType = %q", view.Assets[1].MediaType)
 	}
 }
 
@@ -316,13 +337,16 @@ func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.
 	service := &Service{
 		blobs:          blobs,
 		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: &stubGenerationReader{},
 	}
 
 	err := service.completeGeneration(context.Background(), repository.PresentationGeneration{
-		ID:        "22222222-2222-2222-2222-222222222222",
-		SessionID: "11111111-1111-1111-1111-111111111111",
-		Status:    string(StatusRunning),
-	}, azureopenai.Response{}, []byte("not-json"))
+		ID:            "22222222-2222-2222-2222-222222222222",
+		SessionID:     "11111111-1111-1111-1111-111111111111",
+		ProviderName:  plannerProviderName,
+		ProviderModel: "presentation-deployment",
+		Status:        string(StatusRunning),
+	}, nil, azureopenai.Response{}, nil, []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review"}]}`))
 	if err != nil {
 		t.Fatalf("completeGeneration() error = %v", err)
 	}
@@ -332,8 +356,11 @@ func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.
 	if len(tx.updateCalls) != 0 {
 		t.Fatalf("len(tx.updateCalls) = %d, want 0", len(tx.updateCalls))
 	}
-	if len(blobs.uploadCalls) != 0 {
-		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	if len(blobs.uploadCalls) != 1 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 1", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 1 {
+		t.Fatalf("len(blobs.deleteCalls) = %d, want 1", len(blobs.deleteCalls))
 	}
 	if !tx.rolledBack {
 		t.Fatal("expected transaction rollback when generation is already terminal")
@@ -429,23 +456,26 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	}
 
 	content := requestInput[0].Content
-	if len(content) != 3 {
-		t.Fatalf("len(content) = %d, want 3", len(content))
+	if len(content) != 4 {
+		t.Fatalf("len(content) = %d, want 4", len(content))
 	}
 	if content[0].Type != providerInputTextType || !strings.Contains(content[0].Text, "Build a quarterly review deck") {
 		t.Fatalf("content[0] = %#v, want prompt text item", content[0])
 	}
-	if content[1].Type != providerInputImageType || !strings.HasPrefix(content[1].ImageURL, "data:image/png;base64,") {
-		t.Fatalf("content[1] = %#v, want input image data URL", content[1])
+	if content[1].Type != providerInputTextType || !strings.Contains(content[1].Text, "attachment:reference") || !strings.Contains(content[1].Text, "attachment:notes") {
+		t.Fatalf("content[1] = %#v, want attachment asset guidance", content[1])
 	}
-	if content[2].Type != providerInputFileType || content[2].Filename != "notes.pdf" {
-		t.Fatalf("content[2] = %#v, want input file attachment", content[2])
+	if content[2].Type != providerInputImageType || !strings.HasPrefix(content[2].ImageURL, "data:image/png;base64,") {
+		t.Fatalf("content[2] = %#v, want input image data URL", content[2])
 	}
-	if strings.ContainsAny(content[2].Filename, `/\`) {
-		t.Fatalf("content[2].Filename = %q, want sanitized basename without path separators", content[2].Filename)
+	if content[3].Type != providerInputFileType || content[3].Filename != "notes.pdf" {
+		t.Fatalf("content[3] = %#v, want input file attachment", content[3])
 	}
-	if content[2].FileData != base64.StdEncoding.EncodeToString([]byte{4, 5, 6, 7}) {
-		t.Fatalf("content[2].FileData = %q, want encoded PDF bytes", content[2].FileData)
+	if strings.ContainsAny(content[3].Filename, `/\`) {
+		t.Fatalf("content[3].Filename = %q, want sanitized basename without path separators", content[3].Filename)
+	}
+	if content[3].FileData != base64.StdEncoding.EncodeToString([]byte{4, 5, 6, 7}) {
+		t.Fatalf("content[3].FileData = %q, want encoded PDF bytes", content[3].FileData)
 	}
 
 	if len(tx.updateCalls) != 1 {
@@ -464,6 +494,14 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	if got := string(update.DialectJSON); got != `{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review","subtitle":"FY2026 Q1"}]}` {
 		t.Fatalf("update.DialectJSON = %s", got)
 	}
+	if got := string(update.PlannerOutputJSON); got != `{
+				"version": "v1",
+				"slides": [
+					{"layout": "title", "title": " Quarterly review ", "subtitle": " FY2026 Q1 "}
+				]
+			}` {
+		t.Fatalf("update.PlannerOutputJSON = %s", got)
+	}
 	if len(tx.createAssetCalls) != 1 {
 		t.Fatalf("len(tx.createAssetCalls) = %d, want 1", len(tx.createAssetCalls))
 	}
@@ -476,6 +514,356 @@ func TestExecuteGenerationBuildsAttachmentAwarePlannerRequestAndPersistsNormaliz
 	}
 	if blobStore.uploadCalls[0].contentType != OutputMediaTypePPTX {
 		t.Fatalf("blobStore.uploadCalls[0].contentType = %q", blobStore.uploadCalls[0].contentType)
+	}
+}
+
+func TestExecuteGenerationPersistsResolvedAssetsForAttachmentAndThemeRefs(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a Kyoto travel deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+	assets := []repository.PresentationGenerationAsset{{
+		ID:           "asset-cover",
+		GenerationID: "22222222-2222-2222-2222-222222222222",
+		Role:         string(AssetRoleInput),
+		SortOrder:    0,
+		BlobPath:     "blob://cover",
+		MediaType:    InputMediaTypePNG,
+		Filename:     "cover.png",
+		SizeBytes:    3,
+		Sha256:       "cover-sha",
+	}}
+	client := &stubResponseClient{
+		responses: []azureopenai.Response{{
+			Model: "gpt-5-presentation",
+			OutputText: `{
+				"version": "v2",
+				"themePresetId": "travel_editorial",
+				"slides": [
+					{"layout": "cover_hero", "title": "Kyoto", "blocks": [{"type": "image", "assetRef": "attachment:cover"}]},
+					{"layout": "chapter_divider", "title": "Highlights", "blocks": [{"type": "image", "assetRef": "theme:hero-image"}]}
+				]
+			}`,
+		}},
+	}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
+	blobs := &stubBlobStore{data: map[string][]byte{"blob://cover": {1, 2, 3}}}
+	service := &Service{
+		planner:        PlannerConfig{Deployment: "presentation-deployment"},
+		blobs:          blobs,
+		responses:      client,
+		generationRead: reader,
+		assetRead:      stubAssetReader{assets: assets},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222"); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+
+	if len(tx.createAssetCalls) != 3 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 3", len(tx.createAssetCalls))
+	}
+	if tx.createAssetCalls[0].Role != string(AssetRoleResolved) || tx.createAssetCalls[0].AssetRef != "attachment:cover" || tx.createAssetCalls[0].SourceAssetID != "asset-cover" {
+		t.Fatalf("tx.createAssetCalls[0] = %#v", tx.createAssetCalls[0])
+	}
+	if tx.createAssetCalls[1].Role != string(AssetRoleResolved) || tx.createAssetCalls[1].AssetRef != "theme:hero-image" || tx.createAssetCalls[1].SourceType != string(AssetSourceTypeThemeBundle) {
+		t.Fatalf("tx.createAssetCalls[1] = %#v", tx.createAssetCalls[1])
+	}
+	if tx.createAssetCalls[2].Role != string(AssetRoleOutput) {
+		t.Fatalf("tx.createAssetCalls[2].Role = %q", tx.createAssetCalls[2].Role)
+	}
+	if len(blobs.uploadCalls) != 2 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
+	}
+	if got := blobs.uploadCalls[0].blobPath; got != "sessions/11111111-1111-1111-1111-111111111111/presentation-generations/22222222-2222-2222-2222-222222222222/resolved/travel-editorial-hero-image.png" {
+		t.Fatalf("blobs.uploadCalls[0].blobPath = %q", got)
+	}
+	if !strings.Contains(blobs.uploadCalls[1].blobPath, "/outputs/") {
+		t.Fatalf("blobs.uploadCalls[1].blobPath = %q", blobs.uploadCalls[1].blobPath)
+	}
+}
+
+func TestCompleteGenerationCleansUpUploadedBlobsWhenGenerationBecomesTerminalBeforePersistence(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Date(2026, 4, 17, 6, 0, 0, 0, time.UTC)
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:          "22222222-2222-2222-2222-222222222222",
+			SessionID:   "11111111-1111-1111-1111-111111111111",
+			Status:      string(StatusCompleted),
+			CompletedAt: &completedAt,
+		},
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+	}
+
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		[]byte(`{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+		[]byte(`{"version":"v2","slideSize":"16:9","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+	)
+	if err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if len(tx.createAssetCalls) != 0 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 0", len(tx.createAssetCalls))
+	}
+	if len(blobs.uploadCalls) != 2 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 2 {
+		t.Fatalf("len(blobs.deleteCalls) = %d, want 2", len(blobs.deleteCalls))
+	}
+	if !strings.Contains(blobs.deleteCalls[0], "/resolved/") {
+		t.Fatalf("blobs.deleteCalls[0] = %q", blobs.deleteCalls[0])
+	}
+	if !strings.Contains(blobs.deleteCalls[1], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls[1] = %q", blobs.deleteCalls[1])
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected rollback when generation is already terminal")
+	}
+}
+
+func TestExecuteGenerationFailsWhenResolvedAttachmentRefCannotBeMatched(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222222",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a travel deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+	client := &stubResponseClient{
+		responses: []azureopenai.Response{{
+			OutputText: `{
+				"version": "v2",
+				"slides": [
+					{"layout": "cover_hero", "title": "Kyoto", "blocks": [{"type": "image", "assetRef": "attachment:missing"}]}
+				]
+			}`,
+		}},
+	}
+	blobs := &stubBlobStore{}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
+	service := &Service{
+		planner:        PlannerConfig{Deployment: "presentation-deployment"},
+		blobs:          blobs,
+		responses:      client,
+		generationRead: reader,
+		assetRead:      stubAssetReader{},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+	}
+
+	err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222222")
+	if err == nil {
+		t.Fatal("ExecuteGeneration() error = nil, want error")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if reader.updateCalls[0].ErrorCode != "resolved_asset_not_found" {
+		t.Fatalf("reader.updateCalls[0].ErrorCode = %q", reader.updateCalls[0].ErrorCode)
+	}
+	if !strings.Contains(reader.updateCalls[0].ErrorMessage, "attachment:missing") {
+		t.Fatalf("reader.updateCalls[0].ErrorMessage = %q", reader.updateCalls[0].ErrorMessage)
+	}
+}
+
+func TestCompleteGenerationCleansUpUploadedThemeAssetsWhenResolvedAssetPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		createAssetErr: errors.New("persist asset failed"),
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+		generationRead: &stubGenerationReader{},
+	}
+
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		[]byte(`{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+		[]byte(`{"version":"v2","slideSize":"16:9","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+	)
+	if err == nil {
+		t.Fatal("completeGeneration() error = nil, want error")
+	}
+	if len(blobs.deleteCalls) != 2 {
+		t.Fatalf("len(blobs.deleteCalls) = %d, want 2", len(blobs.deleteCalls))
+	}
+	if !strings.Contains(blobs.deleteCalls[0], "/resolved/") {
+		t.Fatalf("blobs.deleteCalls[0] = %q", blobs.deleteCalls[0])
+	}
+	if !strings.Contains(blobs.deleteCalls[1], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls[1] = %q", blobs.deleteCalls[1])
+	}
+}
+
+func TestCompleteGenerationPersistsPlanWhenOutputPersistenceTransactionCannotStart(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		assetResolver:  newDefaultAssetResolver(blobs),
+		generationRead: reader,
+	}
+
+	plannerOutputJSON := []byte(`{"version":"v1","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	dialectJSON := []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		plannerOutputJSON,
+		dialectJSON,
+	)
+	if err == nil {
+		t.Fatal("completeGeneration() error = nil, want error")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if got := string(reader.updateCalls[0].PlannerOutputJSON); got != string(plannerOutputJSON) {
+		t.Fatalf("reader.updateCalls[0].PlannerOutputJSON = %s", got)
+	}
+	if got := string(reader.updateCalls[0].DialectJSON); got != string(dialectJSON) {
+		t.Fatalf("reader.updateCalls[0].DialectJSON = %s", got)
+	}
+	if len(blobs.uploadCalls) != 0 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 0 {
+		t.Fatalf("blobs.deleteCalls = %#v, want no cleanup because no blobs were uploaded", blobs.deleteCalls)
+	}
+}
+
+func TestCompleteGenerationPersistsPlanWhenOutputAssetPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		createAssetErr: errors.New("persist output asset failed"),
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+		generationRead: reader,
+	}
+
+	plannerOutputJSON := []byte(`{"version":"v1","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	dialectJSON := []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		plannerOutputJSON,
+		dialectJSON,
+	)
+	if err == nil {
+		t.Fatal("completeGeneration() error = nil, want error")
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected rollback when output asset persistence fails")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if got := string(reader.updateCalls[0].PlannerOutputJSON); got != string(plannerOutputJSON) {
+		t.Fatalf("reader.updateCalls[0].PlannerOutputJSON = %s", got)
+	}
+	if got := string(reader.updateCalls[0].DialectJSON); got != string(dialectJSON) {
+		t.Fatalf("reader.updateCalls[0].DialectJSON = %s", got)
+	}
+	if len(blobs.deleteCalls) != 1 || !strings.Contains(blobs.deleteCalls[0], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls = %#v, want uploaded output blob cleanup", blobs.deleteCalls)
 	}
 }
 
@@ -746,6 +1134,12 @@ func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *tes
 	}
 	if !strings.Contains(update.ErrorMessage, "decode presentation document") {
 		t.Fatalf("update.ErrorMessage = %q, want decode failure", update.ErrorMessage)
+	}
+	if got := string(update.PlannerOutputJSON); got != "still not json" {
+		t.Fatalf("update.PlannerOutputJSON = %q, want latest invalid planner output", got)
+	}
+	if got := string(update.DialectJSON); got != "" {
+		t.Fatalf("update.DialectJSON = %q, want empty", got)
 	}
 }
 
@@ -1185,14 +1579,18 @@ func (s *stubWriteTx) CreateGeneration(_ context.Context, params repository.Crea
 	if s.generation.ID != "" {
 		generation := s.generation
 		generation.Prompt = params.Prompt
+		generation.PlannerOutputJSON = params.PlannerOutputJSON
+		generation.DialectJSON = params.DialectJSON
 		generation.Status = params.Status
 		return generation, nil
 	}
 	return repository.PresentationGeneration{
-		ID:        "generated-presentation",
-		SessionID: params.SessionID,
-		Prompt:    params.Prompt,
-		Status:    params.Status,
+		ID:                "generated-presentation",
+		SessionID:         params.SessionID,
+		Prompt:            params.Prompt,
+		PlannerOutputJSON: params.PlannerOutputJSON,
+		DialectJSON:       params.DialectJSON,
+		Status:            params.Status,
 	}, nil
 }
 
@@ -1202,16 +1600,20 @@ func (s *stubWriteTx) CreateGenerationAsset(_ context.Context, params repository
 	}
 	s.createAssetCalls = append(s.createAssetCalls, params)
 	return repository.PresentationGenerationAsset{
-		ID:           fmt.Sprintf("asset-%d", len(s.createAssetCalls)),
-		GenerationID: params.GenerationID,
-		Role:         params.Role,
-		SortOrder:    params.SortOrder,
-		BlobPath:     params.BlobPath,
-		MediaType:    params.MediaType,
-		Filename:     params.Filename,
-		SizeBytes:    params.SizeBytes,
-		Sha256:       params.Sha256,
-		CreatedAt:    time.Now().UTC(),
+		ID:            fmt.Sprintf("asset-%d", len(s.createAssetCalls)),
+		GenerationID:  params.GenerationID,
+		Role:          params.Role,
+		AssetRef:      params.AssetRef,
+		SourceType:    params.SourceType,
+		SourceAssetID: params.SourceAssetID,
+		SourceRef:     params.SourceRef,
+		SortOrder:     params.SortOrder,
+		BlobPath:      params.BlobPath,
+		MediaType:     params.MediaType,
+		Filename:      params.Filename,
+		SizeBytes:     params.SizeBytes,
+		Sha256:        params.Sha256,
+		CreatedAt:     time.Now().UTC(),
 	}, nil
 }
 

@@ -11,27 +11,35 @@ import (
 )
 
 type PresentationGenerationAsset struct {
-	ID           string
-	GenerationID string
-	Role         string
-	SortOrder    int64
-	BlobPath     string
-	MediaType    string
-	Filename     string
-	SizeBytes    int64
-	Sha256       string
-	CreatedAt    time.Time
+	ID            string
+	GenerationID  string
+	Role          string
+	AssetRef      string
+	SourceType    string
+	SourceAssetID string
+	SourceRef     string
+	SortOrder     int64
+	BlobPath      string
+	MediaType     string
+	Filename      string
+	SizeBytes     int64
+	Sha256        string
+	CreatedAt     time.Time
 }
 
 type CreatePresentationGenerationAssetParams struct {
-	GenerationID string
-	Role         string
-	SortOrder    int64
-	BlobPath     string
-	MediaType    string
-	Filename     string
-	SizeBytes    int64
-	Sha256       string
+	GenerationID  string
+	Role          string
+	AssetRef      string
+	SourceType    string
+	SourceAssetID string
+	SourceRef     string
+	SortOrder     int64
+	BlobPath      string
+	MediaType     string
+	Filename      string
+	SizeBytes     int64
+	Sha256        string
 }
 
 type PresentationGenerationAssetRepository struct {
@@ -49,16 +57,24 @@ func (r *PresentationGenerationAssetRepository) Create(ctx context.Context, para
 	if err != nil {
 		return PresentationGenerationAsset{}, fmt.Errorf("parse generation id: %w", err)
 	}
+	sourceAssetID, err := parseOptionalUUID(params.SourceAssetID)
+	if err != nil {
+		return PresentationGenerationAsset{}, fmt.Errorf("parse source asset id: %w", err)
+	}
 
 	row, err := r.queries.CreatePresentationGenerationAsset(ctx, dbsqlc.CreatePresentationGenerationAssetParams{
-		GenerationID: generationID,
-		Role:         params.Role,
-		SortOrder:    params.SortOrder,
-		BlobPath:     params.BlobPath,
-		MediaType:    params.MediaType,
-		Filename:     params.Filename,
-		SizeBytes:    params.SizeBytes,
-		Sha256:       params.Sha256,
+		GenerationID:  generationID,
+		Role:          params.Role,
+		AssetRef:      textValue(params.AssetRef),
+		SourceType:    textValue(params.SourceType),
+		SourceAssetID: sourceAssetID,
+		SourceRef:     textValue(params.SourceRef),
+		SortOrder:     params.SortOrder,
+		BlobPath:      params.BlobPath,
+		MediaType:     params.MediaType,
+		Filename:      params.Filename,
+		SizeBytes:     params.SizeBytes,
+		Sha256:        params.Sha256,
 	})
 	if err != nil {
 		return PresentationGenerationAsset{}, fmt.Errorf("create presentation generation asset: %w", err)
@@ -190,15 +206,19 @@ func mapPresentationGenerationAsset(row dbsqlc.PresentationGenerationAsset) (Pre
 	}
 
 	return PresentationGenerationAsset{
-		ID:           row.ID.String(),
-		GenerationID: row.GenerationID.String(),
-		Role:         row.Role,
-		SortOrder:    row.SortOrder,
-		BlobPath:     row.BlobPath,
-		MediaType:    row.MediaType,
-		Filename:     row.Filename,
-		SizeBytes:    row.SizeBytes,
-		Sha256:       row.Sha256,
-		CreatedAt:    row.CreatedAt.Time,
+		ID:            row.ID.String(),
+		GenerationID:  row.GenerationID.String(),
+		Role:          row.Role,
+		AssetRef:      nullableText(row.AssetRef),
+		SourceType:    nullableText(row.SourceType),
+		SourceAssetID: nullableUUID(row.SourceAssetID),
+		SourceRef:     nullableText(row.SourceRef),
+		SortOrder:     row.SortOrder,
+		BlobPath:      row.BlobPath,
+		MediaType:     row.MediaType,
+		Filename:      row.Filename,
+		SizeBytes:     row.SizeBytes,
+		Sha256:        row.Sha256,
+		CreatedAt:     row.CreatedAt.Time,
 	}, nil
 }

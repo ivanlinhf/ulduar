@@ -99,6 +99,7 @@ CREATE TABLE presentation_generations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
     prompt TEXT NOT NULL,
+    planner_output_json JSONB,
     dialect_json JSONB,
     provider_name TEXT NOT NULL,
     provider_model TEXT NOT NULL,
@@ -116,6 +117,10 @@ CREATE TABLE presentation_generation_assets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     generation_id UUID NOT NULL REFERENCES presentation_generations (id) ON DELETE CASCADE,
     role TEXT NOT NULL,
+    asset_ref TEXT,
+    source_type TEXT,
+    source_asset_id UUID,
+    source_ref TEXT,
     sort_order BIGINT NOT NULL DEFAULT 0,
     blob_path TEXT NOT NULL,
     media_type TEXT NOT NULL,
@@ -123,11 +128,24 @@ CREATE TABLE presentation_generation_assets (
     size_bytes BIGINT NOT NULL,
     sha256 TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT presentation_generation_assets_role_check CHECK (role IN ('input', 'output')),
+    CONSTRAINT presentation_generation_assets_role_check CHECK (role IN ('input', 'resolved', 'output')),
+    CONSTRAINT presentation_generation_assets_source_type_check CHECK (
+        source_type IS NULL OR source_type IN ('input_asset', 'theme_bundle')
+    ),
+    CONSTRAINT presentation_generation_assets_resolved_metadata_check CHECK (
+        (role = 'resolved' AND asset_ref IS NOT NULL AND source_type IS NOT NULL)
+        OR (role <> 'resolved' AND asset_ref IS NULL AND source_type IS NULL AND source_asset_id IS NULL AND source_ref IS NULL)
+    ),
+    CONSTRAINT presentation_generation_assets_input_asset_source_check CHECK (
+        source_type <> 'input_asset' OR (source_asset_id IS NOT NULL AND source_ref IS NULL)
+    ),
+    CONSTRAINT presentation_generation_assets_theme_bundle_source_check CHECK (
+        source_type <> 'theme_bundle' OR (source_ref IS NOT NULL AND source_asset_id IS NULL)
+    ),
     CONSTRAINT presentation_generation_assets_sort_order_check CHECK (sort_order >= 0),
     CONSTRAINT presentation_generation_assets_size_bytes_check CHECK (size_bytes > 0),
     CONSTRAINT presentation_generation_assets_media_type_check CHECK (
-        (role = 'input' AND media_type IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf'))
+        (role IN ('input', 'resolved') AND media_type IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf'))
         OR (role = 'output' AND media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
     )
 );

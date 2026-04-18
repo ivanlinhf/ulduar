@@ -176,6 +176,12 @@ Rules:
 - do not fetch remote assets during planning
 - downstream orchestration resolves symbolic refs into concrete assets before compilation
 
+Current backend resolution support:
+
+- `attachment:*` resolves to uploaded presentation input assets using backend-provided alias guidance
+- `theme:*` resolves only to backend-managed bundled theme assets from the minimal built-in registry
+- remote/fetched asset sources are not supported in v1/v2 orchestration today
+
 ## v2 layouts
 
 `v2` continues to allow the simple legacy layouts:
