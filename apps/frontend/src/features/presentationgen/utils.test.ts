@@ -44,8 +44,11 @@ describe("presentation attachment utilities", () => {
   });
 
   it("rejects oversized attachments", () => {
-    const file = new File([new Uint8Array(maxAttachmentBytes + 1)], "oversized.pdf", {
+    const file = new File(["x"], "oversized.pdf", {
       type: "application/pdf",
+    });
+    Object.defineProperty(file, "size", {
+      value: maxAttachmentBytes + 1,
     });
 
     expect(validatePresentationAttachments([file], ["application/pdf"])).toBe(
