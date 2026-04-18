@@ -8,8 +8,9 @@ Ulduar v1 is a monorepo web chat application with:
 - A React + TypeScript single-page frontend
 - Azure OpenAI as the chat model provider
 - A pluggable image generation provider layer (Azure AI Foundry FLUX as the initial provider)
-- PostgreSQL for durable chat and image generation persistence
-- Azure Blob Storage for attachment and generated image storage
+- A first-class presentation-generation workflow that accepts a prompt plus optional image/PDF references and produces a PPTX output
+- PostgreSQL for durable chat, image generation, and presentation generation persistence
+- Azure Blob Storage for attachment, generated image, and generated PPTX storage
 
 The system must support multiple concurrent anonymous users. Each browser instance creates and holds a `sessionId` only in frontend memory. If the user refreshes or reopens the browser, the SPA creates a new session. Previous sessions remain stored indefinitely but are not discoverable in v1 because there is no authentication, session restore flow, or chat history UI.
 
@@ -18,6 +19,7 @@ As of March 30, 2026, the Azure OpenAI docs checked during planning list `gpt-5-
 ## Goals
 
 - Deliver a working anonymous chat product with text, image, and PDF inputs.
+- Support a rollout-gated presentation workflow that accepts a prompt plus optional image/PDF references.
 - Persist all chat state so backend restarts do not lose ongoing sessions.
 - Stream assistant responses to the frontend.
 - Keep the backend stateless so it can serve multiple sessions concurrently.
@@ -56,6 +58,7 @@ No rollout-notes document is required.
 - Sends the `sessionId` with every chat request
 - Opens an SSE stream to receive incremental assistant output
 - When the backend emits Azure web-search progress, shows a transient status and a final `Sources` section for persisted citations
+- Switches between chat, image-generation, and presentation-generation workspaces based on frontend rollout flags and backend capabilities
 
 ### Backend
 
@@ -66,13 +69,14 @@ No rollout-notes document is required.
 - Streams assistant output to the SPA via SSE
 - Can optionally attach Azure-native `web_search` behind backend configuration, disabled by default for manual rollout
 - Supports a pluggable image generation provider; Azure AI Foundry FLUX is the initial configured adapter, enabled when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set
+- Supports a presentation planner/compiler workflow, enabled only when `AZURE_OPENAI_PRESENTATION_ENDPOINT` and related planner settings are configured
 
 ### Storage
 
 - Azure Database for PostgreSQL Flexible Server
-  - Stores session, message, run, attachment, and image generation metadata
+  - Stores session, message, run, attachment, image generation, and presentation generation metadata
 - Azure Blob Storage
-  - Stores raw uploaded files and generated images
+  - Stores raw uploaded files, generated images, and generated PPTX assets
 
 ### Local Development
 
@@ -241,6 +245,7 @@ Environment variables should cover:
 - Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
 - Web-search runs must preserve the existing session model, API shape, and anonymous chat flow while persisting only final citation metadata
 - `VITE_IMAGE_GENERATION_ENABLED` (frontend-only build flag): when unset or `false`, the image-generation UI is hidden entirely. Setting this to `true` exposes the image workspace but backend provider configuration is required separately for image generation to function.
+- `VITE_PRESENTATION_GENERATION_ENABLED` (frontend-only build flag): when unset or `false`, the presentation-generation UI is hidden entirely. Keep it disabled by default until manual validation passes. Setting this to `true` exposes the presentation workspace, but backend planner configuration is required separately for presentation generation to function.
 
 ### Image generation provider
 
@@ -257,6 +262,23 @@ Future providers can be added by implementing the interface without changing the
 - Reference image size limit per upload: 20 MiB (configurable via `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES`)
 - Output count is fixed at 1 image per generation
 - Supported resolutions: `1024x1024`, `1152x896`, `896x1152`, `1344x768`, `768x1344`, `1536x1024`, `1024x1536`
+
+### Presentation generation workflow
+
+The backend exposes a dedicated presentation-generation path that reuses the anonymous session model while keeping planner-specific logic isolated from chat and image generation.
+
+- Planner configuration lives under the `AZURE_OPENAI_PRESENTATION_*` environment variables.
+- The planner accepts a required prompt plus optional JPEG, PNG, WebP, and PDF input references only.
+- The planner produces normalized JSON that follows [docs/presentation-dialect.md](presentation-dialect.md), and the compiler turns that normalized dialect into a PPTX asset.
+- The frontend entry point is gated separately by `VITE_PRESENTATION_GENERATION_ENABLED` and stays hidden by default until manual validation passes.
+
+#### V1 presentation generation constraints
+
+- Input is `prompt` plus zero or more image/PDF references only
+- Supported attachment media types: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`
+- Output is a generated PPTX asset with media type `application/vnd.openxmlformats-officedocument.presentationml.presentation`
+- Read-only retrieval endpoints remain available for completed generations even when the planner is currently unconfigured
+- This design doc links to [docs/presentation-dialect.md](presentation-dialect.md) as the JSON source of truth instead of duplicating the dialect here
 
 ### SDK choice
 
@@ -362,6 +384,8 @@ Returns the raw bytes of an output-role generation image. Served with a long-liv
 
 Provider-dependent endpoints return `503 Service Unavailable` when no presentation planner is configured. This applies to `GET /api/v1/presentation-generations/capabilities`, `POST /api/v1/sessions/{sessionId}/presentation-generations`, and the stream endpoint while a generation is still non-terminal. Read-only retrieval endpoints for existing completed generations, including the generation record and stored output asset content, remain available without an active planner.
 
+Normalized planner/compiler JSON returned from presentation-generation APIs follows [docs/presentation-dialect.md](presentation-dialect.md).
+
 #### `GET /api/v1/presentation-generations/capabilities`
 
 Returns the supported input attachment media types, the output PPTX media type, and the provider name.
@@ -412,7 +436,7 @@ Returns the raw bytes of an output-role generated PPTX asset.
 - Chat conversation area
 - Composer
 - Attachment picker for images and PDFs
-- `New` control: always opens a dropdown menu. When image generation is disabled, the menu contains only `New chat`. When image generation is enabled, the menu contains `New chat` and `New image` options.
+- `New` control: always opens a dropdown menu. When both rollout flags are disabled, the menu contains only `New chat`. When image generation is enabled, it adds `New image`. When presentation generation is enabled, it adds `New Presentation`.
 
 No history sidebar is needed in v1.
 
@@ -434,6 +458,25 @@ The image workspace is a multi-turn view. Each submitted generation becomes a tu
 ### Image generation session model
 
 Each image workspace session is a single backend chat session scoped to image generation. All generations submitted within one image workspace share the same `sessionId`. The session ID is held in memory only, consistent with the chat session model; refreshing the browser loses access to the prior image workspace.
+
+### Presentation generation UI rollout model
+
+Presentation generation UI is controlled by two gates:
+
+- **Frontend flag** (`VITE_PRESENTATION_GENERATION_ENABLED`): when unset or `false`, all presentation-generation UI is hidden regardless of backend configuration. Keep this disabled by default until manual validation passes. When `true`, the frontend includes the presentation-generation entry points and checks backend capabilities to decide whether `New Presentation` is enabled.
+- **Backend planner** (`AZURE_OPENAI_PRESENTATION_ENDPOINT` + related planner settings): when unset, the backend returns `503 Service Unavailable` from `GET /api/v1/presentation-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/presentation-generations`.
+
+In practice, the presentation workspace is only reachable when both gates are satisfied: the frontend flag is enabled and backend capabilities report presentation generation as available. If the frontend flag is enabled but the backend planner is unavailable, the frontend treats presentation generation as unavailable, `New Presentation` is disabled, and the presentation workspace cannot be entered from the UI. The chat and image workspaces are unaffected. Setting the backend planner without enabling the frontend flag keeps presentation generation invisible in the UI.
+
+### Presentation workspace
+
+When `New Presentation` is selected, the frontend switches to a dedicated presentation workspace. The presentation workspace holds its own session, separate from any active chat session. Selecting `New Presentation` again resets the presentation workspace and starts a fresh presentation session; the existing chat session is preserved.
+
+The presentation workspace is a multi-turn view. Each submitted generation becomes a turn displayed in the presentation timeline. The session persists as long as the page remains loaded; refreshing the browser or switching to a new chat session discards the presentation workspace state.
+
+### Presentation generation session model
+
+Each presentation workspace session is a single backend chat session scoped to presentation generation. All generations submitted within one presentation workspace share the same `sessionId`. The session ID is held in memory only, consistent with the chat session model; refreshing the browser loses access to the prior presentation workspace.
 
 ### Prior-image reuse
 
