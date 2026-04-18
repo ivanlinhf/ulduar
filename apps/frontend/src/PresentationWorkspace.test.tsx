@@ -290,6 +290,46 @@ describe("PresentationWorkspace", () => {
     });
   });
 
+  it("treats a completed generation without output assets as failed", async () => {
+    mockedCreatePresentationGeneration.mockResolvedValue({
+      generationId: "gen-88888888-8888-8888-8888-888888888888",
+      status: "pending",
+      createdAt: "2026-03-31T10:02:00Z",
+    });
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+    await openPresentationWorkspace(user);
+
+    await user.type(screen.getByLabelText("Presentation prompt"), "Deck with missing output");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(mockedCreatePresentationGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      presentationStreamHandlers?.onCompleted?.({
+        generationId: "gen-88888888-8888-8888-8888-888888888888",
+        sessionId: "22222222-2222-2222-2222-222222222222",
+        status: "completed",
+        prompt: "Deck with missing output",
+        createdAt: "2026-03-31T10:02:00Z",
+        completedAt: "2026-03-31T10:02:08Z",
+        inputAssets: [],
+        outputAssets: [],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("failed")).toBeInTheDocument();
+      expect(
+        screen.getByText("Presentation generation completed without a downloadable output asset."),
+      ).toBeInTheDocument();
+    });
+  });
+
   it(
     "backs off and stops retrying after repeated transport failures while the backend still reports running",
     async () => {

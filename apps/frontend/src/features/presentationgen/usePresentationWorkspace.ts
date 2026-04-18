@@ -36,6 +36,7 @@ import type {
 
 const maxTransportRecoveryRetries = 3;
 const transportRecoveryBaseDelayMs = 1000;
+const missingOutputAssetMessage = "Presentation generation completed without a downloadable output asset.";
 
 export function usePresentationWorkspace(capabilities: PresentationGenerationCapabilitiesResponse) {
   const [bootstrapState, setBootstrapState] = useState<PresentationBootstrapState>("idle");
@@ -316,6 +317,11 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
 
   function completeTurn(turnId: string, payload: PresentationGenerationResponse) {
     const outputAsset = mapOutputAsset(payload);
+    if (!outputAsset) {
+      failTurn(turnId, missingOutputAssetMessage);
+      return;
+    }
+
     setTurns((prev) =>
       prev.map((turn) =>
         turn.id === turnId ? { ...turn, status: "completed", outputAsset, errorMessage: undefined } : turn,
