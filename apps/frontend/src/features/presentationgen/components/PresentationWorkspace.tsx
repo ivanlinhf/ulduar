@@ -49,6 +49,7 @@ export function PresentationWorkspace({
 
       <PresentationComposer
         attachmentToast={workspace.attachmentToast}
+        attachmentsSupported={workspace.attachmentsSupported}
         attachments={workspace.attachments}
         busy={workspace.busy}
         canSubmit={workspace.canSubmit}

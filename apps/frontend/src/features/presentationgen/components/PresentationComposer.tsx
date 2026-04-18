@@ -7,6 +7,7 @@ import type { PresentationSubmissionState, SelectedPresentationAttachment } from
 
 type PresentationComposerProps = {
   attachmentToast: string;
+  attachmentsSupported: boolean;
   attachments: SelectedPresentationAttachment[];
   busy: boolean;
   canSubmit: boolean;
@@ -27,6 +28,7 @@ type PresentationComposerProps = {
 
 export function PresentationComposer({
   attachmentToast,
+  attachmentsSupported,
   attachments,
   busy,
   canSubmit,
@@ -101,14 +103,18 @@ export function PresentationComposer({
           <ActionTooltip
             align="left"
             side="above"
-            content={<span className="action-tooltip-label">Add attachments</span>}
+            content={
+              <span className="action-tooltip-label">
+                {attachmentsSupported ? "Add attachments" : "Attachments unavailable"}
+              </span>
+            }
           >
             <button
               type="button"
               className="attachment-button"
-              aria-label="Add attachments"
+              aria-label={attachmentsSupported ? "Add attachments" : "Attachments unavailable"}
               onClick={onOpenFilePicker}
-              disabled={busy}
+              disabled={busy || !attachmentsSupported}
             >
               <IconAttachment />
             </button>
@@ -184,7 +190,7 @@ export function PresentationComposer({
         accept={inputAccept}
         multiple
         onChange={onFileSelection}
-        disabled={busy}
+        disabled={busy || !attachmentsSupported}
         tabIndex={-1}
       />
 

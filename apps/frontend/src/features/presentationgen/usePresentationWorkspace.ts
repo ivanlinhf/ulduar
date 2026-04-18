@@ -18,7 +18,14 @@ import {
   type PresentationGenerationCapabilitiesResponse,
   type PresentationGenerationResponse,
 } from "../../lib/api";
-import { attachmentToastDurationMs, buildPresentationAttachmentAccept, createLocalId, toErrorMessage, validatePresentationAttachments } from "./utils";
+import {
+  attachmentToastDurationMs,
+  buildPresentationAttachmentAccept,
+  createLocalId,
+  presentationAttachmentsSupported,
+  toErrorMessage,
+  validatePresentationAttachments,
+} from "./utils";
 import type {
   PresentationBootstrapState,
   PresentationSubmissionState,
@@ -51,6 +58,10 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
 
   const inputAccept = useMemo(
     () => buildPresentationAttachmentAccept(capabilities.inputMediaTypes),
+    [capabilities.inputMediaTypes],
+  );
+  const attachmentsSupported = useMemo(
+    () => presentationAttachmentsSupported(capabilities.inputMediaTypes),
     [capabilities.inputMediaTypes],
   );
   const busy = bootstrapState === "loading" || submissionState !== "idle";
@@ -362,7 +373,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
   }
 
   function openFilePicker() {
-    if (busy) {
+    if (busy || !attachmentsSupported) {
       return;
     }
 
@@ -433,6 +444,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     handlePromptKeyDown,
     handleSubmit,
     inputAccept,
+    attachmentsSupported,
     openFilePicker,
     prompt,
     removeAttachment,

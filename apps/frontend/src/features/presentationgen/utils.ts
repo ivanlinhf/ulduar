@@ -9,14 +9,23 @@ export { createLocalId, formatBytes, toErrorMessage } from "../../lib/utils";
 const fallbackAllowedLabel = "JPEG, PNG, WebP images and PDFs";
 const presentationOutputMediaTypePPTX =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const attachmentsUnsupportedMessage = "Attachments are not supported for this presentation workspace.";
 
 export function buildPresentationAttachmentAccept(inputMediaTypes: string[]) {
   return inputMediaTypes.join(",");
 }
 
+export function presentationAttachmentsSupported(inputMediaTypes: string[]) {
+  return inputMediaTypes.length > 0;
+}
+
 export function validatePresentationAttachments(files: File[], inputMediaTypes: string[]) {
   if (files.length > maxAttachmentCount) {
     return `You can attach at most ${maxAttachmentCount} files at once.`;
+  }
+
+  if (!presentationAttachmentsSupported(inputMediaTypes)) {
+    return files.length > 0 ? attachmentsUnsupportedMessage : "";
   }
 
   const allowedTypes = new Set(inputMediaTypes);
@@ -57,7 +66,7 @@ function formatPresentationAllowedTypes(inputMediaTypes: string[]) {
 
   const labels = inputMediaTypes.map((mediaType) => compactMediaType(mediaType));
   if (labels.length === 0) {
-    return fallbackAllowedLabel;
+    return attachmentsUnsupportedMessage;
   }
   if (labels.length === 1) {
     return labels[0];

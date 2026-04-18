@@ -18,18 +18,18 @@ export function PresentationTurnCard({ turn }: PresentationTurnCardProps) {
     <article className="image-turn-card presentation-turn-card">
       <div className="image-turn-input">
         {turn.inputAttachments.length > 0 ? (
-          <div className="presentation-turn-attachments" aria-label="Presentation references">
+          <ul className="presentation-turn-attachments" aria-label="Presentation references">
             {turn.inputAttachments.map((attachment) => (
-              <span key={attachment.id} className="attachment-chip attachment-chip-file">
+              <li key={attachment.id} className="attachment-chip attachment-chip-file">
                 <span
                   className="attachment-chip-name"
                   title={`${attachment.filename} · ${compactMediaType(attachment.mediaType)}`}
                 >
                   {attachment.filename} · {compactMediaType(attachment.mediaType)}
                 </span>
-              </span>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : null}
 
         <div className="image-turn-prompt-row">
