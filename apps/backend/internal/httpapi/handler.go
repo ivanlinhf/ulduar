@@ -154,9 +154,17 @@ type createImageGenerationResponse struct {
 }
 
 type presentationGenerationCapabilitiesResponse struct {
-	InputMediaTypes []string `json:"inputMediaTypes"`
-	OutputMediaType string   `json:"outputMediaType"`
-	ProviderName    string   `json:"providerName,omitempty"`
+	InputMediaTypes []string                        `json:"inputMediaTypes"`
+	OutputMediaType string                          `json:"outputMediaType"`
+	ProviderName    string                          `json:"providerName,omitempty"`
+	ThemePresets    []presentationThemePresetResult `json:"themePresets,omitempty"`
+}
+
+type presentationThemePresetResult struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+	IsDefault   bool   `json:"isDefault,omitempty"`
 }
 
 type createPresentationGenerationJSONRequest struct {
@@ -1307,10 +1315,20 @@ func mapImageGenerationCapabilities(capabilities imagegen.Capabilities) imageGen
 }
 
 func mapPresentationGenerationCapabilities(capabilities presentationgen.Capabilities) presentationGenerationCapabilitiesResponse {
+	presets := make([]presentationThemePresetResult, 0, len(capabilities.ThemePresets))
+	for _, preset := range capabilities.ThemePresets {
+		presets = append(presets, presentationThemePresetResult{
+			ID:          preset.ID,
+			Label:       preset.Label,
+			Description: preset.Description,
+			IsDefault:   preset.IsDefault,
+		})
+	}
 	return presentationGenerationCapabilitiesResponse{
 		InputMediaTypes: slices.Clone(capabilities.InputMediaTypes),
 		OutputMediaType: capabilities.OutputMediaType,
 		ProviderName:    capabilities.ProviderName,
+		ThemePresets:    presets,
 	}
 }
 

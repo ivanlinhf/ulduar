@@ -1,36 +1,101 @@
-# Presentation Dialect v1
+# Presentation Dialect v1 and v2
 
 ## Purpose
 
-This document defines the source-of-truth JSON dialect for presentation planning in Ulduar v1.
+This document defines the source-of-truth JSON dialect for presentation planning in Ulduar.
 
-It is intentionally small, semantic, and layout-based so that:
+The contract is versioned so:
 
-- an LLM planner can produce it reliably
-- a PPTX compiler can consume it deterministically
-- future agents can implement against one stable contract
+- existing `v1` documents remain valid and supported
+- new work can target `v2` without stretching `v1`
+- planners, backend normalization, compiler entrypoints, and future frontend work can share one stable contract
 
-## Goals
+## Shared constraints
 
-- Keep the dialect versioned from day one
-- Represent slide intent instead of freeform coordinates
-- Limit v1 to a fixed set of layouts and content block types
-- Make normalization/defaulting explicit and deterministic
+Both versions:
 
-## Non-goals
+- use semantic layouts instead of arbitrary coordinates
+- require `version`
+- allow only `slideSize: "16:9"`
+- require at least 1 slide
+- reject unknown fields and explicit `null` values
 
-The following are explicitly out of scope for v1:
+Out of scope for both versions:
 
 - animations
 - transitions
 - charts or SmartArt
-- arbitrary shapes, connectors, or absolute x/y placement
-- embedded uploaded images as slide assets
-- frontend-visible changes
-- HTTP handlers or planner integration
-- PPTX compilation details
+- arbitrary shapes, connectors, or x/y authoring
+- remote image fetching
+- PPTX renderer implementation details beyond what the dialect requires
 
-## Top-level document shape
+## Theme preset registry and fallback
+
+`v2` introduces stable preset IDs and metadata.
+
+Canonical built-in preset IDs reserved from the start:
+
+- `general_clean`
+- `travel_editorial`
+
+Stable preset metadata shape:
+
+```json
+{
+  "id": "general_clean",
+  "label": "General Clean",
+  "description": "Default balanced preset for general-purpose decks.",
+  "isDefault": true
+}
+```
+
+Rules:
+
+- `id` is the stable backend/compiler/frontend identifier.
+- `label` is short human-readable copy.
+- `description` is optional.
+- `isDefault` is optional and only `true` for the default preset.
+- The default preset is always `general_clean`.
+- If a requested or planner-emitted preset is unknown or unavailable, normalization resolves it to `general_clean`.
+- Capabilities exposed to the frontend should return preset metadata in this exact shape.
+
+### Preset boundary vs slide JSON
+
+Theme presets own:
+
+- color system
+- fonts, including default Latin/CJK-capable font choices
+- background treatments
+- card/image/table visual styling
+- decorative assets bundled with the app
+
+Per-slide JSON owns:
+
+- slide intent and layout choice
+- titles and semantic content blocks
+- symbolic asset references
+- optional emphasis/tone choices that stay within the preset system
+
+Per-slide JSON must **not** contain:
+
+- raw font family names
+- absolute positions
+- arbitrary dimensions
+- freeform CSS-like style objects
+
+## Version coexistence
+
+- `v1` stays valid and compilable.
+- `v2` is additive and is the target for new planner output.
+- There is no silent auto-conversion from `v1` to `v2`.
+- Normalized JSON is the source of truth for compilation.
+- Older stored `v1` generations remain valid without migration.
+
+## v1 summary
+
+`v1` remains unchanged in spirit and remains the compatibility contract for existing documents.
+
+### Top-level shape
 
 ```json
 {
@@ -46,105 +111,111 @@ The following are explicitly out of scope for v1:
 }
 ```
 
-### Top-level fields
+### v1 layouts
 
-- `version` — required string. Must be `"v1"`.
-- `slideSize` — optional string. Defaults to `"16:9"`. No other value is allowed in v1.
-- `slides` — required array with at least 1 slide.
+- `title`
+- `section`
+- `title_bullets`
+- `two_column`
+- `table`
+- `closing`
 
-## Supported slide layouts
+### v1 block types
 
-Each slide must have:
+- `paragraph`
+- `bullet_list`
+- `numbered_list`
+- `table`
+- `quote`
 
-- `layout` — one of:
-  - `title`
-  - `section`
-  - `title_bullets`
-  - `two_column`
-  - `table`
-  - `closing`
-- `title` — required non-empty string after trimming whitespace
+For exact `v1` validation behavior, use the backend normalization rules and tests as the source of truth.
 
-### `title`
+## v2 top-level shape
+
+```json
+{
+  "version": "v2",
+  "slideSize": "16:9",
+  "themePresetId": "general_clean",
+  "slides": [
+    {
+      "layout": "cover_hero",
+      "title": "Kyoto in Four Days",
+      "subtitle": "Autumn editorial itinerary",
+      "blocks": [
+        {
+          "type": "image",
+          "assetRef": "attachment:cover-photo",
+          "caption": "Arashiyama at golden hour"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### v2 top-level fields
+
+- `version` — required, must be `"v2"`
+- `slideSize` — optional, defaults to `"16:9"`
+- `themePresetId` — optional; if missing, empty, unknown, or unavailable, normalization resolves it to `"general_clean"`
+- `slides` — required array with at least 1 slide
+
+## v2 symbolic asset references
+
+`assetRef` values are symbolic only. Examples:
+
+- `attachment:cover-photo`
+- `attachment:map-scan`
+- `theme:hero-image`
+
+Rules:
+
+- do not use URLs
+- do not inline binary data
+- do not fetch remote assets during planning
+- downstream orchestration resolves symbolic refs into concrete assets before compilation
+
+## v2 layouts
+
+`v2` continues to allow the simple legacy layouts:
+
+- `title`
+- `section`
+- `title_bullets`
+- `two_column`
+
+New `v2`-first layouts:
+
+- `cover_hero`
+- `chapter_divider`
+- `toc_grid`
+- `card_grid`
+- `comparison_cards`
+- `timeline_itinerary`
+- `summary_matrix`
+- `recommendation_split`
+- `table`
+- `closing`
+
+Every slide still requires non-empty `title`.
+
+### `cover_hero`
 
 Allowed fields:
 
 - `title`
 - `subtitle` optional
-
-Not allowed:
-
-- `blocks`
-- `columns`
-
-### `section`
-
-Allowed fields:
-
-- `title`
-- `subtitle` optional
-
-Not allowed:
-
-- `blocks`
-- `columns`
-
-### `title_bullets`
-
-Allowed fields:
-
-- `title`
 - `blocks`
 
 Rules:
 
-- `blocks` must contain at least 1 block
-- `blocks` may only use `paragraph`, `bullet_list`, `numbered_list`, or `quote`
-- `blocks` must contain at least 1 `bullet_list` or `numbered_list`
+- `blocks` must contain 1 to 3 blocks
+- `blocks` may only contain `image`, `badge`, `rich_text`, or `callout`
+- `blocks` must contain exactly 1 `image`
+- `columns` is not allowed
 
-Not allowed:
-
-- `subtitle`
-- `columns`
-
-### `two_column`
-
-Allowed fields:
-
-- `title`
-- `columns`
-
-Rules:
-
-- `columns` must contain exactly 2 columns
-- each column may have:
-  - `heading` optional
-  - `blocks` required, at least 1 block
-- column blocks may only use `paragraph`, `bullet_list`, `numbered_list`, or `quote`
-
-Not allowed:
-
-- `subtitle`
-- top-level slide `blocks`
-
-### `table`
-
-Allowed fields:
-
-- `title`
-- `blocks`
-
-Rules:
-
-- `blocks` must contain exactly 1 block
-- that block must be a `table` block
-
-Not allowed:
-
-- `subtitle`
-- `columns`
-
-### `closing`
+### `chapter_divider`
 
 Allowed fields:
 
@@ -154,17 +225,86 @@ Allowed fields:
 
 Rules:
 
-- `blocks`, when present, may only use `paragraph`, `bullet_list`, `numbered_list`, or `quote`
+- `blocks` may contain at most 2 blocks
+- `blocks` may only contain `image`, `badge`, or `rich_text`
+- `blocks` may contain at most 1 `image`
+- `columns` is not allowed
 
-Not allowed:
+### `toc_grid`
 
-- `columns`
+Allowed fields:
 
-## Supported content blocks
+- `title`
+- `subtitle` optional
+- `blocks`
 
-Every block must contain `type`.
+Rules:
 
-Supported block types:
+- `blocks` must contain 2 to 8 blocks
+- every block must be `card`
+- `columns` is not allowed
+
+### `card_grid`
+
+Rules:
+
+- `blocks` must contain 2 to 6 blocks
+- every block must be `card`
+
+### `comparison_cards`
+
+Rules:
+
+- `blocks` must contain exactly 2 blocks
+- every block must be `card`
+
+### `timeline_itinerary`
+
+Rules:
+
+- `blocks` must contain 2 to 6 blocks
+- every block must be `card`
+
+### `summary_matrix`
+
+Rules:
+
+- `blocks` must contain 2 to 6 blocks
+- block types allowed: `stat`, `table`, `callout`
+- must contain exactly 1 `table`
+- must contain at least 1 `stat`
+
+### `recommendation_split`
+
+Rules:
+
+- `blocks` must contain 2 to 3 blocks
+- block types allowed: `image`, `callout`, `badge`
+- must contain exactly 1 `image`
+- must contain exactly 1 `callout`
+
+### `table`
+
+In `v2`, `table` remains semantic and must compile as a real table in downstream renderer work.
+
+Rules:
+
+- `blocks` must contain 1 to 2 blocks
+- block types allowed: `table`, `callout`
+- must contain exactly 1 `table`
+
+### `closing`
+
+Rules:
+
+- `subtitle` optional
+- `blocks` optional
+- `blocks` may contain up to 3 blocks
+- block types allowed: `paragraph`, `rich_text`, `callout`, `badge`, `image`
+
+## v2 block types
+
+### Legacy blocks still valid where allowed
 
 - `paragraph`
 - `bullet_list`
@@ -172,203 +312,210 @@ Supported block types:
 - `table`
 - `quote`
 
-### `paragraph`
+### `image`
 
 ```json
 {
-  "type": "paragraph",
-  "text": "A short supporting statement."
+  "type": "image",
+  "assetRef": "attachment:cover-photo",
+  "altText": "Torii gate at sunset",
+  "caption": "Fushimi Inari at dusk"
 }
 ```
 
 Rules:
 
-- `text` is required and must be non-empty after trimming
+- `assetRef` required
+- `altText` optional
+- `caption` optional
 
-### `bullet_list`
+### `card`
 
 ```json
 {
-  "type": "bullet_list",
-  "items": ["Item one", "Item two"]
+  "type": "card",
+  "title": "Arashiyama",
+  "label": "Day 1",
+  "body": "Bamboo grove, river walk, and evening lantern streets.",
+  "assetRef": "attachment:arashiyama-photo"
 }
 ```
 
 Rules:
 
-- `items` is required
-- `items` must contain at least 1 non-empty string
+- `title` required
+- `label` optional
+- `body` optional
+- `assetRef` optional
 
-### `numbered_list`
+### `stat`
 
 ```json
 {
-  "type": "numbered_list",
-  "items": ["First step", "Second step"]
+  "type": "stat",
+  "value": "4",
+  "label": "Days",
+  "body": "Ideal first-time visit length"
 }
 ```
 
 Rules:
 
-- same rules as `bullet_list`
+- `value` required
+- `label` required
+- `body` optional
 
-### `table`
+### `badge`
 
 ```json
 {
-  "type": "table",
-  "header": ["Metric", "Value"],
-  "rows": [
-    ["Revenue", "$1.2M"],
-    ["Margin", "37%"]
+  "type": "badge",
+  "text": "Best in late November",
+  "tone": "accent"
+}
+```
+
+Rules:
+
+- `text` required
+- `tone` optional
+- allowed `tone` values:
+  - `neutral`
+  - `accent`
+  - `success`
+  - `warning`
+
+### `callout`
+
+```json
+{
+  "type": "callout",
+  "title": "Recommendation",
+  "body": "Stay in Gion for the first two nights, then move west only if the itinerary is nature-heavy."
+}
+```
+
+Rules:
+
+- `title` required
+- `body` required
+
+### `rich_text`
+
+```json
+{
+  "type": "rich_text",
+  "spans": [
+    { "text": "Slow travel through " },
+    { "text": "京都", "lang": "ja", "emphasis": "accent" }
   ]
 }
 ```
 
 Rules:
 
-- `header` is required
-- `header` must contain at least 1 non-empty string
-- `rows` is required
-- `rows` must contain at least 1 row
-- each row must have exactly the same number of cells as `header`
-- each cell must be non-empty after trimming
+- `spans` required with at least 1 span
+- each span requires non-empty `text`
+- optional `emphasis` values:
+  - `strong`
+  - `emphasis`
+  - `accent`
+- optional `lang` supports language tagging for bilingual typography
 
-### `quote`
+## Planner guidance for v2
 
-```json
-{
-  "type": "quote",
-  "text": "A memorable statement.",
-  "attribution": "Customer interview"
-}
-```
+When targeting `v2`, the planner should:
 
-Rules:
+- default to `general_clean`
+- switch to `travel_editorial` only when the prompt is clearly travel/editorial/image-led
+- choose semantic layouts instead of stuffing content into generic bullet slides
+- keep asset references symbolic and deterministic
+- use `table` blocks for real tabular data
+- use `rich_text` only when emphasis or bilingual text is needed
+- avoid freeform style invention
 
-- `text` is required and must be non-empty after trimming
-- `attribution` is optional
-
-## Normalization and defaulting
-
-Validation and normalization happen together.
-
-The normalization pass must:
-
-- trim leading and trailing whitespace from all strings
-- default missing or empty `slideSize` to `"16:9"`
-- preserve `version` and require it to be `"v1"`
-- return canonical empty Go slices for optional collection fields that are allowed by the selected layout or block type
-- leave forbidden fields omitted in the normalized in-memory document so repeated validation/normalization stays valid
-
-JSON serialization is not a separate canonicalization contract in v1.
-When marshaled from the Go structs, omitted optional fields may still be omitted from JSON instead of appearing as empty arrays.
-
-Normalization does **not**:
-
-- infer missing slides
-- infer a missing title
-- rewrite one layout into another
-- auto-convert paragraphs into bullet lists
-- auto-fill table rows or headers
-
-## Field-by-field validation summary
-
-- Reject unsupported `layout` values
-- Reject unsupported `type` values
-- Reject `slideSize` values other than `"16:9"`
-- Reject `null` for all v1 string and array fields; omit the field instead when it is optional
-- Reject layout-specific fields used in the wrong layout, even when they are present as `null`, empty strings, or empty arrays
-- Reject empty required strings after trimming
-- Reject empty list items and empty table cells
-- Reject table rows with inconsistent column counts
-
-## Full example document
+## Example: travel deck (`v2`)
 
 ```json
 {
-  "version": "v1",
-  "slideSize": "16:9",
+  "version": "v2",
+  "themePresetId": "travel_editorial",
   "slides": [
     {
-      "layout": "title",
-      "title": "Quarterly Business Review",
-      "subtitle": "FY2026 Q1"
-    },
-    {
-      "layout": "section",
-      "title": "Executive summary",
-      "subtitle": "Key messages"
-    },
-    {
-      "layout": "title_bullets",
-      "title": "Highlights",
+      "layout": "cover_hero",
+      "title": "Kyoto In Four Days",
+      "subtitle": "Autumn editorial itinerary",
       "blocks": [
         {
-          "type": "paragraph",
-          "text": "The quarter focused on reliability and launch readiness."
+          "type": "image",
+          "assetRef": "attachment:cover-photo",
+          "caption": "Arashiyama at golden hour"
         },
         {
-          "type": "bullet_list",
-          "items": [
-            "Launch readiness improved from 61% to 88%",
-            "Median response latency decreased by 23%",
-            "Support backlog fell for the third straight month"
+          "type": "badge",
+          "text": "Late November",
+          "tone": "accent"
+        },
+        {
+          "type": "rich_text",
+          "spans": [
+            { "text": "A calm city break with " },
+            { "text": "京都", "lang": "ja", "emphasis": "accent" }
           ]
         }
       ]
     },
     {
-      "layout": "two_column",
-      "title": "Opportunities and risks",
-      "columns": [
+      "layout": "timeline_itinerary",
+      "title": "Four-day flow",
+      "blocks": [
         {
-          "heading": "Opportunities",
-          "blocks": [
-            {
-              "type": "bullet_list",
-              "items": [
-                "Expand into two adjacent buyer segments",
-                "Bundle onboarding services with premium tier"
-              ]
-            }
-          ]
+          "type": "card",
+          "label": "Day 1",
+          "title": "Arashiyama west side",
+          "body": "Bamboo grove, river walk, and Tenryu-ji before sunset.",
+          "assetRef": "attachment:day1-photo"
         },
         {
-          "heading": "Risks",
-          "blocks": [
-            {
-              "type": "quote",
-              "text": "Customers are optimistic, but they expect a smoother rollout.",
-              "attribution": "March 2026 customer advisory board"
-            }
-          ]
+          "type": "card",
+          "label": "Day 2",
+          "title": "Higashiyama and Gion",
+          "body": "Early temple route, afternoon tea, and evening alleys."
         }
       ]
     },
     {
-      "layout": "table",
-      "title": "KPI snapshot",
+      "layout": "summary_matrix",
+      "title": "Trip snapshot",
       "blocks": [
+        {
+          "type": "stat",
+          "value": "4",
+          "label": "Days"
+        },
+        {
+          "type": "stat",
+          "value": "2",
+          "label": "Hotel moves avoided"
+        },
         {
           "type": "table",
-          "header": ["Metric", "Current", "Target"],
+          "header": ["Area", "Best for"],
           "rows": [
-            ["Net revenue retention", "109%", "110%"],
-            ["Gross margin", "37%", "35%"],
-            ["Critical incidents", "2", "0"]
+            ["Gion", "Night walks and dining"],
+            ["Arashiyama", "Scenery and slower pacing"]
           ]
         }
       ]
     },
     {
       "layout": "closing",
-      "title": "Thank you",
-      "subtitle": "Questions and discussion",
+      "title": "Book the trip",
       "blocks": [
         {
-          "type": "paragraph",
-          "text": "Next milestone: board-ready deck compilation after planner approval."
+          "type": "callout",
+          "title": "Recommendation",
+          "body": "Use Gion as the main base and reserve one sunrise slot for Arashiyama."
         }
       ]
     }
@@ -376,8 +523,66 @@ Normalization does **not**:
 }
 ```
 
-## Implementation guidance
+## Example: non-travel deck (`v2`)
 
-Future planner and compiler implementations should treat this file as the v1 source of truth.
-
-If a future change needs richer layouts or media support, define a new dialect version instead of stretching v1 beyond these constraints.
+```json
+{
+  "version": "v2",
+  "themePresetId": "general_clean",
+  "slides": [
+    {
+      "layout": "cover_hero",
+      "title": "FY2026 Hiring Plan",
+      "subtitle": "Operating review and recommendations",
+      "blocks": [
+        {
+          "type": "image",
+          "assetRef": "theme:hero-image",
+          "caption": "Preset-owned abstract cover art"
+        },
+        {
+          "type": "badge",
+          "text": "Board draft",
+          "tone": "neutral"
+        }
+      ]
+    },
+    {
+      "layout": "comparison_cards",
+      "title": "Two staffing paths",
+      "blocks": [
+        {
+          "type": "card",
+          "title": "Lean plan",
+          "body": "Hire only critical customer-facing roles and delay platform expansion."
+        },
+        {
+          "type": "card",
+          "title": "Balanced plan",
+          "body": "Hire customer-facing roles plus a limited platform pod for reliability."
+        }
+      ]
+    },
+    {
+      "layout": "table",
+      "title": "Role summary",
+      "blocks": [
+        {
+          "type": "callout",
+          "title": "Constraint",
+          "body": "Headcount must stay within the approved operating plan."
+        },
+        {
+          "type": "table",
+          "header": ["Role", "H1", "H2"],
+          "rows": [
+            ["Account executives", "2", "1"],
+            ["Support engineers", "1", "1"],
+            ["Platform engineers", "0", "2"]
+          ]
+        }
+      ]
+    }
+  ]
+}
+```

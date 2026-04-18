@@ -47,37 +47,62 @@ var (
 	errPlannerProviderResponse               = errors.New("presentation planner provider response failed")
 )
 
-const plannerDialectInstructions = `You are the Ulduar v1 presentation planner.
+const plannerDialectInstructions = `You are the Ulduar presentation planner targeting dialect v2.
 
 Return exactly one JSON object and nothing else.
 - Do not return Markdown fences, prose, comments, XML, or PPTX.
-- The object must match the Ulduar v1 presentation dialect.
+- The object must match the Ulduar presentation dialect.
 - Required top-level fields:
-  - "version": "v1"
+  - "version": "v2"
   - "slides": at least 1 slide
 - Optional top-level field:
   - "slideSize": if present it must be "16:9"
-- Supported slide layouts:
+  - "themePresetId": use "general_clean" unless the prompt strongly suggests "travel_editorial"
+- Canonical preset IDs:
+  - "general_clean" (default fallback)
+  - "travel_editorial"
+- If you are unsure which preset to use, choose "general_clean".
+- Every slide must have a non-empty "title".
+- Supported legacy layouts in v2:
   - title
   - section
   - title_bullets
   - two_column
+- Supported v2-first layouts:
+  - cover_hero
+  - chapter_divider
+  - toc_grid
+  - card_grid
+  - comparison_cards
+  - timeline_itinerary
+  - summary_matrix
+  - recommendation_split
   - table
   - closing
-- Every slide must have a non-empty "title".
-- title and section slides may only use optional "subtitle".
-- title_bullets slides must include "blocks", at least 1 block, and at least 1 block must be "bullet_list" or "numbered_list".
-- two_column slides must include exactly 2 "columns"; each column may have optional "heading" and must have at least 1 block.
-- table slides must include exactly 1 block and it must be a "table" block.
-- closing slides may include optional "subtitle" and optional "blocks".
-- Supported block types:
-  - paragraph with non-empty "text"
-  - bullet_list with non-empty "items"
-  - numbered_list with non-empty "items"
+- Layout rules:
+  - cover_hero: 1-3 blocks and exactly 1 image block
+  - chapter_divider: 0-2 blocks, at most 1 image block
+  - toc_grid: 2-8 card blocks
+  - card_grid: 2-6 card blocks
+  - comparison_cards: exactly 2 card blocks
+  - timeline_itinerary: 2-6 card blocks
+  - summary_matrix: 2-6 blocks with exactly 1 table block and at least 1 stat block
+  - recommendation_split: 2-3 blocks with exactly 1 image block and exactly 1 callout block
+  - table: 1-2 blocks with exactly 1 table block and optional callout
+  - closing: optional subtitle and 0-3 blocks
+- Supported v2 block types:
+  - image with "assetRef", optional "altText", optional "caption"
+  - card with required "title", optional "body", optional "label", optional "assetRef"
+  - stat with required "value", required "label", optional "body"
+  - badge with required "text" and optional "tone" of neutral, accent, success, or warning
+  - callout with required "title" and required "body"
+  - rich_text with non-empty "spans"; each span needs "text" and may set "emphasis" (strong, emphasis, accent) and "lang"
   - table with non-empty "header" and non-empty "rows" where each row length matches the header length
-  - quote with non-empty "text" and optional "attribution"
-- Only paragraph, bullet_list, numbered_list, and quote blocks may appear in title_bullets, two_column, and closing slide text areas.
-- Use attachments only as reference context. Do not embed uploaded assets in the JSON output.`
+- Legacy text blocks remain valid in v2 for legacy layouts.
+- "assetRef" values must stay symbolic and deterministic, such as "attachment:cover-photo" or "theme:hero-image". Do not invent URLs or fetch remote assets.
+- Prefer semantic layouts and blocks over freeform text dumps.
+- Keep output compiler-friendly and deterministic; do not add arbitrary coordinates or freeform style objects.
+- v1 remains valid for previously stored documents, but new planner output should target v2.`
 
 type BlobStore interface {
 	Upload(ctx context.Context, blobPath string, data []byte, contentType string) error
@@ -178,6 +203,7 @@ func (s *Service) Capabilities() Capabilities {
 		InputMediaTypes: SupportedInputMediaTypes(),
 		OutputMediaType: OutputMediaTypePPTX,
 		ProviderName:    plannerProviderName,
+		ThemePresets:    presentationdialect.BuiltInThemePresets(),
 	}
 }
 

@@ -181,6 +181,70 @@ func TestNormalizeIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestNormalizeV2AppliesPresetFallbackAndTrimsSemanticBlocks(t *testing.T) {
+	t.Parallel()
+
+	document, err := Normalize(Document{
+		Version:       VersionV2,
+		ThemePresetID: " unknown_preset ",
+		Slides: []Slide{
+			{
+				Layout:   LayoutCoverHero,
+				Title:    " Kyoto Escape ",
+				Subtitle: testStringPtr(" 4 days in autumn "),
+				Blocks: []Block{
+					{
+						Type:     BlockTypeImage,
+						AssetRef: testStringPtr(" attachment:cover-photo "),
+						Caption:  testStringPtr(" Maple season in Arashiyama "),
+					},
+					{
+						Type: BlockTypeRichText,
+						Spans: []TextSpan{
+							{Text: " Slow travel ", Emphasis: " strong "},
+							{Text: " 京都 ", Lang: " ja "},
+						},
+					},
+				},
+			},
+			{
+				Layout: LayoutSummaryMatrix,
+				Title:  "Trip snapshot",
+				Blocks: []Block{
+					{
+						Type:  BlockTypeStat,
+						Value: testStringPtr(" 4 "),
+						Label: testStringPtr(" Days "),
+					},
+					{
+						Type:   BlockTypeTable,
+						Header: []string{"Area", "Why go"},
+						Rows: [][]string{
+							{" Arashiyama ", " Bamboo grove and river walk "},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+
+	if document.ThemePresetID != ThemePresetGeneralClean {
+		t.Fatalf("document.ThemePresetID = %q, want %q", document.ThemePresetID, ThemePresetGeneralClean)
+	}
+	if got := *document.Slides[0].Blocks[0].AssetRef; got != "attachment:cover-photo" {
+		t.Fatalf("document.Slides[0].Blocks[0].AssetRef = %q", got)
+	}
+	if got := document.Slides[0].Blocks[1].Spans[0].Emphasis; got != "strong" {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[0].Emphasis = %q", got)
+	}
+	if got := document.Slides[0].Blocks[1].Spans[1].Lang; got != "ja" {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[1].Lang = %q", got)
+	}
+}
+
 func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 	t.Parallel()
 
@@ -483,6 +547,85 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 	}
 }
 
+func TestNormalizeRejectsInvalidV2Documents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		document Document
+		wantErr  string
+	}{
+		{
+			name: "cover hero requires image",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutCoverHero,
+					Title:  "Travel",
+					Blocks: []Block{{
+						Type: BlockTypeRichText,
+						Spans: []TextSpan{
+							{Text: "Hello"},
+						},
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks must contain exactly 1 image block`,
+		},
+		{
+			name: "badge tone invalid",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutClosing,
+					Title:  "Done",
+					Blocks: []Block{{
+						Type: BlockTypeBadge,
+						Text: testStringPtr("Packed"),
+						Tone: "loud",
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0].tone must be one of: neutral, accent, success, warning`,
+		},
+		{
+			name: "summary matrix requires stat",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutSummaryMatrix,
+					Title:  "Snapshot",
+					Blocks: []Block{{
+						Type:   BlockTypeTable,
+						Header: []string{"Metric"},
+						Rows:   [][]string{{"Value"}},
+					}, {
+						Type:  BlockTypeCallout,
+						Title: testStringPtr("Note"),
+						Body:  testStringPtr("Missing stat"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks must contain at least 1 stat block`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Normalize(test.document)
+			if err == nil {
+				t.Fatal("Normalize() error = nil, want error")
+			}
+			if err.Error() != test.wantErr {
+				t.Fatalf("Normalize() error = %q, want %q", err.Error(), test.wantErr)
+			}
+		})
+	}
+}
+
 func TestParseJSONRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
@@ -736,5 +879,32 @@ func TestParseJSONRejectsNullFields(t *testing.T) {
 				t.Fatalf("ParseJSON() error = %q, want %q", err.Error(), test.wantErr)
 			}
 		})
+	}
+}
+
+func TestParseJSONRejectsNullV2Fields(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseJSON([]byte(`{
+		"version": "v2",
+		"themePresetId": null,
+		"slides": [
+			{
+				"layout": "cover_hero",
+				"title": "Kyoto",
+				"blocks": [
+					{
+						"type": "image",
+						"assetRef": "attachment:cover"
+					}
+				]
+			}
+		]
+	}`))
+	if err == nil {
+		t.Fatal("ParseJSON() error = nil, want error")
+	}
+	if err.Error() != `themePresetId must not be null` {
+		t.Fatalf("ParseJSON() error = %q", err.Error())
 	}
 }

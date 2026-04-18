@@ -15,6 +15,7 @@ import (
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/chat"
 	"github.com/ivanlin/ulduar/apps/backend/internal/imagegen"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationgen"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
@@ -1285,6 +1286,18 @@ func TestPresentationGenerationCapabilitiesHandler(t *testing.T) {
 			InputMediaTypes: presentationgen.SupportedInputMediaTypes(),
 			OutputMediaType: presentationgen.OutputMediaTypePPTX,
 			ProviderName:    "azure-openai",
+			ThemePresets: []presentationdialect.ThemePresetMetadata{
+				{
+					ID:        presentationdialect.ThemePresetGeneralClean,
+					Label:     "General Clean",
+					IsDefault: true,
+				},
+				{
+					ID:          presentationdialect.ThemePresetTravelEditorial,
+					Label:       "Travel Editorial",
+					Description: "Editorial preset for travel decks.",
+				},
+			},
 		},
 	}
 
@@ -1306,6 +1319,12 @@ func TestPresentationGenerationCapabilitiesHandler(t *testing.T) {
 	}
 	if payload.OutputMediaType != presentationgen.OutputMediaTypePPTX {
 		t.Fatalf("payload.OutputMediaType = %q", payload.OutputMediaType)
+	}
+	if len(payload.ThemePresets) != 2 {
+		t.Fatalf("len(payload.ThemePresets) = %d", len(payload.ThemePresets))
+	}
+	if payload.ThemePresets[0].ID != presentationdialect.ThemePresetGeneralClean || !payload.ThemePresets[0].IsDefault {
+		t.Fatalf("payload.ThemePresets[0] = %#v", payload.ThemePresets[0])
 	}
 }
 

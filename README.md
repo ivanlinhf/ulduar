@@ -66,7 +66,7 @@ Backend app startup validates these:
 - `AZURE_OPENAI_PRESENTATION_DEPLOYMENT`
   Optional Azure OpenAI deployment name for the presentation-generation planner workflow, for example `gpt-5-chat`. Required when `AZURE_OPENAI_PRESENTATION_ENDPOINT` is set.
 - `AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT`
-  Optional planner-specific system prompt prefix. The backend always appends the Ulduar v1 presentation-dialect JSON contract and strict "JSON only" instructions separately. If unset, this prefix defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the prefix explicitly. Set it to a non-empty value to use that exact override.
+  Optional planner-specific system prompt prefix. The backend always appends the versioned Ulduar presentation-dialect JSON contract and strict "JSON only" instructions separately, targeting dialect `v2` for new planner output while continuing to accept stored `v1` documents. If unset, this prefix defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the prefix explicitly. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_ENABLE_WEB_SEARCH`
   Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests for chat and presentation planning. Chat persists final assistant URL citations and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`

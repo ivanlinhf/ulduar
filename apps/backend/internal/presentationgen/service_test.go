@@ -12,6 +12,7 @@ import (
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
 
@@ -530,6 +531,49 @@ func TestExecuteGenerationIncludesWebSearchToolWhenEnabled(t *testing.T) {
 	}
 	if client.requests[0].Tools[0].Type != "web_search" {
 		t.Fatalf("client.requests[0].Tools[0].Type = %q, want web_search", client.requests[0].Tools[0].Type)
+	}
+}
+
+func TestNormalizePlannerOutputNormalizesV2ThemePresetFallback(t *testing.T) {
+	t.Parallel()
+
+	normalized, err := normalizePlannerOutput(`{
+		"version": "v2",
+		"themePresetId": "missing_preset",
+		"slides": [
+			{
+				"layout": "cover_hero",
+				"title": "Kyoto",
+				"blocks": [
+					{
+						"type": "image",
+						"assetRef": "attachment:cover"
+					}
+				]
+			}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("normalizePlannerOutput() error = %v", err)
+	}
+
+	if got := string(normalized); got != `{"version":"v2","slideSize":"16:9","themePresetId":"general_clean","slides":[{"layout":"cover_hero","title":"Kyoto","blocks":[{"type":"image","assetRef":"attachment:cover"}]}]}` {
+		t.Fatalf("normalizePlannerOutput() = %s", got)
+	}
+}
+
+func TestCapabilitiesExposeThemePresets(t *testing.T) {
+	t.Parallel()
+
+	capabilities := (&Service{}).Capabilities()
+	if len(capabilities.ThemePresets) < 2 {
+		t.Fatalf("len(capabilities.ThemePresets) = %d, want at least 2", len(capabilities.ThemePresets))
+	}
+	if capabilities.ThemePresets[0].ID != presentationdialect.ThemePresetGeneralClean || !capabilities.ThemePresets[0].IsDefault {
+		t.Fatalf("capabilities.ThemePresets[0] = %#v", capabilities.ThemePresets[0])
+	}
+	if !strings.Contains(plannerDialectInstructions, `"version": "v2"`) {
+		t.Fatalf("plannerDialectInstructions = %q, want v2 guidance", plannerDialectInstructions)
 	}
 }
 

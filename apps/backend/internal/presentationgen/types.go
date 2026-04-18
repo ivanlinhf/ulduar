@@ -1,6 +1,10 @@
 package presentationgen
 
-import "time"
+import (
+	"time"
+
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
+)
 
 const (
 	InputMediaTypeJPEG  = "image/jpeg"
@@ -65,6 +69,7 @@ type Capabilities struct {
 	InputMediaTypes []string
 	OutputMediaType string
 	ProviderName    string
+	ThemePresets    []presentationdialect.ThemePresetMetadata
 }
 
 type Generation struct {
