@@ -690,44 +690,23 @@ type preparedAsset struct {
 }
 
 func (s *Service) completeGeneration(ctx context.Context, generation repository.PresentationGeneration, assets []repository.PresentationGenerationAsset, response azureopenai.Response, plannerOutputJSON, dialectJSON []byte) error {
-	if s.beginWriteTxFn == nil {
-		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"))
-	}
 	if s.blobs == nil {
 		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"))
 	}
 
-	tx, err := s.beginWriteTxFn(ctx)
-	if err != nil {
-		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", err)
-	}
-	lockedGeneration, err := tx.LockGenerationForUpdate(ctx, generation.ID)
-	if err != nil {
-		_ = tx.Rollback(ctx)
-		return s.failGenerationWithCause(ctx, generation, "lock presentation generation for output persistence", "persist_output_failed", err)
-	}
-	if Status(lockedGeneration.Status) != StatusRunning || lockedGeneration.CompletedAt != nil {
-		_ = tx.Rollback(ctx)
-		return nil
-	}
-	generation = lockedGeneration
-
 	document, err := presentationdialect.ParseJSON(dialectJSON)
 	if err != nil {
-		_ = tx.Rollback(ctx)
 		return s.failGenerationWithPlan(ctx, generation, "decode normalized presentation document", plannerFailureInvalidJSON, err, plannerOutputJSON, dialectJSON)
 	}
 
 	resolvedAssets, err := s.resolveAssets(ctx, generation, document, assets)
 	if err != nil {
-		_ = tx.Rollback(ctx)
 		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
 		return s.failGenerationWithPlan(ctx, generation, "resolve presentation assets", assetResolutionErrorCode(err), err, plannerOutputJSON, dialectJSON)
 	}
 
 	outputAsset, err := prepareOutputAssetDocument(document)
 	if err != nil {
-		_ = tx.Rollback(ctx)
 		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
 		return s.failGenerationWithPlan(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err, plannerOutputJSON, dialectJSON)
 	}
@@ -735,13 +714,36 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 	providerModel := resolvedPlannerModel(response, generation.ProviderModel)
 	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
 	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
-		_ = tx.Rollback(ctx)
 		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
 		return s.failGenerationWithPlan(ctx, generation, "store output presentation", "store_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
+	cleanupBlobPaths := append(slices.Clone(resolvedAssets.CleanupBlobPaths), blobPath)
+
+	if s.beginWriteTxFn == nil {
+		s.cleanupBlobs(cleanupBlobPaths)
+		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"))
+	}
+
+	tx, err := s.beginWriteTxFn(ctx)
+	if err != nil {
+		s.cleanupBlobs(cleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "begin output persistence transaction", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
+	}
+	lockedGeneration, err := tx.LockGenerationForUpdate(ctx, generation.ID)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs(cleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "lock presentation generation for output persistence", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
+	}
+	if Status(lockedGeneration.Status) != StatusRunning || lockedGeneration.CompletedAt != nil {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs(cleanupBlobPaths)
+		return nil
+	}
+	generation = lockedGeneration
+
 	rollbackAndCleanup := func() {
 		_ = tx.Rollback(ctx)
-		cleanupBlobPaths := append(slices.Clone(resolvedAssets.CleanupBlobPaths), blobPath)
 		s.cleanupBlobs(cleanupBlobPaths)
 	}
 

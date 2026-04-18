@@ -282,11 +282,9 @@ func buildResolvedThemeAsset(sessionID, generationID, presetID, assetKey string,
 		Data:      append([]byte(nil), asset.data...),
 	}
 	blobPath := fmt.Sprintf(
-		"sessions/%s/presentation-generations/%s/resolved/%s-%s-%s",
+		"sessions/%s/presentation-generations/%s/resolved/%s",
 		sessionID,
 		generationID,
-		assetAliasBase(presetID),
-		assetAliasBase(assetKey),
 		prepared.Filename,
 	)
 	return blobPath, prepared

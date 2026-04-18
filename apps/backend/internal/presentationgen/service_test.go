@@ -337,13 +337,16 @@ func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.
 	service := &Service{
 		blobs:          blobs,
 		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		generationRead: &stubGenerationReader{},
 	}
 
 	err := service.completeGeneration(context.Background(), repository.PresentationGeneration{
-		ID:        "22222222-2222-2222-2222-222222222222",
-		SessionID: "11111111-1111-1111-1111-111111111111",
-		Status:    string(StatusRunning),
-	}, nil, azureopenai.Response{}, nil, []byte("not-json"))
+		ID:            "22222222-2222-2222-2222-222222222222",
+		SessionID:     "11111111-1111-1111-1111-111111111111",
+		ProviderName:  plannerProviderName,
+		ProviderModel: "presentation-deployment",
+		Status:        string(StatusRunning),
+	}, nil, azureopenai.Response{}, nil, []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Quarterly review"}]}`))
 	if err != nil {
 		t.Fatalf("completeGeneration() error = %v", err)
 	}
@@ -353,8 +356,11 @@ func TestCompleteGenerationSkipsCompileWhenGenerationAlreadyTerminal(t *testing.
 	if len(tx.updateCalls) != 0 {
 		t.Fatalf("len(tx.updateCalls) = %d, want 0", len(tx.updateCalls))
 	}
-	if len(blobs.uploadCalls) != 0 {
-		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	if len(blobs.uploadCalls) != 1 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 1", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 1 {
+		t.Fatalf("len(blobs.deleteCalls) = %d, want 1", len(blobs.deleteCalls))
 	}
 	if !tx.rolledBack {
 		t.Fatal("expected transaction rollback when generation is already terminal")
@@ -586,8 +592,67 @@ func TestExecuteGenerationPersistsResolvedAssetsForAttachmentAndThemeRefs(t *tes
 	if len(blobs.uploadCalls) != 2 {
 		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
 	}
-	if !strings.Contains(blobs.uploadCalls[0].blobPath, "/resolved/") {
-		t.Fatalf("blobs.uploadCalls[0].blobPath = %q", blobs.uploadCalls[0].blobPath)
+	if got := blobs.uploadCalls[0].blobPath; got != "sessions/11111111-1111-1111-1111-111111111111/presentation-generations/22222222-2222-2222-2222-222222222222/resolved/travel-editorial-hero-image.png" {
+		t.Fatalf("blobs.uploadCalls[0].blobPath = %q", got)
+	}
+	if !strings.Contains(blobs.uploadCalls[1].blobPath, "/outputs/") {
+		t.Fatalf("blobs.uploadCalls[1].blobPath = %q", blobs.uploadCalls[1].blobPath)
+	}
+}
+
+func TestCompleteGenerationCleansUpUploadedBlobsWhenGenerationBecomesTerminalBeforePersistence(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Date(2026, 4, 17, 6, 0, 0, 0, time.UTC)
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:          "22222222-2222-2222-2222-222222222222",
+			SessionID:   "11111111-1111-1111-1111-111111111111",
+			Status:      string(StatusCompleted),
+			CompletedAt: &completedAt,
+		},
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+	}
+
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		[]byte(`{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+		[]byte(`{"version":"v2","slideSize":"16:9","themePresetId":"travel_editorial","slides":[{"layout":"chapter_divider","title":"Highlights","blocks":[{"type":"image","assetRef":"theme:hero-image"}]}]}`),
+	)
+	if err != nil {
+		t.Fatalf("completeGeneration() error = %v", err)
+	}
+	if len(tx.createAssetCalls) != 0 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 0", len(tx.createAssetCalls))
+	}
+	if len(blobs.uploadCalls) != 2 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 2 {
+		t.Fatalf("len(blobs.deleteCalls) = %d, want 2", len(blobs.deleteCalls))
+	}
+	if !strings.Contains(blobs.deleteCalls[0], "/resolved/") {
+		t.Fatalf("blobs.deleteCalls[0] = %q", blobs.deleteCalls[0])
+	}
+	if !strings.Contains(blobs.deleteCalls[1], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls[1] = %q", blobs.deleteCalls[1])
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected rollback when generation is already terminal")
 	}
 }
 
