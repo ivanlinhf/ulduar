@@ -143,7 +143,7 @@ func (r defaultAssetResolver) Resolve(ctx context.Context, params ResolveAssetsP
 			if r.blobs == nil {
 				return result, fmt.Errorf("blob store is not configured")
 			}
-			blobPath, prepared := buildResolvedThemeAsset(params.SessionID, params.GenerationID, resolvedPresetID, key, themeAsset)
+			blobPath, prepared := buildResolvedThemeAsset(params.SessionID, params.GenerationID, themeAsset)
 			if err := r.blobs.Upload(ctx, blobPath, prepared.Data, prepared.MediaType); err != nil {
 				return result, fmt.Errorf("store resolved theme asset %q: %w", assetRef, err)
 			}
@@ -272,7 +272,7 @@ func assetAliasBase(filename string) string {
 	return strings.Trim(builder.String(), "-")
 }
 
-func buildResolvedThemeAsset(sessionID, generationID, presetID, assetKey string, asset themeBundleAsset) (string, preparedAsset) {
+func buildResolvedThemeAsset(sessionID, generationID string, asset themeBundleAsset) (string, preparedAsset) {
 	sum := sha256.Sum256(asset.data)
 	prepared := preparedAsset{
 		Filename:  filenames.Sanitize(asset.filename, "theme-asset.png"),

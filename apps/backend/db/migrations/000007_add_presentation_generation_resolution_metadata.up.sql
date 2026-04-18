@@ -18,10 +18,10 @@ ALTER TABLE presentation_generation_assets
         OR (role <> 'resolved' AND asset_ref IS NULL AND source_type IS NULL AND source_asset_id IS NULL AND source_ref IS NULL)
     ),
     ADD CONSTRAINT presentation_generation_assets_input_asset_source_check CHECK (
-        source_type <> 'input_asset' OR source_asset_id IS NOT NULL
+        source_type <> 'input_asset' OR (source_asset_id IS NOT NULL AND source_ref IS NULL)
     ),
     ADD CONSTRAINT presentation_generation_assets_theme_bundle_source_check CHECK (
-        source_type <> 'theme_bundle' OR source_ref IS NOT NULL
+        source_type <> 'theme_bundle' OR (source_ref IS NOT NULL AND source_asset_id IS NULL)
     ),
     DROP CONSTRAINT presentation_generation_assets_media_type_check,
     ADD CONSTRAINT presentation_generation_assets_media_type_check CHECK (

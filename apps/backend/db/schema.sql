@@ -137,10 +137,10 @@ CREATE TABLE presentation_generation_assets (
         OR (role <> 'resolved' AND asset_ref IS NULL AND source_type IS NULL AND source_asset_id IS NULL AND source_ref IS NULL)
     ),
     CONSTRAINT presentation_generation_assets_input_asset_source_check CHECK (
-        source_type <> 'input_asset' OR source_asset_id IS NOT NULL
+        source_type <> 'input_asset' OR (source_asset_id IS NOT NULL AND source_ref IS NULL)
     ),
     CONSTRAINT presentation_generation_assets_theme_bundle_source_check CHECK (
-        source_type <> 'theme_bundle' OR source_ref IS NOT NULL
+        source_type <> 'theme_bundle' OR (source_ref IS NOT NULL AND source_asset_id IS NULL)
     ),
     CONSTRAINT presentation_generation_assets_sort_order_check CHECK (sort_order >= 0),
     CONSTRAINT presentation_generation_assets_size_bytes_check CHECK (size_bytes > 0),
