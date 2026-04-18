@@ -8,12 +8,14 @@ Anonymous multimodal chat app with:
 - Azure Blob Storage for uploaded files
 - Azure OpenAI Responses API for chat
 - Pluggable image generation provider (Azure AI Foundry FLUX as the initial provider)
+- Azure OpenAI presentation-generation workflow that plans normalized dialect JSON and compiles a PPTX output, hidden behind a default-off frontend rollout flag
 
 ## Repo Layout
 
 - [apps/backend](apps/backend)
 - [apps/frontend](apps/frontend)
 - [docs/design.md](docs/design.md)
+- [docs/presentation-dialect.md](docs/presentation-dialect.md)
 - [compose.yaml](compose.yaml)
 
 ## Required Environment Variables
@@ -103,12 +105,13 @@ Container/entrypoint and frontend build settings:
 - `VITE_IMAGE_GENERATION_ENABLED`
   Optional frontend-owned rollout flag for image-generation UI. Default `false`.
 - `VITE_PRESENTATION_GENERATION_ENABLED`
-  Optional frontend-owned rollout flag for presentation-generation UI. Default `false`.
+  Optional frontend-owned rollout flag for presentation-generation UI. Default `false`. Keep this disabled by default until manual validation passes.
 
 Reference files:
 
 - [.env.example](.env.example)
 - [.env.compose.example](.env.compose.example)
+- [docs/presentation-dialect.md](docs/presentation-dialect.md)
 
 ## Local Startup
 
@@ -154,7 +157,7 @@ export AZURE_OPENAI_DEPLOYMENT=gpt-5-chat
 # Set it to an empty string only if you want to disable the default prompt explicitly.
 # export AZURE_OPENAI_SYSTEM_PROMPT=
 # Optional presentation-generation planner config.
-# Leave these unset unless you are validating the future presentation workflow.
+# Leave these unset unless you are manually validating the hidden-by-default presentation workflow.
 # export AZURE_OPENAI_PRESENTATION_ENDPOINT=https://your-resource-name.openai.azure.com/
 # export AZURE_OPENAI_PRESENTATION_API_KEY=replace-me
 # export AZURE_OPENAI_PRESENTATION_API_VERSION=v1
@@ -231,7 +234,7 @@ The image generation layer uses a pluggable provider interface. Azure AI Foundry
 
 Presentation generation is guarded by two independent gates that must both be enabled for the future UI to work:
 
-1. **Frontend flag** — `VITE_PRESENTATION_GENERATION_ENABLED` controls whether the presentation-generation entry point is built into the frontend bundle. When unset or `false`, the `New` button does not show `New Presentation`.
+1. **Frontend flag** — `VITE_PRESENTATION_GENERATION_ENABLED` controls whether the presentation-generation entry point is built into the frontend bundle. When unset or `false`, the `New` button does not show `New Presentation`. This flag stays `false` in all examples here and should remain hidden by default until manual validation passes.
 2. **Backend provider** — `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` control whether the backend presentation generation endpoints are active. When these are unset, the capabilities and create endpoints return `503 Service Unavailable`.
 
 These gates are independent. Setting the frontend flag without a backend provider makes the `New Presentation` entry visible, but after `GET /api/v1/presentation-generations/capabilities` returns `503 Service Unavailable` the frontend treats presentation generation as unavailable: `New Presentation` stays visible but disabled and the presentation workspace cannot be entered. Setting the backend provider without the frontend flag keeps presentation generation hidden in the UI.
@@ -241,30 +244,13 @@ To enable the presentation-generation foundation locally:
 - Set `VITE_PRESENTATION_GENERATION_ENABLED=true` when starting the frontend.
 - Set `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` before starting the backend.
 
-Supported v1 image generation modes:
+Supported v1 presentation workflow:
 
-- `text_to_image` — generate an image from a text prompt only
-- `image_edit` — generate a modified image using a prompt and 1–4 reference images (up to `IMAGE_GENERATION_MAX_REFERENCE_IMAGE_BYTES` (default 20 MiB) each)
-
-Each generation always produces exactly 1 output image.
-
-Current app-exposed resolution presets:
-
-| Key | Width | Height |
-|---|---|---|
-| `1024x1024` | 1024 | 1024 |
-| `1536x864` | 1536 | 864 |
-| `864x1536` | 864 | 1536 |
-| `1280x1024` | 1280 | 1024 |
-| `1024x1280` | 1024 | 1280 |
-| `1152x896` | 1152 | 896 |
-| `896x1152` | 896 | 1152 |
-| `1344x768` | 1344 | 768 |
-| `768x1344` | 768 | 1344 |
-| `1536x1024` | 1536 | 1024 |
-| `1024x1536` | 1024 | 1536 |
-
-Azure AI Foundry `FLUX.2-pro` supports a broader range than this preset list. The official Microsoft Foundry and Black Forest Labs docs describe output resolution support as width/height values from `64x64` up to `4 MP`, with output dimensions always being multiples of `16`. For image edits, FLUX.2 matches the input image dimensions by default, rounded to multiples of `16`.
+- Request input is a required `prompt` plus optional JPEG, PNG, WebP, and/or PDF references only.
+- JSON create requests accept `prompt` only.
+- `multipart/form-data` create requests accept `prompt` plus optional files under `attachments`.
+- Each completed generation produces a downloadable PPTX output asset.
+- The planner/compiler JSON contract is documented in [docs/presentation-dialect.md](docs/presentation-dialect.md); this README intentionally links to that source of truth instead of duplicating the dialect here.
 
 Image generation endpoints:
 
@@ -297,6 +283,8 @@ Session-scoped:
 
 When no presentation planner is configured, `GET /api/v1/presentation-generations/capabilities` and `POST /api/v1/sessions/{sessionId}/presentation-generations` return `503 Service Unavailable`, and the stream endpoint returns `503 Service Unavailable` for non-terminal generations. `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}` remains available to fetch an existing generation record regardless of planner configuration, while asset download endpoints remain available only when stored outputs exist.
 
+For the user-relevant request/response surface, use this section plus [docs/design.md](docs/design.md) as the high-level API reference, and use [docs/presentation-dialect.md](docs/presentation-dialect.md) as the source of truth for the normalized planner/compiler JSON.
+
 ### Option 2: Use `compose.yaml`
 
 The repository includes [compose.yaml](compose.yaml) for:
@@ -319,7 +307,7 @@ If you want an env file for compose-oriented values, start from:
 cp .env.compose.example .env.compose
 ```
 
-The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs, plus `VITE_IMAGE_GENERATION_ENABLED` and `VITE_PRESENTATION_GENERATION_ENABLED`, which keep image-generation and presentation-generation UI rollout default-off unless you opt in. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
+The compose env example includes the browser-side `VITE_API_BASE_URL` because the static frontend image needs that value at build time. It also includes `VITE_APP_VERSION`, which the frontend bakes into the bundle and publishes through `version.json` for reload notifications in already-open tabs, plus `VITE_IMAGE_GENERATION_ENABLED` and `VITE_PRESENTATION_GENERATION_ENABLED`, which keep image-generation and presentation-generation UI rollout default-off unless you opt in. Keep `VITE_PRESENTATION_GENERATION_ENABLED=false` by default until manual validation passes. If you change the backend host or port, update `VITE_API_BASE_URL` to match and rebuild the frontend image. If you want to simulate a newer deployed frontend locally, change `VITE_APP_VERSION`, rebuild the frontend image, and then let an already-open tab re-check when it becomes visible, comes back online, or reaches its polling interval. The same `.env.compose` can be used with either [compose.yaml](compose.yaml) or [compose.wsl.yaml](compose.wsl.yaml).
 
 Then start the stack with that env file:
 
@@ -439,3 +427,18 @@ cd apps/frontend
 npm test
 npm run build
 ```
+
+Presentation generation rollout checks:
+
+```bash
+cd apps/frontend
+npm test -- src/PresentationEntry.test.tsx src/PresentationWorkspace.test.tsx src/lib/presentationGeneration.test.tsx
+
+curl -i http://localhost:8080/api/v1/presentation-generations/capabilities
+```
+
+Expected local outcomes:
+
+- with `VITE_PRESENTATION_GENERATION_ENABLED=false`, `New Presentation` stays hidden in the UI
+- with `VITE_PRESENTATION_GENERATION_ENABLED=true` and no planner configured, the capabilities request returns `503 Service Unavailable` and the UI keeps `New Presentation` visible but disabled
+- with both the frontend flag and planner config enabled, the capabilities request succeeds and the presentation workspace can submit a prompt with optional image/PDF references
