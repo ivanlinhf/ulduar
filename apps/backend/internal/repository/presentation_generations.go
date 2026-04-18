@@ -12,44 +12,47 @@ import (
 )
 
 type PresentationGeneration struct {
-	ID            string
-	SessionID     string
-	Prompt        string
-	DialectJSON   []byte
-	ProviderName  string
-	ProviderModel string
-	ProviderJobID string
-	Status        string
-	ErrorCode     string
-	ErrorMessage  string
-	CreatedAt     time.Time
-	StartedAt     *time.Time
-	CompletedAt   *time.Time
+	ID                string
+	SessionID         string
+	Prompt            string
+	PlannerOutputJSON []byte
+	DialectJSON       []byte
+	ProviderName      string
+	ProviderModel     string
+	ProviderJobID     string
+	Status            string
+	ErrorCode         string
+	ErrorMessage      string
+	CreatedAt         time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
 }
 
 type CreatePresentationGenerationParams struct {
-	SessionID     string
-	Prompt        string
-	DialectJSON   []byte
-	ProviderName  string
-	ProviderModel string
-	ProviderJobID string
-	Status        string
-	ErrorCode     string
-	ErrorMessage  string
-	CompletedAt   *time.Time
+	SessionID         string
+	Prompt            string
+	PlannerOutputJSON []byte
+	DialectJSON       []byte
+	ProviderName      string
+	ProviderModel     string
+	ProviderJobID     string
+	Status            string
+	ErrorCode         string
+	ErrorMessage      string
+	CompletedAt       *time.Time
 }
 
 type UpdatePresentationGenerationStateParams struct {
-	ProviderName  string
-	ProviderModel string
-	ID            string
-	ProviderJobID string
-	Status        string
-	ErrorCode     string
-	ErrorMessage  string
-	CompletedAt   *time.Time
-	DialectJSON   []byte
+	ProviderName      string
+	ProviderModel     string
+	ID                string
+	ProviderJobID     string
+	Status            string
+	ErrorCode         string
+	ErrorMessage      string
+	CompletedAt       *time.Time
+	PlannerOutputJSON []byte
+	DialectJSON       []byte
 }
 
 type ClaimPendingPresentationGenerationParams struct {
@@ -75,16 +78,17 @@ func (r *PresentationGenerationRepository) Create(ctx context.Context, params Cr
 	}
 
 	row, err := r.queries.CreatePresentationGeneration(ctx, dbsqlc.CreatePresentationGenerationParams{
-		SessionID:     sessionID,
-		Prompt:        params.Prompt,
-		DialectJson:   slices.Clone(params.DialectJSON),
-		ProviderName:  params.ProviderName,
-		ProviderModel: params.ProviderModel,
-		ProviderJobID: textValue(params.ProviderJobID),
-		Status:        params.Status,
-		ErrorCode:     textValue(params.ErrorCode),
-		ErrorMessage:  textValue(params.ErrorMessage),
-		CompletedAt:   timestamptzPointerValue(params.CompletedAt),
+		SessionID:         sessionID,
+		Prompt:            params.Prompt,
+		PlannerOutputJson: slices.Clone(params.PlannerOutputJSON),
+		DialectJson:       slices.Clone(params.DialectJSON),
+		ProviderName:      params.ProviderName,
+		ProviderModel:     params.ProviderModel,
+		ProviderJobID:     textValue(params.ProviderJobID),
+		Status:            params.Status,
+		ErrorCode:         textValue(params.ErrorCode),
+		ErrorMessage:      textValue(params.ErrorMessage),
+		CompletedAt:       timestamptzPointerValue(params.CompletedAt),
 	})
 	if err != nil {
 		return PresentationGeneration{}, fmt.Errorf("create presentation generation: %w", err)
@@ -220,15 +224,16 @@ func (r *PresentationGenerationRepository) UpdateState(ctx context.Context, para
 	}
 
 	rowsAffected, err := r.queries.UpdatePresentationGenerationState(ctx, dbsqlc.UpdatePresentationGenerationStateParams{
-		ProviderName:  params.ProviderName,
-		ProviderModel: params.ProviderModel,
-		ID:            id,
-		ProviderJobID: textValue(params.ProviderJobID),
-		Status:        params.Status,
-		ErrorCode:     textValue(params.ErrorCode),
-		ErrorMessage:  textValue(params.ErrorMessage),
-		CompletedAt:   timestamptzPointerValue(params.CompletedAt),
-		DialectJson:   slices.Clone(params.DialectJSON),
+		ProviderName:      params.ProviderName,
+		ProviderModel:     params.ProviderModel,
+		ID:                id,
+		ProviderJobID:     textValue(params.ProviderJobID),
+		Status:            params.Status,
+		ErrorCode:         textValue(params.ErrorCode),
+		ErrorMessage:      textValue(params.ErrorMessage),
+		CompletedAt:       timestamptzPointerValue(params.CompletedAt),
+		PlannerOutputJson: slices.Clone(params.PlannerOutputJSON),
+		DialectJson:       slices.Clone(params.DialectJSON),
 	})
 	if err != nil {
 		return fmt.Errorf("update presentation generation %s: %w", params.ID, err)
@@ -252,18 +257,19 @@ func mapPresentationGeneration(row dbsqlc.PresentationGeneration) (PresentationG
 	}
 
 	return PresentationGeneration{
-		ID:            row.ID.String(),
-		SessionID:     row.SessionID.String(),
-		Prompt:        row.Prompt,
-		DialectJSON:   slices.Clone(row.DialectJson),
-		ProviderName:  row.ProviderName,
-		ProviderModel: row.ProviderModel,
-		ProviderJobID: nullableText(row.ProviderJobID),
-		Status:        row.Status,
-		ErrorCode:     nullableText(row.ErrorCode),
-		ErrorMessage:  nullableText(row.ErrorMessage),
-		CreatedAt:     row.CreatedAt.Time,
-		StartedAt:     nullableTime(row.StartedAt),
-		CompletedAt:   nullableTime(row.CompletedAt),
+		ID:                row.ID.String(),
+		SessionID:         row.SessionID.String(),
+		Prompt:            row.Prompt,
+		PlannerOutputJSON: slices.Clone(row.PlannerOutputJson),
+		DialectJSON:       slices.Clone(row.DialectJson),
+		ProviderName:      row.ProviderName,
+		ProviderModel:     row.ProviderModel,
+		ProviderJobID:     nullableText(row.ProviderJobID),
+		Status:            row.Status,
+		ErrorCode:         nullableText(row.ErrorCode),
+		ErrorMessage:      nullableText(row.ErrorMessage),
+		CreatedAt:         row.CreatedAt.Time,
+		StartedAt:         nullableTime(row.StartedAt),
+		CompletedAt:       nullableTime(row.CompletedAt),
 	}, nil
 }

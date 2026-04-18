@@ -2,6 +2,7 @@
 INSERT INTO presentation_generations (
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,
@@ -20,12 +21,14 @@ INSERT INTO presentation_generations (
     $7,
     $8,
     $9,
-    $10
+    $10,
+    $11
 )
 RETURNING
     id,
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,
@@ -42,6 +45,7 @@ SELECT
     id,
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,
@@ -60,6 +64,7 @@ SELECT
     id,
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,
@@ -79,6 +84,7 @@ SELECT
     id,
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,
@@ -102,7 +108,8 @@ SET provider_name = $2,
     error_code = $6,
     error_message = $7,
     completed_at = $8,
-    dialect_json = $9
+    planner_output_json = $9,
+    dialect_json = $10
 WHERE id = $1;
 
 -- name: ClaimPendingPresentationGeneration :execrows
@@ -123,6 +130,7 @@ SELECT
     id,
     session_id,
     prompt,
+    planner_output_json,
     dialect_json,
     provider_name,
     provider_model,

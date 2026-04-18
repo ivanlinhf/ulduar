@@ -26,8 +26,16 @@ const (
 type AssetRole string
 
 const (
-	AssetRoleInput  AssetRole = "input"
-	AssetRoleOutput AssetRole = "output"
+	AssetRoleInput    AssetRole = "input"
+	AssetRoleResolved AssetRole = "resolved"
+	AssetRoleOutput   AssetRole = "output"
+)
+
+type AssetSourceType string
+
+const (
+	AssetSourceTypeInputAsset  AssetSourceType = "input_asset"
+	AssetSourceTypeThemeBundle AssetSourceType = "theme_bundle"
 )
 
 var supportedInputMediaTypes = []string{
@@ -73,32 +81,37 @@ type Capabilities struct {
 }
 
 type Generation struct {
-	ID            string
-	SessionID     string
-	Prompt        string
-	DialectJSON   []byte
-	ProviderName  string
-	ProviderModel string
-	ProviderJobID string
-	Status        Status
-	ErrorCode     string
-	ErrorMessage  string
-	CreatedAt     time.Time
-	StartedAt     *time.Time
-	CompletedAt   *time.Time
+	ID                string
+	SessionID         string
+	Prompt            string
+	PlannerOutputJSON []byte
+	DialectJSON       []byte
+	ProviderName      string
+	ProviderModel     string
+	ProviderJobID     string
+	Status            Status
+	ErrorCode         string
+	ErrorMessage      string
+	CreatedAt         time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
 }
 
 type Asset struct {
-	ID           string
-	GenerationID string
-	Role         AssetRole
-	SortOrder    int64
-	BlobPath     string
-	MediaType    string
-	Filename     string
-	SizeBytes    int64
-	SHA256       string
-	CreatedAt    time.Time
+	ID            string
+	GenerationID  string
+	Role          AssetRole
+	AssetRef      string
+	SourceType    AssetSourceType
+	SourceAssetID string
+	SourceRef     string
+	SortOrder     int64
+	BlobPath      string
+	MediaType     string
+	Filename      string
+	SizeBytes     int64
+	SHA256        string
+	CreatedAt     time.Time
 }
 
 type GenerationView struct {

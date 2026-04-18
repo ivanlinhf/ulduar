@@ -100,6 +100,8 @@ Return exactly one JSON object and nothing else.
   - table with non-empty "header" and non-empty "rows" where each row length matches the header length
 - Legacy text blocks remain valid in v2 for legacy layouts.
 - "assetRef" values must stay symbolic and deterministic, such as "attachment:cover-photo" or "theme:hero-image". Do not invent URLs or fetch remote assets.
+- The only bundled theme assetRef guaranteed today is "theme:hero-image".
+- When attachments are present, the user message includes the exact allowed attachment assetRef aliases; use those exact values.
 - Prefer semantic layouts and blocks over freeform text dumps.
 - Keep output compiler-friendly and deterministic; do not add arbitrary coordinates or freeform style objects.
 - v1 remains valid for previously stored documents, but new planner output should target v2.`
@@ -144,6 +146,7 @@ type Service struct {
 	blobs          BlobStore
 	responses      ResponseClient
 	webSearch      bool
+	assetResolver  AssetResolver
 	generationRead generationReader
 	assetRead      assetReader
 }
@@ -182,6 +185,7 @@ func NewService(db *pgxpool.Pool, options ...ServiceOptions) *Service {
 		responses: resolvedOptions.ResponseClient,
 		webSearch: resolvedOptions.EnableWebSearch,
 	}
+	service.assetResolver = newDefaultAssetResolver(service.blobs)
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
 			tx, err := db.BeginTx(ctx, pgx.TxOptions{})
@@ -365,31 +369,31 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 		return s.failGenerationWithCause(ctx, generation, "prepare presentation planner request", plannerRequestPreparationErrorCode(err), err)
 	}
 
-	response, dialectJSON, err := s.executePlannerRequest(ctx, request)
+	response, plannerOutputJSON, dialectJSON, err := s.executePlannerRequest(ctx, request)
 	if err != nil {
 		return s.failGenerationWithCause(ctx, generation, "plan presentation", plannerErrorCode(err), err)
 	}
 
-	return s.completeGeneration(ctx, generation, response, dialectJSON)
+	return s.completeGeneration(ctx, generation, assets, response, plannerOutputJSON, dialectJSON)
 }
 
-func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai.CreateResponseRequest) (azureopenai.Response, []byte, error) {
+func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai.CreateResponseRequest) (azureopenai.Response, []byte, []byte, error) {
 	response, plannerText, err := s.createPlannerResponse(ctx, request)
 	if err != nil {
-		return azureopenai.Response{}, nil, err
+		return azureopenai.Response{}, nil, nil, err
 	}
 
 	dialectJSON, validationErr := normalizePlannerOutput(plannerText)
 	if validationErr == nil {
-		return response, dialectJSON, nil
+		return response, []byte(strings.TrimSpace(plannerText)), dialectJSON, nil
 	}
 	if !shouldRetryPlannerValidation(validationErr) {
-		return response, nil, validationErr
+		return response, nil, nil, validationErr
 	}
 
 	originalInput, ok := request.Input.([]azureopenai.InputMessage)
 	if !ok {
-		return response, nil, fmt.Errorf("validate planner response JSON: unsupported planner input payload type %T", request.Input)
+		return response, nil, nil, fmt.Errorf("validate planner response JSON: unsupported planner input payload type %T", request.Input)
 	}
 
 	repairRequest := request
@@ -407,15 +411,15 @@ func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai
 
 	repairResponse, repairedText, err := s.createPlannerResponse(ctx, repairRequest)
 	if err != nil {
-		return repairResponse, nil, err
+		return repairResponse, nil, nil, err
 	}
 
 	dialectJSON, err = normalizePlannerOutput(repairedText)
 	if err != nil {
-		return repairResponse, nil, err
+		return repairResponse, nil, nil, err
 	}
 
-	return repairResponse, dialectJSON, nil
+	return repairResponse, []byte(strings.TrimSpace(repairedText)), dialectJSON, nil
 }
 
 func (s *Service) createPlannerResponse(ctx context.Context, request azureopenai.CreateResponseRequest) (azureopenai.Response, string, error) {
@@ -472,6 +476,12 @@ func (s *Service) preparePlannerInput(ctx context.Context, generation repository
 		content = append(content, azureopenai.InputContentItem{
 			Type: providerInputTextType,
 			Text: fmt.Sprintf("Your previous response was invalid for the Ulduar presentation dialect: %s\n\nReturn a corrected JSON object only.", repairMessage),
+		})
+	}
+	if guidance := attachmentAliasGuidance(assets); guidance != "" {
+		content = append(content, azureopenai.InputContentItem{
+			Type: providerInputTextType,
+			Text: guidance,
 		})
 	}
 
@@ -679,7 +689,7 @@ type preparedAsset struct {
 	Data      []byte
 }
 
-func (s *Service) completeGeneration(ctx context.Context, generation repository.PresentationGeneration, response azureopenai.Response, dialectJSON []byte) error {
+func (s *Service) completeGeneration(ctx context.Context, generation repository.PresentationGeneration, assets []repository.PresentationGenerationAsset, response azureopenai.Response, plannerOutputJSON, dialectJSON []byte) error {
 	if s.beginWriteTxFn == nil {
 		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"))
 	}
@@ -702,21 +712,44 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 	}
 	generation = lockedGeneration
 
-	outputAsset, err := prepareOutputAsset(dialectJSON)
+	document, err := presentationdialect.ParseJSON(dialectJSON)
 	if err != nil {
 		_ = tx.Rollback(ctx)
-		return s.failGenerationWithCause(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err)
+		return s.failGenerationWithPlan(ctx, generation, "decode normalized presentation document", plannerFailureInvalidJSON, err, plannerOutputJSON, dialectJSON)
+	}
+
+	resolvedAssets, err := s.resolveAssets(ctx, generation, document, assets)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "resolve presentation assets", assetResolutionErrorCode(err), err, plannerOutputJSON, dialectJSON)
+	}
+
+	outputAsset, err := prepareOutputAssetDocument(document)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err, plannerOutputJSON, dialectJSON)
 	}
 
 	providerModel := resolvedPlannerModel(response, generation.ProviderModel)
 	blobPath := buildOutputBlobPath(generation.SessionID, generation.ID, outputAsset.Filename)
 	if err := s.blobs.Upload(ctx, blobPath, outputAsset.Data, outputAsset.MediaType); err != nil {
 		_ = tx.Rollback(ctx)
-		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", err)
+		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "store output presentation", "store_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
 	rollbackAndCleanup := func() {
 		_ = tx.Rollback(ctx)
-		s.cleanupBlobs([]string{blobPath})
+		cleanupBlobPaths := append(slices.Clone(resolvedAssets.CleanupBlobPaths), blobPath)
+		s.cleanupBlobs(cleanupBlobPaths)
+	}
+
+	for _, asset := range resolvedAssets.Assets {
+		if _, err := tx.CreateGenerationAsset(ctx, asset); err != nil {
+			rollbackAndCleanup()
+			return s.failGenerationWithPlan(ctx, generation, "persist resolved asset", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
+		}
 	}
 
 	if _, err := tx.CreateGenerationAsset(ctx, repository.CreatePresentationGenerationAssetParams{
@@ -735,21 +768,22 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 
 	completedAt := time.Now().UTC()
 	if err := tx.UpdateGenerationState(ctx, repository.UpdatePresentationGenerationStateParams{
-		ID:            generation.ID,
-		ProviderName:  plannerProviderName,
-		ProviderModel: providerModel,
-		ProviderJobID: generation.ProviderJobID,
-		Status:        string(StatusCompleted),
-		CompletedAt:   &completedAt,
-		DialectJSON:   dialectJSON,
+		ID:                generation.ID,
+		ProviderName:      plannerProviderName,
+		ProviderModel:     providerModel,
+		ProviderJobID:     generation.ProviderJobID,
+		Status:            string(StatusCompleted),
+		CompletedAt:       &completedAt,
+		PlannerOutputJSON: plannerOutputJSON,
+		DialectJSON:       dialectJSON,
 	}); err != nil {
 		rollbackAndCleanup()
-		return s.failGenerationWithCause(ctx, generation, "mark presentation generation completed", "persist_output_failed", err)
+		return s.failGenerationWithPlan(ctx, generation, "mark presentation generation completed", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		rollbackAndCleanup()
-		return s.failGenerationWithCause(ctx, generation, "commit output persistence transaction", "persist_output_failed", err)
+		return s.failGenerationWithPlan(ctx, generation, "commit output persistence transaction", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
 
 	return nil
@@ -822,6 +856,10 @@ func prepareOutputAsset(dialectJSON []byte) (preparedAsset, error) {
 	if err != nil {
 		return preparedAsset{}, fmt.Errorf("decode normalized presentation document: %w", err)
 	}
+	return prepareOutputAssetDocument(document)
+}
+
+func prepareOutputAssetDocument(document presentationdialect.Document) (preparedAsset, error) {
 	data, err := pptx.Compile(document)
 	if err != nil {
 		return preparedAsset{}, fmt.Errorf("compile pptx: %w", err)
@@ -929,19 +967,20 @@ func (s *Service) GetAssetContent(ctx context.Context, sessionID, generationID, 
 
 func mapGeneration(record repository.PresentationGeneration) Generation {
 	return Generation{
-		ID:            record.ID,
-		SessionID:     record.SessionID,
-		Prompt:        record.Prompt,
-		DialectJSON:   slices.Clone(record.DialectJSON),
-		ProviderName:  record.ProviderName,
-		ProviderModel: record.ProviderModel,
-		ProviderJobID: record.ProviderJobID,
-		Status:        Status(record.Status),
-		ErrorCode:     record.ErrorCode,
-		ErrorMessage:  record.ErrorMessage,
-		CreatedAt:     record.CreatedAt,
-		StartedAt:     record.StartedAt,
-		CompletedAt:   record.CompletedAt,
+		ID:                record.ID,
+		SessionID:         record.SessionID,
+		Prompt:            record.Prompt,
+		PlannerOutputJSON: slices.Clone(record.PlannerOutputJSON),
+		DialectJSON:       slices.Clone(record.DialectJSON),
+		ProviderName:      record.ProviderName,
+		ProviderModel:     record.ProviderModel,
+		ProviderJobID:     record.ProviderJobID,
+		Status:            Status(record.Status),
+		ErrorCode:         record.ErrorCode,
+		ErrorMessage:      record.ErrorMessage,
+		CreatedAt:         record.CreatedAt,
+		StartedAt:         record.StartedAt,
+		CompletedAt:       record.CompletedAt,
 	}
 }
 
@@ -949,16 +988,20 @@ func mapAssets(records []repository.PresentationGenerationAsset) []Asset {
 	assets := make([]Asset, 0, len(records))
 	for _, record := range records {
 		assets = append(assets, Asset{
-			ID:           record.ID,
-			GenerationID: record.GenerationID,
-			Role:         AssetRole(record.Role),
-			SortOrder:    record.SortOrder,
-			BlobPath:     record.BlobPath,
-			MediaType:    record.MediaType,
-			Filename:     record.Filename,
-			SizeBytes:    record.SizeBytes,
-			SHA256:       record.Sha256,
-			CreatedAt:    record.CreatedAt,
+			ID:            record.ID,
+			GenerationID:  record.GenerationID,
+			Role:          AssetRole(record.Role),
+			AssetRef:      record.AssetRef,
+			SourceType:    AssetSourceType(record.SourceType),
+			SourceAssetID: record.SourceAssetID,
+			SourceRef:     record.SourceRef,
+			SortOrder:     record.SortOrder,
+			BlobPath:      record.BlobPath,
+			MediaType:     record.MediaType,
+			Filename:      record.Filename,
+			SizeBytes:     record.SizeBytes,
+			SHA256:        record.Sha256,
+			CreatedAt:     record.CreatedAt,
 		})
 	}
 
@@ -973,23 +1016,62 @@ func (s *Service) failGenerationWithCause(ctx context.Context, generation reposi
 	return fmt.Errorf("%s: %w", action, cause)
 }
 
+func (s *Service) failGenerationWithPlan(ctx context.Context, generation repository.PresentationGeneration, action string, code string, cause error, plannerOutputJSON, dialectJSON []byte) error {
+	if failErr := s.persistGenerationFailureWithPlan(ctx, generation, code, cause.Error(), plannerOutputJSON, dialectJSON); failErr != nil {
+		return fmt.Errorf("%s: %w (also failed to persist presentation generation failure: %v)", action, cause, failErr)
+	}
+
+	return fmt.Errorf("%s: %w", action, cause)
+}
+
 func (s *Service) persistGenerationFailure(ctx context.Context, generation repository.PresentationGeneration, code string, message string) error {
+	return s.persistGenerationFailureWithPlan(ctx, generation, code, message, slices.Clone(generation.PlannerOutputJSON), slices.Clone(generation.DialectJSON))
+}
+
+func (s *Service) persistGenerationFailureWithPlan(ctx context.Context, generation repository.PresentationGeneration, code string, message string, plannerOutputJSON, dialectJSON []byte) error {
 	completedAt := time.Now().UTC()
 	if err := s.generationRead.UpdateState(ctx, repository.UpdatePresentationGenerationStateParams{
-		ID:            generation.ID,
-		ProviderName:  strings.TrimSpace(generation.ProviderName),
-		ProviderModel: strings.TrimSpace(generation.ProviderModel),
-		ProviderJobID: generation.ProviderJobID,
-		Status:        string(StatusFailed),
-		ErrorCode:     strings.TrimSpace(code),
-		ErrorMessage:  strings.TrimSpace(message),
-		CompletedAt:   &completedAt,
-		DialectJSON:   slices.Clone(generation.DialectJSON),
+		ID:                generation.ID,
+		ProviderName:      strings.TrimSpace(generation.ProviderName),
+		ProviderModel:     strings.TrimSpace(generation.ProviderModel),
+		ProviderJobID:     generation.ProviderJobID,
+		Status:            string(StatusFailed),
+		ErrorCode:         strings.TrimSpace(code),
+		ErrorMessage:      strings.TrimSpace(message),
+		CompletedAt:       &completedAt,
+		PlannerOutputJSON: slices.Clone(plannerOutputJSON),
+		DialectJSON:       slices.Clone(dialectJSON),
 	}); err != nil {
 		return fmt.Errorf("mark presentation generation failed: %w", err)
 	}
 
 	return nil
+}
+
+func (s *Service) resolveAssets(ctx context.Context, generation repository.PresentationGeneration, document presentationdialect.Document, assets []repository.PresentationGenerationAsset) (ResolveAssetsResult, error) {
+	resolver := s.assetResolver
+	if resolver == nil {
+		resolver = newDefaultAssetResolver(s.blobs)
+	}
+	return resolver.Resolve(ctx, ResolveAssetsParams{
+		SessionID:    generation.SessionID,
+		GenerationID: generation.ID,
+		Document:     document,
+		InputAssets:  assets,
+	})
+}
+
+func assetResolutionErrorCode(err error) string {
+	switch {
+	case errors.Is(err, errResolvedAssetUnsupportedRef):
+		return "resolved_asset_unsupported_ref"
+	case errors.Is(err, errResolvedAssetNotFound):
+		return "resolved_asset_not_found"
+	case errors.Is(err, errThemeAssetUnavailable):
+		return "resolved_asset_unavailable"
+	default:
+		return "resolved_asset_resolution_failed"
+	}
 }
 
 func (s *Service) cleanupBlobs(blobPaths []string) {

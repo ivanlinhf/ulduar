@@ -230,19 +230,20 @@ func TestMapPresentationGeneration(t *testing.T) {
 	startedAt := createdAt.Add(time.Minute)
 	completedAt := createdAt.Add(2 * time.Minute)
 	row := dbsqlc.PresentationGeneration{
-		ID:            mustUUID(t, "88888888-8888-8888-8888-888888888888"),
-		SessionID:     mustUUID(t, "11111111-1111-1111-1111-111111111111"),
-		Prompt:        "prepare a roadmap deck",
-		DialectJson:   []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`),
-		ProviderName:  "azure-openai",
-		ProviderModel: "gpt-5-chat",
-		ProviderJobID: textValue("job-456"),
-		Status:        "completed",
-		ErrorCode:     textValue(""),
-		ErrorMessage:  textValue(""),
-		CreatedAt:     mustTime(createdAt),
-		StartedAt:     mustTime(startedAt),
-		CompletedAt:   mustTime(completedAt),
+		ID:                mustUUID(t, "88888888-8888-8888-8888-888888888888"),
+		SessionID:         mustUUID(t, "11111111-1111-1111-1111-111111111111"),
+		Prompt:            "prepare a roadmap deck",
+		PlannerOutputJson: []byte(`{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"cover_hero","title":"Roadmap","blocks":[{"type":"image","assetRef":"attachment:cover"}]}]}`),
+		DialectJson:       []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`),
+		ProviderName:      "azure-openai",
+		ProviderModel:     "gpt-5-chat",
+		ProviderJobID:     textValue("job-456"),
+		Status:            "completed",
+		ErrorCode:         textValue(""),
+		ErrorMessage:      textValue(""),
+		CreatedAt:         mustTime(createdAt),
+		StartedAt:         mustTime(startedAt),
+		CompletedAt:       mustTime(completedAt),
 	}
 
 	generation, err := mapPresentationGeneration(row)
@@ -259,6 +260,9 @@ func TestMapPresentationGeneration(t *testing.T) {
 	if string(generation.DialectJSON) != `{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}` {
 		t.Fatalf("generation.DialectJSON = %s", string(generation.DialectJSON))
 	}
+	if string(generation.PlannerOutputJSON) != `{"version":"v2","themePresetId":"travel_editorial","slides":[{"layout":"cover_hero","title":"Roadmap","blocks":[{"type":"image","assetRef":"attachment:cover"}]}]}` {
+		t.Fatalf("generation.PlannerOutputJSON = %s", string(generation.PlannerOutputJSON))
+	}
 	if generation.StartedAt == nil || !generation.StartedAt.Equal(startedAt) {
 		t.Fatalf("generation.StartedAt = %v", generation.StartedAt)
 	}
@@ -270,16 +274,20 @@ func TestMapPresentationGeneration(t *testing.T) {
 func TestMapPresentationGenerationAsset(t *testing.T) {
 	createdAt := time.Date(2026, 4, 16, 2, 10, 0, 0, time.UTC)
 	row := dbsqlc.PresentationGenerationAsset{
-		ID:           mustUUID(t, "99999999-9999-9999-9999-999999999999"),
-		GenerationID: mustUUID(t, "88888888-8888-8888-8888-888888888888"),
-		Role:         "output",
-		SortOrder:    0,
-		BlobPath:     "sessions/s1/presentation-generations/g1/outputs/final.pptx",
-		MediaType:    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		Filename:     "final.pptx",
-		SizeBytes:    8192,
-		Sha256:       "ghi",
-		CreatedAt:    mustTime(createdAt),
+		ID:            mustUUID(t, "99999999-9999-9999-9999-999999999999"),
+		GenerationID:  mustUUID(t, "88888888-8888-8888-8888-888888888888"),
+		Role:          "resolved",
+		AssetRef:      textValue("theme:hero-image"),
+		SourceType:    textValue("theme_bundle"),
+		SourceAssetID: pgtype.UUID{},
+		SourceRef:     textValue("travel_editorial:hero-image"),
+		SortOrder:     0,
+		BlobPath:      "sessions/s1/presentation-generations/g1/resolved/travel-editorial-hero-image.png",
+		MediaType:     "image/png",
+		Filename:      "travel-editorial-hero-image.png",
+		SizeBytes:     8192,
+		Sha256:        "ghi",
+		CreatedAt:     mustTime(createdAt),
 	}
 
 	asset, err := mapPresentationGenerationAsset(row)
@@ -290,8 +298,11 @@ func TestMapPresentationGenerationAsset(t *testing.T) {
 	if asset.ID != "99999999-9999-9999-9999-999999999999" {
 		t.Fatalf("asset.ID = %q", asset.ID)
 	}
-	if asset.MediaType != "application/vnd.openxmlformats-officedocument.presentationml.presentation" {
+	if asset.MediaType != "image/png" {
 		t.Fatalf("asset.MediaType = %q", asset.MediaType)
+	}
+	if asset.AssetRef != "theme:hero-image" || asset.SourceType != "theme_bundle" || asset.SourceRef != "travel_editorial:hero-image" {
+		t.Fatalf("asset = %#v", asset)
 	}
 }
 

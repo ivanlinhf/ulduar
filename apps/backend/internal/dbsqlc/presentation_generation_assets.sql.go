@@ -15,6 +15,10 @@ const createPresentationGenerationAsset = `-- name: CreatePresentationGeneration
 INSERT INTO presentation_generation_assets (
     generation_id,
     role,
+    asset_ref,
+    source_type,
+    source_asset_id,
+    source_ref,
     sort_order,
     blob_path,
     media_type,
@@ -29,12 +33,20 @@ INSERT INTO presentation_generation_assets (
     $5,
     $6,
     $7,
-    $8
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
 )
 RETURNING
     id,
     generation_id,
     role,
+    asset_ref,
+    source_type,
+    source_asset_id,
+    source_ref,
     sort_order,
     blob_path,
     media_type,
@@ -45,20 +57,28 @@ RETURNING
 `
 
 type CreatePresentationGenerationAssetParams struct {
-	GenerationID pgtype.UUID `json:"generation_id"`
-	Role         string      `json:"role"`
-	SortOrder    int64       `json:"sort_order"`
-	BlobPath     string      `json:"blob_path"`
-	MediaType    string      `json:"media_type"`
-	Filename     string      `json:"filename"`
-	SizeBytes    int64       `json:"size_bytes"`
-	Sha256       string      `json:"sha256"`
+	GenerationID  pgtype.UUID `json:"generation_id"`
+	Role          string      `json:"role"`
+	AssetRef      pgtype.Text `json:"asset_ref"`
+	SourceType    pgtype.Text `json:"source_type"`
+	SourceAssetID pgtype.UUID `json:"source_asset_id"`
+	SourceRef     pgtype.Text `json:"source_ref"`
+	SortOrder     int64       `json:"sort_order"`
+	BlobPath      string      `json:"blob_path"`
+	MediaType     string      `json:"media_type"`
+	Filename      string      `json:"filename"`
+	SizeBytes     int64       `json:"size_bytes"`
+	Sha256        string      `json:"sha256"`
 }
 
 func (q *Queries) CreatePresentationGenerationAsset(ctx context.Context, arg CreatePresentationGenerationAssetParams) (PresentationGenerationAsset, error) {
 	row := q.db.QueryRow(ctx, createPresentationGenerationAsset,
 		arg.GenerationID,
 		arg.Role,
+		arg.AssetRef,
+		arg.SourceType,
+		arg.SourceAssetID,
+		arg.SourceRef,
 		arg.SortOrder,
 		arg.BlobPath,
 		arg.MediaType,
@@ -71,6 +91,10 @@ func (q *Queries) CreatePresentationGenerationAsset(ctx context.Context, arg Cre
 		&i.ID,
 		&i.GenerationID,
 		&i.Role,
+		&i.AssetRef,
+		&i.SourceType,
+		&i.SourceAssetID,
+		&i.SourceRef,
 		&i.SortOrder,
 		&i.BlobPath,
 		&i.MediaType,
@@ -87,6 +111,10 @@ SELECT
     id,
     generation_id,
     role,
+    asset_ref,
+    source_type,
+    source_asset_id,
+    source_ref,
     sort_order,
     blob_path,
     media_type,
@@ -105,6 +133,10 @@ func (q *Queries) GetPresentationGenerationAsset(ctx context.Context, id pgtype.
 		&i.ID,
 		&i.GenerationID,
 		&i.Role,
+		&i.AssetRef,
+		&i.SourceType,
+		&i.SourceAssetID,
+		&i.SourceRef,
 		&i.SortOrder,
 		&i.BlobPath,
 		&i.MediaType,
@@ -121,6 +153,10 @@ SELECT
     a.id,
     a.generation_id,
     a.role,
+    a.asset_ref,
+    a.source_type,
+    a.source_asset_id,
+    a.source_ref,
     a.sort_order,
     a.blob_path,
     a.media_type,
@@ -147,6 +183,10 @@ func (q *Queries) GetPresentationGenerationAssetBySession(ctx context.Context, a
 		&i.ID,
 		&i.GenerationID,
 		&i.Role,
+		&i.AssetRef,
+		&i.SourceType,
+		&i.SourceAssetID,
+		&i.SourceRef,
 		&i.SortOrder,
 		&i.BlobPath,
 		&i.MediaType,
@@ -163,6 +203,10 @@ SELECT
     id,
     generation_id,
     role,
+    asset_ref,
+    source_type,
+    source_asset_id,
+    source_ref,
     sort_order,
     blob_path,
     media_type,
@@ -188,6 +232,10 @@ func (q *Queries) ListPresentationGenerationAssetsByGeneration(ctx context.Conte
 			&i.ID,
 			&i.GenerationID,
 			&i.Role,
+			&i.AssetRef,
+			&i.SourceType,
+			&i.SourceAssetID,
+			&i.SourceRef,
 			&i.SortOrder,
 			&i.BlobPath,
 			&i.MediaType,
@@ -211,6 +259,10 @@ SELECT
     a.id,
     a.generation_id,
     a.role,
+    a.asset_ref,
+    a.source_type,
+    a.source_asset_id,
+    a.source_ref,
     a.sort_order,
     a.blob_path,
     a.media_type,
@@ -244,6 +296,10 @@ func (q *Queries) ListPresentationGenerationAssetsByGenerationAndSession(ctx con
 			&i.ID,
 			&i.GenerationID,
 			&i.Role,
+			&i.AssetRef,
+			&i.SourceType,
+			&i.SourceAssetID,
+			&i.SourceRef,
 			&i.SortOrder,
 			&i.BlobPath,
 			&i.MediaType,

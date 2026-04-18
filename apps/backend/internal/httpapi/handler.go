@@ -1385,12 +1385,13 @@ func mapPresentationGenerationResponse(view presentationgen.GenerationView) pres
 			SHA256:    asset.SHA256,
 			CreatedAt: asset.CreatedAt,
 		}
-		if asset.Role == presentationgen.AssetRoleOutput {
+		switch asset.Role {
+		case presentationgen.AssetRoleOutput:
 			item.ContentURL = presentationGenerationAssetContentURL(view.Generation.SessionID, view.Generation.ID, asset.ID)
 			outputAssets = append(outputAssets, item)
-			continue
+		case presentationgen.AssetRoleInput:
+			inputAssets = append(inputAssets, item)
 		}
-		inputAssets = append(inputAssets, item)
 	}
 
 	var dialectJSON json.RawMessage
