@@ -181,6 +181,70 @@ func TestNormalizeIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestNormalizeV2AppliesPresetFallbackAndTrimsSemanticBlocks(t *testing.T) {
+	t.Parallel()
+
+	document, err := Normalize(Document{
+		Version:       VersionV2,
+		ThemePresetID: testStringPtr(" unknown_preset "),
+		Slides: []Slide{
+			{
+				Layout:   LayoutCoverHero,
+				Title:    " Kyoto Escape ",
+				Subtitle: testStringPtr(" 4 days in autumn "),
+				Blocks: []Block{
+					{
+						Type:     BlockTypeImage,
+						AssetRef: testStringPtr(" attachment:cover-photo "),
+						Caption:  testStringPtr(" Maple season in Arashiyama "),
+					},
+					{
+						Type: BlockTypeRichText,
+						Spans: []TextSpan{
+							{Text: " Slow travel ", Emphasis: " strong "},
+							{Text: " 京都 ", Lang: " ja "},
+						},
+					},
+				},
+			},
+			{
+				Layout: LayoutSummaryMatrix,
+				Title:  "Trip snapshot",
+				Blocks: []Block{
+					{
+						Type:  BlockTypeStat,
+						Value: testStringPtr(" 4 "),
+						Label: testStringPtr(" Days "),
+					},
+					{
+						Type:   BlockTypeTable,
+						Header: []string{"Area", "Why go"},
+						Rows: [][]string{
+							{" Arashiyama ", " Bamboo grove and river walk "},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Normalize() error = %v", err)
+	}
+
+	if document.ThemePresetID == nil || *document.ThemePresetID != ThemePresetGeneralClean {
+		t.Fatalf("document.ThemePresetID = %v, want %q", document.ThemePresetID, ThemePresetGeneralClean)
+	}
+	if got := *document.Slides[0].Blocks[0].AssetRef; got != "attachment:cover-photo" {
+		t.Fatalf("document.Slides[0].Blocks[0].AssetRef = %q", got)
+	}
+	if got := document.Slides[0].Blocks[1].Spans[0].Emphasis; got != "strong" {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[0].Emphasis = %q", got)
+	}
+	if got := document.Slides[0].Blocks[1].Spans[1].Lang; got != "ja" {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[1].Lang = %q", got)
+	}
+}
+
 func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 	t.Parallel()
 
@@ -189,6 +253,20 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 		document Document
 		wantErr  string
 	}{
+		{
+			name: "v1 theme preset id pointer rejected",
+			document: Document{
+				Version:       VersionV1,
+				ThemePresetID: testStringPtr(""),
+				Slides: []Slide{
+					{
+						Layout: LayoutTitle,
+						Title:  "Hello",
+					},
+				},
+			},
+			wantErr: `themePresetId is not supported for "v1" documents`,
+		},
 		{
 			name: "unsupported layout",
 			document: Document{
@@ -201,6 +279,25 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 				},
 			},
 			wantErr: `slides[0].layout must be one of: title, section, title_bullets, two_column, table, closing`,
+		},
+		{
+			name: "table rows before header yields header error",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{
+					{
+						Layout: LayoutTable,
+						Title:  "Metrics",
+						Blocks: []Block{
+							{
+								Type: BlockTypeTable,
+								Rows: [][]string{{"Latency"}},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].header must contain at least 1 column`,
 		},
 		{
 			name: "unsupported block type",
@@ -483,6 +580,157 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 	}
 }
 
+func TestNormalizeRejectsInvalidV2Documents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		document Document
+		wantErr  string
+	}{
+		{
+			name: "legacy layout rejects v2-only block fields",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutTitleBullets,
+					Title:  "Agenda",
+					Blocks: []Block{{
+						Type:  BlockTypeBulletList,
+						Items: []string{"One"},
+						Tone:  testStringPtr(""),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for "bullet_list" blocks`,
+		},
+		{
+			name: "cover hero requires image",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutCoverHero,
+					Title:  "Travel",
+					Blocks: []Block{{
+						Type: BlockTypeRichText,
+						Spans: []TextSpan{
+							{Text: "Hello"},
+						},
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks must contain exactly 1 image block`,
+		},
+		{
+			name: "table rejects caption",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutTable,
+					Title:  "Snapshot",
+					Blocks: []Block{{
+						Type:    BlockTypeTable,
+						Header:  []string{"Metric"},
+						Rows:    [][]string{{"Value"}},
+						Caption: testStringPtr("Unsupported"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for table blocks`,
+		},
+		{
+			name: "card rejects image-only fields",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutComparisonCards,
+					Title:  "Options",
+					Blocks: []Block{{
+						Type:    BlockTypeCard,
+						Title:   testStringPtr("Gion"),
+						AltText: testStringPtr("Unsupported"),
+					}, {
+						Type:  BlockTypeCard,
+						Title: testStringPtr("Arashiyama"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for card blocks`,
+		},
+		{
+			name: "callout rejects caption",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutRecommendation,
+					Title:  "Stay",
+					Blocks: []Block{{
+						Type:     BlockTypeImage,
+						AssetRef: testStringPtr("attachment:cover"),
+					}, {
+						Type:    BlockTypeCallout,
+						Title:   testStringPtr("Recommendation"),
+						Body:    testStringPtr("Stay central"),
+						Caption: testStringPtr("Unsupported"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[1] contains fields that are not supported for callout blocks`,
+		},
+		{
+			name: "badge tone invalid",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutClosing,
+					Title:  "Done",
+					Blocks: []Block{{
+						Type: BlockTypeBadge,
+						Text: testStringPtr("Packed"),
+						Tone: testStringPtr("loud"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0].tone must be one of: neutral, accent, success, warning`,
+		},
+		{
+			name: "summary matrix requires stat",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutSummaryMatrix,
+					Title:  "Snapshot",
+					Blocks: []Block{{
+						Type:   BlockTypeTable,
+						Header: []string{"Metric"},
+						Rows:   [][]string{{"Value"}},
+					}, {
+						Type:  BlockTypeCallout,
+						Title: testStringPtr("Note"),
+						Body:  testStringPtr("Missing stat"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks must contain at least 1 stat block`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Normalize(test.document)
+			if err == nil {
+				t.Fatal("Normalize() error = nil, want error")
+			}
+			if err.Error() != test.wantErr {
+				t.Fatalf("Normalize() error = %q, want %q", err.Error(), test.wantErr)
+			}
+		})
+	}
+}
+
 func TestParseJSONRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
@@ -512,6 +760,20 @@ func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
 		payload string
 		wantErr string
 	}{
+		{
+			name: "v1 theme preset id present but empty",
+			payload: `{
+				"version": "v1",
+				"themePresetId": "",
+				"slides": [
+					{
+						"layout": "title",
+						"title": "Hello"
+					}
+				]
+			}`,
+			wantErr: `themePresetId is not supported for "v1" documents`,
+		},
 		{
 			name: "title with empty blocks field",
 			payload: `{
@@ -565,6 +827,26 @@ func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
 				]
 			}`,
 			wantErr: `slides[0].blocks[0].items is not supported for paragraph blocks`,
+		},
+		{
+			name: "paragraph with empty tone field",
+			payload: `{
+				"version": "v2",
+				"slides": [
+					{
+						"layout": "closing",
+						"title": "Done",
+						"blocks": [
+							{
+								"type": "paragraph",
+								"text": "Summary",
+								"tone": ""
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for paragraph blocks`,
 		},
 	}
 
@@ -736,5 +1018,32 @@ func TestParseJSONRejectsNullFields(t *testing.T) {
 				t.Fatalf("ParseJSON() error = %q, want %q", err.Error(), test.wantErr)
 			}
 		})
+	}
+}
+
+func TestParseJSONRejectsNullV2Fields(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseJSON([]byte(`{
+		"version": "v2",
+		"themePresetId": null,
+		"slides": [
+			{
+				"layout": "cover_hero",
+				"title": "Kyoto",
+				"blocks": [
+					{
+						"type": "image",
+						"assetRef": "attachment:cover"
+					}
+				]
+			}
+		]
+	}`))
+	if err == nil {
+		t.Fatal("ParseJSON() error = nil, want error")
+	}
+	if err.Error() != `themePresetId must not be null` {
+		t.Fatalf("ParseJSON() error = %q", err.Error())
 	}
 }

@@ -191,6 +191,65 @@ func TestCompileRejectsInvalidDocuments(t *testing.T) {
 	}
 }
 
+func TestCompileProducesPPTXForV2SemanticLayouts(t *testing.T) {
+	t.Parallel()
+
+	document := presentationdialect.Document{
+		Version:       presentationdialect.VersionV2,
+		ThemePresetID: stringPtr(presentationdialect.ThemePresetTravelEditorial),
+		Slides: []presentationdialect.Slide{
+			{
+				Layout:   presentationdialect.LayoutCoverHero,
+				Title:    "Kyoto in Four Days",
+				Subtitle: stringPtr("Travel Editorial"),
+				Blocks: []presentationdialect.Block{
+					{
+						Type:     presentationdialect.BlockTypeImage,
+						AssetRef: stringPtr("attachment:cover-photo"),
+						Caption:  stringPtr("Autumn light over Arashiyama"),
+					},
+					{
+						Type: presentationdialect.BlockTypeRichText,
+						Spans: []presentationdialect.TextSpan{
+							{Text: "A calm city break with "},
+							{Text: "京都", Lang: "ja", Emphasis: "accent"},
+						},
+					},
+				},
+			},
+			{
+				Layout: presentationdialect.LayoutComparisonCards,
+				Title:  "Stay options",
+				Blocks: []presentationdialect.Block{
+					{
+						Type:  presentationdialect.BlockTypeCard,
+						Title: stringPtr("Gion"),
+						Body:  stringPtr("Best for walkable evenings and classic streetscapes."),
+					},
+					{
+						Type:  presentationdialect.BlockTypeCard,
+						Title: stringPtr("Arashiyama"),
+						Body:  stringPtr("Best for a slower pace and riverside views."),
+					},
+				},
+			},
+		},
+	}
+
+	data, err := Compile(document)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Kyoto in Four Days`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Image asset: attachment:cover-photo`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Autumn light over Arashiyama`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `Stay options`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `Gion`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `Arashiyama`)
+}
+
 func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 

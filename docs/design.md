@@ -270,7 +270,7 @@ The backend exposes a dedicated presentation-generation path that reuses the ano
 
 - Planner configuration lives under the `AZURE_OPENAI_PRESENTATION_*` environment variables.
 - The planner accepts a required prompt plus optional JPEG, PNG, WebP, and PDF input references only.
-- The planner produces normalized JSON that follows [docs/presentation-dialect.md](presentation-dialect.md), and the compiler turns that normalized dialect into a PPTX asset.
+- The planner produces normalized JSON that follows [docs/presentation-dialect.md](presentation-dialect.md); new planning targets `v2` while stored `v1` documents remain valid and compilable.
 - The frontend entry point is gated separately by `VITE_PRESENTATION_GENERATION_ENABLED` and stays hidden by default until manual validation passes.
 
 #### V1 presentation generation constraints

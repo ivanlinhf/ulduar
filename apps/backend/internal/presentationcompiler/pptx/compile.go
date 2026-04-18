@@ -241,9 +241,75 @@ func slideTextBoxes(slide presentationdialect.Slide) []textBox {
 		return tableSlideTextBoxes(slide)
 	case presentationdialect.LayoutClosing:
 		return closingSlideTextBoxes(slide)
+	case presentationdialect.LayoutCoverHero:
+		return semanticContentSlideTextBoxes(slide, true)
+	case presentationdialect.LayoutChapterDivider:
+		return semanticContentSlideTextBoxes(slide, true)
+	case presentationdialect.LayoutTOCGrid:
+		return semanticContentSlideTextBoxes(slide, false)
+	case presentationdialect.LayoutCardGrid:
+		return semanticContentSlideTextBoxes(slide, false)
+	case presentationdialect.LayoutComparisonCards:
+		return semanticContentSlideTextBoxes(slide, false)
+	case presentationdialect.LayoutTimelineItinerary:
+		return semanticContentSlideTextBoxes(slide, false)
+	case presentationdialect.LayoutSummaryMatrix:
+		return semanticContentSlideTextBoxes(slide, false)
+	case presentationdialect.LayoutRecommendation:
+		return semanticContentSlideTextBoxes(slide, false)
 	default:
 		return nil
 	}
+}
+
+func semanticContentSlideTextBoxes(slide presentationdialect.Slide, centered bool) []textBox {
+	textBoxes := []textBox{
+		{
+			id:   2,
+			name: "Title",
+			x:    slideMarginXEMU,
+			y:    slideMarginYEMU,
+			cx:   slideWidthEMU - 2*slideMarginXEMU,
+			cy:   685800,
+			paragraphs: []textParagraph{
+				{text: slide.Title, size: 2200, bold: true},
+			},
+		},
+	}
+
+	bodyY := 1371600
+	nextID := 3
+	if slide.Subtitle != nil {
+		textBoxes = append(textBoxes, textBox{
+			id:   nextID,
+			name: "Subtitle",
+			x:    slideMarginXEMU,
+			y:    1066800,
+			cx:   slideWidthEMU - 2*slideMarginXEMU,
+			cy:   457200,
+			paragraphs: []textParagraph{
+				{text: *slide.Subtitle, size: 1600, color: "666666"},
+			},
+		})
+		nextID++
+		bodyY = 1676400
+	}
+
+	paragraphs := blockParagraphs(slide.Blocks)
+	if centered {
+		paragraphs = centerParagraphs(paragraphs)
+	}
+	textBoxes = append(textBoxes, textBox{
+		id:         nextID,
+		name:       "Content",
+		x:          slideMarginXEMU,
+		y:          bodyY,
+		cx:         slideWidthEMU - 2*slideMarginXEMU,
+		cy:         slideHeightEMU - bodyY - slideMarginYEMU,
+		paragraphs: paragraphs,
+	})
+
+	return textBoxes
 }
 
 func titleSlideTextBoxes(slide presentationdialect.Slide) []textBox {
@@ -493,6 +559,35 @@ func blockParagraphs(blocks []presentationdialect.Block) []textParagraph {
 			for _, row := range block.Rows {
 				paragraphs = append(paragraphs, textParagraph{text: strings.Join(row, " | "), size: 1500})
 			}
+		case presentationdialect.BlockTypeImage:
+			paragraphs = append(paragraphs, textParagraph{text: "Image asset: " + dereferenceString(block.AssetRef), size: 1500, italic: true, color: "666666"})
+			if block.Caption != nil {
+				paragraphs = append(paragraphs, textParagraph{text: *block.Caption, size: 1400, color: "666666"})
+			}
+		case presentationdialect.BlockTypeBadge:
+			paragraphs = append(paragraphs, textParagraph{text: strings.ToUpper(dereferenceString(block.Text)), size: 1300, bold: true, color: "666666"})
+		case presentationdialect.BlockTypeRichText:
+			paragraphs = append(paragraphs, textParagraph{text: renderRichText(block.Spans), size: 1600})
+		case presentationdialect.BlockTypeCallout:
+			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Title), size: 1700, bold: true})
+			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Body), size: 1600})
+		case presentationdialect.BlockTypeCard:
+			if block.Label != nil {
+				paragraphs = append(paragraphs, textParagraph{text: *block.Label, size: 1300, bold: true, color: "666666"})
+			}
+			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Title), size: 1700, bold: true})
+			if block.Body != nil {
+				paragraphs = append(paragraphs, textParagraph{text: *block.Body, size: 1500})
+			}
+			if block.AssetRef != nil {
+				paragraphs = append(paragraphs, textParagraph{text: "Image asset: " + *block.AssetRef, size: 1400, italic: true, color: "666666"})
+			}
+		case presentationdialect.BlockTypeStat:
+			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Value), size: 1900, bold: true})
+			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Label), size: 1500, color: "666666"})
+			if block.Body != nil {
+				paragraphs = append(paragraphs, textParagraph{text: *block.Body, size: 1400})
+			}
 		}
 	}
 
@@ -512,6 +607,14 @@ func centerParagraphs(paragraphs []textParagraph) []textParagraph {
 	}
 
 	return centered
+}
+
+func renderRichText(spans []presentationdialect.TextSpan) string {
+	parts := make([]string, 0, len(spans))
+	for _, span := range spans {
+		parts = append(parts, span.Text)
+	}
+	return strings.Join(parts, "")
 }
 
 func renderTextBox(textBox textBox) string {
