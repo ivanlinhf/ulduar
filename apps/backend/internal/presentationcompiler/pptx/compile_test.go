@@ -196,7 +196,7 @@ func TestCompileProducesPPTXForV2SemanticLayouts(t *testing.T) {
 
 	document := presentationdialect.Document{
 		Version:       presentationdialect.VersionV2,
-		ThemePresetID: presentationdialect.ThemePresetTravelEditorial,
+		ThemePresetID: stringPtr(presentationdialect.ThemePresetTravelEditorial),
 		Slides: []presentationdialect.Slide{
 			{
 				Layout:   presentationdialect.LayoutCoverHero,

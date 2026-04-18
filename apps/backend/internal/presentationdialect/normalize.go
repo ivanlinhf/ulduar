@@ -86,7 +86,6 @@ var (
 		BlockTypeImage,
 	}
 	v2ToneValues = []string{
-		"",
 		"neutral",
 		"accent",
 		"success",
@@ -126,10 +125,13 @@ func Validate(document Document) error {
 
 func Normalize(document Document) (Document, error) {
 	normalized := Document{
-		Version:       strings.TrimSpace(document.Version),
-		SlideSize:     strings.TrimSpace(document.SlideSize),
-		ThemePresetID: strings.TrimSpace(document.ThemePresetID),
-		Slides:        make([]Slide, 0, len(document.Slides)),
+		Version:   strings.TrimSpace(document.Version),
+		SlideSize: strings.TrimSpace(document.SlideSize),
+		Slides:    make([]Slide, 0, len(document.Slides)),
+	}
+	if document.ThemePresetID != nil {
+		themePresetID := strings.TrimSpace(*document.ThemePresetID)
+		normalized.ThemePresetID = &themePresetID
 	}
 
 	if normalized.Version == "" {
@@ -150,7 +152,7 @@ func Normalize(document Document) (Document, error) {
 
 	switch normalized.Version {
 	case VersionV1:
-		if normalized.ThemePresetID != "" {
+		if normalized.ThemePresetID != nil {
 			return Document{}, validationError("themePresetId is not supported for %q documents", VersionV1)
 		}
 		for index, slide := range document.Slides {
@@ -161,7 +163,8 @@ func Normalize(document Document) (Document, error) {
 			normalized.Slides = append(normalized.Slides, normalizedSlide)
 		}
 	case VersionV2:
-		normalized.ThemePresetID = ResolveThemePresetID(normalized.ThemePresetID)
+		resolvedThemePresetID := ResolveThemePresetID(dereferenceString(normalized.ThemePresetID))
+		normalized.ThemePresetID = &resolvedThemePresetID
 		for index, slide := range document.Slides {
 			normalizedSlide, err := normalizeSlideV2(slide, fmt.Sprintf("slides[%d]", index))
 			if err != nil {
@@ -476,7 +479,6 @@ func normalizeBlocks(blocks []Block, path string, allowedBlockTypes []BlockType,
 func normalizeBlock(block Block, path string, version string) (Block, error) {
 	normalized := Block{
 		Type: BlockType(strings.TrimSpace(string(block.Type))),
-		Tone: strings.TrimSpace(block.Tone),
 	}
 	for _, field := range []struct {
 		src *string
@@ -497,26 +499,18 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 			*field.dst = &value
 		}
 	}
+	if block.Tone != nil {
+		tone := strings.TrimSpace(*block.Tone)
+		if tone != "" {
+			normalized.Tone = &tone
+		}
+	}
 	if len(block.Items) > 0 {
 		items, err := normalizeStringSlice(block.Items, path+".items", true)
 		if err != nil {
 			return Block{}, err
 		}
 		normalized.Items = items
-	}
-	if len(block.Header) > 0 {
-		header, err := normalizeStringSlice(block.Header, path+".header", true)
-		if err != nil {
-			return Block{}, err
-		}
-		normalized.Header = header
-	}
-	if len(block.Rows) > 0 {
-		rows, err := normalizeRows(block.Rows, path+".rows", len(block.Header))
-		if err != nil {
-			return Block{}, err
-		}
-		normalized.Rows = rows
 	}
 	if len(block.Spans) > 0 {
 		normalized.Spans = make([]TextSpan, 0, len(block.Spans))
@@ -585,7 +579,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		}
 		normalized.Items = items
 	case BlockTypeTable:
-		if version == VersionV2 && (block.Title != nil || block.AssetRef != nil || block.AltText != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != "") {
+		if version == VersionV2 && (block.Title != nil || block.AssetRef != nil || block.AltText != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil) {
 			return Block{}, validationError("%s contains fields that are not supported for table blocks", path)
 		}
 		if block.Text != nil {
@@ -623,7 +617,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.AssetRef) {
 			return Block{}, validationError("%s.assetRef is required for image blocks", path)
 		}
-		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != "" || block.Title != nil {
+		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil || block.Title != nil {
 			return Block{}, validationError("%s contains fields that are not supported for image blocks", path)
 		}
 	case BlockTypeCard:
@@ -633,7 +627,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Title) {
 			return Block{}, validationError("%s.title is required for card blocks", path)
 		}
-		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.Value != nil || block.Spans != nil || block.Tone != "" {
+		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for card blocks", path)
 		}
 	case BlockTypeStat:
@@ -646,7 +640,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Label) {
 			return Block{}, validationError("%s.label is required for stat blocks", path)
 		}
-		if block.Title != nil || block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Spans != nil || block.Tone != "" {
+		if block.Title != nil || block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Spans != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for stat blocks", path)
 		}
 	case BlockTypeBadge:
@@ -656,7 +650,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Text) {
 			return Block{}, validationError("%s.text is required for badge blocks", path)
 		}
-		if !slices.Contains(v2ToneValues, normalized.Tone) {
+		if block.Tone != nil && normalized.Tone != nil && !slices.Contains(v2ToneValues, *normalized.Tone) {
 			return Block{}, validationError(`%s.tone must be one of: neutral, accent, success, warning`, path)
 		}
 		if block.Title != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil {
@@ -672,7 +666,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Body) {
 			return Block{}, validationError("%s.body is required for callout blocks", path)
 		}
-		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != "" {
+		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for callout blocks", path)
 		}
 	case BlockTypeRichText:
@@ -682,7 +676,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if len(normalized.Spans) == 0 {
 			return Block{}, validationError("%s.spans must contain at least 1 span", path)
 		}
-		if block.Title != nil || block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Tone != "" {
+		if block.Title != nil || block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for rich_text blocks", path)
 		}
 	default:
@@ -751,6 +745,13 @@ func isNilOrEmpty(value *string) bool {
 	return value == nil || *value == ""
 }
 
+func dereferenceString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func hasAnyBlockType(blocks []Block, blockTypes ...BlockType) bool {
 	for _, block := range blocks {
 		if slices.Contains(blockTypes, block.Type) {
@@ -779,7 +780,7 @@ func hasV2OnlyFields(block Block) bool {
 		block.Label != nil ||
 		block.Value != nil ||
 		block.Spans != nil ||
-		block.Tone != ""
+		block.Tone != nil
 }
 
 func rejectNullJSONFields(data []byte) error {
@@ -799,6 +800,11 @@ func rejectNullDocumentFields(value any) error {
 	for _, field := range []string{"version", "slideSize", "themePresetId"} {
 		if err := rejectNullObjectField(document, field, field); err != nil {
 			return err
+		}
+	}
+	if version, ok := document["version"].(string); ok && strings.TrimSpace(version) == VersionV1 {
+		if _, hasThemePresetID := document["themePresetId"]; hasThemePresetID {
+			return validationError("themePresetId is not supported for %q documents", VersionV1)
 		}
 	}
 

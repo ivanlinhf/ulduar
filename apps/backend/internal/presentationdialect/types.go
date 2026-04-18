@@ -46,7 +46,7 @@ const (
 type Document struct {
 	Version       string  `json:"version"`
 	SlideSize     string  `json:"slideSize,omitempty"`
-	ThemePresetID string  `json:"themePresetId,omitempty"`
+	ThemePresetID *string `json:"themePresetId,omitempty"`
 	Slides        []Slide `json:"slides"`
 }
 
@@ -77,7 +77,7 @@ type Block struct {
 	Body        *string    `json:"body,omitempty"`
 	Label       *string    `json:"label,omitempty"`
 	Value       *string    `json:"value,omitempty"`
-	Tone        string     `json:"tone,omitempty"`
+	Tone        *string    `json:"tone,omitempty"`
 	Spans       []TextSpan `json:"spans,omitempty"`
 }
 

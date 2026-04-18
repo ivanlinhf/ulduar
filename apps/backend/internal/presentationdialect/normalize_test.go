@@ -186,7 +186,7 @@ func TestNormalizeV2AppliesPresetFallbackAndTrimsSemanticBlocks(t *testing.T) {
 
 	document, err := Normalize(Document{
 		Version:       VersionV2,
-		ThemePresetID: " unknown_preset ",
+		ThemePresetID: testStringPtr(" unknown_preset "),
 		Slides: []Slide{
 			{
 				Layout:   LayoutCoverHero,
@@ -231,8 +231,8 @@ func TestNormalizeV2AppliesPresetFallbackAndTrimsSemanticBlocks(t *testing.T) {
 		t.Fatalf("Normalize() error = %v", err)
 	}
 
-	if document.ThemePresetID != ThemePresetGeneralClean {
-		t.Fatalf("document.ThemePresetID = %q, want %q", document.ThemePresetID, ThemePresetGeneralClean)
+	if document.ThemePresetID == nil || *document.ThemePresetID != ThemePresetGeneralClean {
+		t.Fatalf("document.ThemePresetID = %v, want %q", document.ThemePresetID, ThemePresetGeneralClean)
 	}
 	if got := *document.Slides[0].Blocks[0].AssetRef; got != "attachment:cover-photo" {
 		t.Fatalf("document.Slides[0].Blocks[0].AssetRef = %q", got)
@@ -254,6 +254,20 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 		wantErr  string
 	}{
 		{
+			name: "v1 theme preset id pointer rejected",
+			document: Document{
+				Version:       VersionV1,
+				ThemePresetID: testStringPtr(""),
+				Slides: []Slide{
+					{
+						Layout: LayoutTitle,
+						Title:  "Hello",
+					},
+				},
+			},
+			wantErr: `themePresetId is not supported for "v1" documents`,
+		},
+		{
 			name: "unsupported layout",
 			document: Document{
 				Version: VersionV1,
@@ -265,6 +279,25 @@ func TestNormalizeRejectsInvalidDocuments(t *testing.T) {
 				},
 			},
 			wantErr: `slides[0].layout must be one of: title, section, title_bullets, two_column, table, closing`,
+		},
+		{
+			name: "table rows before header yields header error",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{
+					{
+						Layout: LayoutTable,
+						Title:  "Metrics",
+						Blocks: []Block{
+							{
+								Type: BlockTypeTable,
+								Rows: [][]string{{"Latency"}},
+							},
+						},
+					},
+				},
+			},
+			wantErr: `slides[0].blocks[0].header must contain at least 1 column`,
 		},
 		{
 			name: "unsupported block type",
@@ -582,7 +615,7 @@ func TestNormalizeRejectsInvalidV2Documents(t *testing.T) {
 					Blocks: []Block{{
 						Type: BlockTypeBadge,
 						Text: testStringPtr("Packed"),
-						Tone: "loud",
+						Tone: testStringPtr("loud"),
 					}},
 				}},
 			},
@@ -656,6 +689,20 @@ func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name: "v1 theme preset id present but empty",
+			payload: `{
+				"version": "v1",
+				"themePresetId": "",
+				"slides": [
+					{
+						"layout": "title",
+						"title": "Hello"
+					}
+				]
+			}`,
+			wantErr: `themePresetId is not supported for "v1" documents`,
+		},
+		{
 			name: "title with empty blocks field",
 			payload: `{
 				"version": "v1",
@@ -708,6 +755,26 @@ func TestParseJSONRejectsDisallowedEmptyFields(t *testing.T) {
 				]
 			}`,
 			wantErr: `slides[0].blocks[0].items is not supported for paragraph blocks`,
+		},
+		{
+			name: "paragraph with empty tone field",
+			payload: `{
+				"version": "v2",
+				"slides": [
+					{
+						"layout": "closing",
+						"title": "Done",
+						"blocks": [
+							{
+								"type": "paragraph",
+								"text": "Summary",
+								"tone": ""
+							}
+						]
+					}
+				]
+			}`,
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for paragraph blocks`,
 		},
 	}
 
