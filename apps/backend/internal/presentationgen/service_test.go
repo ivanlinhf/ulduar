@@ -1132,6 +1132,12 @@ func TestExecuteGenerationFailsWhenPlannerOutputRemainsInvalidAfterRepair(t *tes
 	if !strings.Contains(update.ErrorMessage, "decode presentation document") {
 		t.Fatalf("update.ErrorMessage = %q, want decode failure", update.ErrorMessage)
 	}
+	if got := string(update.PlannerOutputJSON); got != "still not json" {
+		t.Fatalf("update.PlannerOutputJSON = %q, want latest invalid planner output", got)
+	}
+	if got := string(update.DialectJSON); got != "" {
+		t.Fatalf("update.DialectJSON = %q, want empty", got)
+	}
 }
 
 func TestExecuteGenerationFailsWhenProviderReturnsFailedResponse(t *testing.T) {

@@ -371,6 +371,9 @@ func (s *Service) executePendingGeneration(ctx context.Context, generation repos
 
 	response, plannerOutputJSON, dialectJSON, err := s.executePlannerRequest(ctx, request)
 	if err != nil {
+		if len(plannerOutputJSON) > 0 || len(dialectJSON) > 0 {
+			return s.failGenerationWithPlan(ctx, generation, "plan presentation", plannerErrorCode(err), err, plannerOutputJSON, dialectJSON)
+		}
 		return s.failGenerationWithCause(ctx, generation, "plan presentation", plannerErrorCode(err), err)
 	}
 
@@ -382,18 +385,19 @@ func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai
 	if err != nil {
 		return azureopenai.Response{}, nil, nil, err
 	}
+	plannerOutputJSON := []byte(strings.TrimSpace(plannerText))
 
 	dialectJSON, validationErr := normalizePlannerOutput(plannerText)
 	if validationErr == nil {
-		return response, []byte(strings.TrimSpace(plannerText)), dialectJSON, nil
+		return response, plannerOutputJSON, dialectJSON, nil
 	}
 	if !shouldRetryPlannerValidation(validationErr) {
-		return response, nil, nil, validationErr
+		return response, plannerOutputJSON, nil, validationErr
 	}
 
 	originalInput, ok := request.Input.([]azureopenai.InputMessage)
 	if !ok {
-		return response, nil, nil, fmt.Errorf("validate planner response JSON: unsupported planner input payload type %T", request.Input)
+		return response, plannerOutputJSON, nil, fmt.Errorf("validate planner response JSON: unsupported planner input payload type %T", request.Input)
 	}
 
 	repairRequest := request
@@ -411,15 +415,16 @@ func (s *Service) executePlannerRequest(ctx context.Context, request azureopenai
 
 	repairResponse, repairedText, err := s.createPlannerResponse(ctx, repairRequest)
 	if err != nil {
-		return repairResponse, nil, nil, err
+		return repairResponse, plannerOutputJSON, nil, err
 	}
+	plannerOutputJSON = []byte(strings.TrimSpace(repairedText))
 
 	dialectJSON, err = normalizePlannerOutput(repairedText)
 	if err != nil {
-		return repairResponse, nil, nil, err
+		return repairResponse, plannerOutputJSON, nil, err
 	}
 
-	return repairResponse, []byte(strings.TrimSpace(repairedText)), dialectJSON, nil
+	return repairResponse, plannerOutputJSON, dialectJSON, nil
 }
 
 func (s *Service) createPlannerResponse(ctx context.Context, request azureopenai.CreateResponseRequest) (azureopenai.Response, string, error) {
