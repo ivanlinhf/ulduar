@@ -762,6 +762,108 @@ func TestCompleteGenerationCleansUpUploadedThemeAssetsWhenResolvedAssetPersisten
 	}
 }
 
+func TestCompleteGenerationPersistsPlanWhenOutputPersistenceTransactionCannotStart(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		assetResolver:  newDefaultAssetResolver(blobs),
+		generationRead: reader,
+	}
+
+	plannerOutputJSON := []byte(`{"version":"v1","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	dialectJSON := []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		plannerOutputJSON,
+		dialectJSON,
+	)
+	if err == nil {
+		t.Fatal("completeGeneration() error = nil, want error")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if got := string(reader.updateCalls[0].PlannerOutputJSON); got != string(plannerOutputJSON) {
+		t.Fatalf("reader.updateCalls[0].PlannerOutputJSON = %s", got)
+	}
+	if got := string(reader.updateCalls[0].DialectJSON); got != string(dialectJSON) {
+		t.Fatalf("reader.updateCalls[0].DialectJSON = %s", got)
+	}
+	if len(blobs.deleteCalls) != 1 || !strings.Contains(blobs.deleteCalls[0], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls = %#v, want uploaded output blob cleanup", blobs.deleteCalls)
+	}
+}
+
+func TestCompleteGenerationPersistsPlanWhenOutputAssetPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		createAssetErr: errors.New("persist output asset failed"),
+	}
+	blobs := &stubBlobStore{}
+	service := &Service{
+		blobs:          blobs,
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+		generationRead: reader,
+	}
+
+	plannerOutputJSON := []byte(`{"version":"v1","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	dialectJSON := []byte(`{"version":"v1","slideSize":"16:9","slides":[{"layout":"title","title":"Roadmap"}]}`)
+	err := service.completeGeneration(
+		context.Background(),
+		repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222222",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+		nil,
+		azureopenai.Response{},
+		plannerOutputJSON,
+		dialectJSON,
+	)
+	if err == nil {
+		t.Fatal("completeGeneration() error = nil, want error")
+	}
+	if !tx.rolledBack {
+		t.Fatal("expected rollback when output asset persistence fails")
+	}
+	if len(reader.updateCalls) != 1 {
+		t.Fatalf("len(reader.updateCalls) = %d, want 1", len(reader.updateCalls))
+	}
+	if got := string(reader.updateCalls[0].PlannerOutputJSON); got != string(plannerOutputJSON) {
+		t.Fatalf("reader.updateCalls[0].PlannerOutputJSON = %s", got)
+	}
+	if got := string(reader.updateCalls[0].DialectJSON); got != string(dialectJSON) {
+		t.Fatalf("reader.updateCalls[0].DialectJSON = %s", got)
+	}
+	if len(blobs.deleteCalls) != 1 || !strings.Contains(blobs.deleteCalls[0], "/outputs/") {
+		t.Fatalf("blobs.deleteCalls = %#v, want uploaded output blob cleanup", blobs.deleteCalls)
+	}
+}
+
 func TestExecuteGenerationIncludesWebSearchToolWhenEnabled(t *testing.T) {
 	t.Parallel()
 

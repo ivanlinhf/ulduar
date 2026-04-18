@@ -691,7 +691,7 @@ type preparedAsset struct {
 
 func (s *Service) completeGeneration(ctx context.Context, generation repository.PresentationGeneration, assets []repository.PresentationGenerationAsset, response azureopenai.Response, plannerOutputJSON, dialectJSON []byte) error {
 	if s.blobs == nil {
-		return s.failGenerationWithCause(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"))
+		return s.failGenerationWithPlan(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"), plannerOutputJSON, dialectJSON)
 	}
 
 	document, err := presentationdialect.ParseJSON(dialectJSON)
@@ -721,7 +721,7 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 
 	if s.beginWriteTxFn == nil {
 		s.cleanupBlobs(cleanupBlobPaths)
-		return s.failGenerationWithCause(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"))
+		return s.failGenerationWithPlan(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"), plannerOutputJSON, dialectJSON)
 	}
 
 	tx, err := s.beginWriteTxFn(ctx)
@@ -765,7 +765,7 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		Sha256:       outputAsset.SHA256,
 	}); err != nil {
 		rollbackAndCleanup()
-		return s.failGenerationWithCause(ctx, generation, "persist output asset", "persist_output_failed", err)
+		return s.failGenerationWithPlan(ctx, generation, "persist output asset", "persist_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
 
 	completedAt := time.Now().UTC()
