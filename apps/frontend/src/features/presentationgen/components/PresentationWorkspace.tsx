@@ -1,11 +1,11 @@
+import type { PresentationGenerationCapabilitiesResponse } from "../../../lib/api";
 import { NewMenu } from "../../chat/components/NewMenu";
-import type { ImageGenerationCapabilitiesResponse } from "../../../lib/api";
-import { useImageWorkspace } from "../useImageWorkspace";
-import { ImageComposer } from "./ImageComposer";
-import { ImageTimeline } from "./ImageTimeline";
+import { usePresentationWorkspace } from "../usePresentationWorkspace";
+import { PresentationComposer } from "./PresentationComposer";
+import { PresentationTimeline } from "./PresentationTimeline";
 
-type ImageWorkspaceProps = {
-  capabilities: ImageGenerationCapabilitiesResponse;
+type PresentationWorkspaceProps = {
+  capabilities: PresentationGenerationCapabilitiesResponse;
   isImageGenerationEnabled: boolean;
   isImageGenerationAvailable: boolean;
   isPresentationGenerationEnabled: boolean;
@@ -15,7 +15,7 @@ type ImageWorkspaceProps = {
   onNewPresentation: () => void;
 };
 
-export function ImageWorkspace({
+export function PresentationWorkspace({
   capabilities,
   isImageGenerationEnabled,
   isImageGenerationAvailable,
@@ -24,11 +24,11 @@ export function ImageWorkspace({
   onNewChat,
   onNewImage,
   onNewPresentation,
-}: ImageWorkspaceProps) {
-  const workspace = useImageWorkspace(capabilities);
+}: PresentationWorkspaceProps) {
+  const workspace = usePresentationWorkspace(capabilities);
 
   return (
-    <section className="chat-panel image-panel">
+    <section className="chat-panel image-panel presentation-panel">
       <header className="chat-header">
         <p className="chat-subtitle">{workspace.workspaceSubtitle}</p>
 
@@ -45,32 +45,27 @@ export function ImageWorkspace({
         </div>
       </header>
 
-      <ImageTimeline turns={workspace.turns} />
+      <PresentationTimeline turns={workspace.turns} />
 
-      <ImageComposer
+      <PresentationComposer
         attachmentToast={workspace.attachmentToast}
+        attachmentsSupported={workspace.attachmentsSupported}
+        attachments={workspace.attachments}
         busy={workspace.busy}
         canSubmit={workspace.canSubmit}
-        capabilities={capabilities}
         composerRef={workspace.composerRef}
         fileInputRef={workspace.fileInputRef}
+        generateButtonLabel={workspace.generateButtonLabel}
+        inputAccept={workspace.inputAccept}
         onFileSelection={workspace.handleFileSelection}
         onOpenFilePicker={workspace.openFilePicker}
         onPromptChange={workspace.handlePromptChange}
         onPromptKeyDown={workspace.handlePromptKeyDown}
-        onRemoveReferenceImage={workspace.removeReferenceImage}
-        onResolutionChange={workspace.handleResolutionChange}
-        onReuseImage={workspace.reuseImage}
+        onRemoveAttachment={workspace.removeAttachment}
         onSubmit={workspace.handleSubmit}
-        mode={workspace.mode}
         prompt={workspace.prompt}
-        referenceImages={workspace.referenceImages}
-        reusableImages={workspace.reusableImages}
-        resolution={workspace.resolution}
-        reusingImageIds={workspace.reusingImageIds}
         screenError={workspace.screenError}
         submissionState={workspace.submissionState}
-        generateButtonLabel={workspace.generateButtonLabel}
       />
     </section>
   );

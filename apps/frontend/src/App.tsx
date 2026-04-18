@@ -10,6 +10,7 @@ import { MessageList } from "./features/chat/components/MessageList";
 import { ReloadConfirmationDialog } from "./features/chat/components/ReloadConfirmationDialog";
 import { useChatApp } from "./features/chat/useChatApp";
 import { ImageWorkspace } from "./features/imagegen/components/ImageWorkspace";
+import { PresentationWorkspace } from "./features/presentationgen/components/PresentationWorkspace";
 import { reloadLosesSessionMessage, useFrontendUpdate } from "./lib/frontendUpdate";
 import { isImageGenerationEnabled, isPresentationGenerationEnabled } from "./lib/config";
 import { useImageGenerationBootstrap } from "./lib/imageGeneration";
@@ -20,6 +21,7 @@ export type WorkspaceMode = "chat" | "image" | "presentation";
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceMode>("chat");
   const [newImageKey, setNewImageKey] = useState(0);
+  const [newPresentationKey, setNewPresentationKey] = useState(0);
   const chat = useChatApp();
   const imageGeneration = useImageGenerationBootstrap(isImageGenerationEnabled);
   const presentationGeneration = usePresentationGenerationBootstrap(isPresentationGenerationEnabled);
@@ -39,10 +41,13 @@ export default function App() {
 
   function handleNewPresentation() {
     setWorkspace("presentation");
+    setNewPresentationKey((k) => k + 1);
   }
 
   const imageCapabilities =
     imageGeneration.status === "available" ? imageGeneration.capabilities : null;
+  const presentationCapabilities =
+    presentationGeneration.status === "available" ? presentationGeneration.capabilities : null;
 
   return (
     <div className="app-shell">
@@ -63,8 +68,23 @@ export default function App() {
             capabilities={imageCapabilities}
             isImageGenerationEnabled={isImageGenerationEnabled}
             isImageGenerationAvailable={imageGeneration.status === "available"}
+            isPresentationGenerationEnabled={isPresentationGenerationEnabled}
+            isPresentationGenerationAvailable={presentationGeneration.status === "available"}
             onNewChat={handleNewChat}
             onNewImage={handleNewImage}
+            onNewPresentation={handleNewPresentation}
+          />
+        ) : workspace === "presentation" && presentationCapabilities ? (
+          <PresentationWorkspace
+            key={newPresentationKey}
+            capabilities={presentationCapabilities}
+            isImageGenerationEnabled={isImageGenerationEnabled}
+            isImageGenerationAvailable={imageGeneration.status === "available"}
+            isPresentationGenerationEnabled={isPresentationGenerationEnabled}
+            isPresentationGenerationAvailable={presentationGeneration.status === "available"}
+            onNewChat={handleNewChat}
+            onNewImage={handleNewImage}
+            onNewPresentation={handleNewPresentation}
           />
         ) : (
           <section className="chat-panel">
