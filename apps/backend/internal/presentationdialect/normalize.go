@@ -180,6 +180,10 @@ func Normalize(document Document) (Document, error) {
 }
 
 func normalizeSlideV1(slide Slide, path string) (Slide, error) {
+	return normalizeLegacySlide(slide, path, VersionV1)
+}
+
+func normalizeLegacySlide(slide Slide, path string, blockVersion string) (Slide, error) {
 	normalized := normalizedSlideBase(slide)
 
 	if normalized.Layout == "" {
@@ -208,7 +212,7 @@ func normalizeSlideV1(slide Slide, path string) (Slide, error) {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
 		}
 
-		blocks, err := normalizeBlocks(slide.Blocks, path+".blocks", v1TextBlockTypes, VersionV1)
+		blocks, err := normalizeBlocks(slide.Blocks, path+".blocks", v1TextBlockTypes, blockVersion)
 		if err != nil {
 			return Slide{}, err
 		}
@@ -232,7 +236,7 @@ func normalizeSlideV1(slide Slide, path string) (Slide, error) {
 
 		normalized.Columns = make([]Column, 0, len(slide.Columns))
 		for index, column := range slide.Columns {
-			normalizedColumn, err := normalizeColumn(column, fmt.Sprintf("%s.columns[%d]", path, index), v1TextBlockTypes, VersionV1)
+			normalizedColumn, err := normalizeColumn(column, fmt.Sprintf("%s.columns[%d]", path, index), v1TextBlockTypes, blockVersion)
 			if err != nil {
 				return Slide{}, err
 			}
@@ -284,7 +288,7 @@ func normalizeSlideV2(slide Slide, path string) (Slide, error) {
 
 	switch normalized.Layout {
 	case LayoutTitle, LayoutSection, LayoutTitleBullets, LayoutTwoColumn:
-		return normalizeSlideV1(slide, path)
+		return normalizeLegacySlide(slide, path, VersionV2)
 	case LayoutCoverHero:
 		if slide.Columns != nil {
 			return Slide{}, validationError("%s.columns is not supported for %q slides", path, normalized.Layout)
@@ -581,7 +585,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		}
 		normalized.Items = items
 	case BlockTypeTable:
-		if version == VersionV2 && (block.Title != nil || block.AssetRef != nil || block.AltText != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil) {
+		if version == VersionV2 && (block.Title != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil) {
 			return Block{}, validationError("%s contains fields that are not supported for table blocks", path)
 		}
 		if block.Text != nil {
@@ -629,7 +633,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Title) {
 			return Block{}, validationError("%s.title is required for card blocks", path)
 		}
-		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
+		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AltText != nil || block.Caption != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for card blocks", path)
 		}
 	case BlockTypeStat:
@@ -668,7 +672,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Body) {
 			return Block{}, validationError("%s.body is required for callout blocks", path)
 		}
-		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
+		if block.Text != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Label != nil || block.Value != nil || block.Spans != nil || block.Tone != nil {
 			return Block{}, validationError("%s contains fields that are not supported for callout blocks", path)
 		}
 	case BlockTypeRichText:

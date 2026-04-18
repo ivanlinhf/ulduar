@@ -589,6 +589,22 @@ func TestNormalizeRejectsInvalidV2Documents(t *testing.T) {
 		wantErr  string
 	}{
 		{
+			name: "legacy layout rejects v2-only block fields",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutTitleBullets,
+					Title:  "Agenda",
+					Blocks: []Block{{
+						Type:  BlockTypeBulletList,
+						Items: []string{"One"},
+						Tone:  testStringPtr(""),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for "bullet_list" blocks`,
+		},
+		{
 			name: "cover hero requires image",
 			document: Document{
 				Version: VersionV2,
@@ -604,6 +620,62 @@ func TestNormalizeRejectsInvalidV2Documents(t *testing.T) {
 				}},
 			},
 			wantErr: `slides[0].blocks must contain exactly 1 image block`,
+		},
+		{
+			name: "table rejects caption",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutTable,
+					Title:  "Snapshot",
+					Blocks: []Block{{
+						Type:    BlockTypeTable,
+						Header:  []string{"Metric"},
+						Rows:    [][]string{{"Value"}},
+						Caption: testStringPtr("Unsupported"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for table blocks`,
+		},
+		{
+			name: "card rejects image-only fields",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutComparisonCards,
+					Title:  "Options",
+					Blocks: []Block{{
+						Type:    BlockTypeCard,
+						Title:   testStringPtr("Gion"),
+						AltText: testStringPtr("Unsupported"),
+					}, {
+						Type:  BlockTypeCard,
+						Title: testStringPtr("Arashiyama"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[0] contains fields that are not supported for card blocks`,
+		},
+		{
+			name: "callout rejects caption",
+			document: Document{
+				Version: VersionV2,
+				Slides: []Slide{{
+					Layout: LayoutRecommendation,
+					Title:  "Stay",
+					Blocks: []Block{{
+						Type:     BlockTypeImage,
+						AssetRef: testStringPtr("attachment:cover"),
+					}, {
+						Type:    BlockTypeCallout,
+						Title:   testStringPtr("Recommendation"),
+						Body:    testStringPtr("Stay central"),
+						Caption: testStringPtr("Unsupported"),
+					}},
+				}},
+			},
+			wantErr: `slides[0].blocks[1] contains fields that are not supported for callout blocks`,
 		},
 		{
 			name: "badge tone invalid",
