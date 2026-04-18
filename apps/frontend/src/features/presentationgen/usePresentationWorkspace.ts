@@ -193,16 +193,16 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
       closeStream();
       const generationId = created.generationId;
 
-      function markTurnRunning() {
+      function setTurnStatus(status: "pending" | "running") {
         if (!mountedRef.current) {
           return;
         }
         setTurns((prev) =>
-          prev.map((turn) => (turn.id === turnId ? { ...turn, status: "running" } : turn)),
+          prev.map((turn) => (turn.id === turnId ? { ...turn, status } : turn)),
         );
       }
 
-      openStream(turnId, draftSessionId, generationId, markTurnRunning);
+      openStream(turnId, draftSessionId, generationId, setTurnStatus);
     } catch (error) {
       const errorMessage = toErrorMessage(error, "Failed to submit presentation generation");
       if (!mountedRef.current) {
@@ -217,7 +217,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     turnId: string,
     sessionId: string,
     generationId: string,
-    markTurnRunning: () => void,
+    setTurnStatus: (status: "pending" | "running") => void,
   ) {
     if (!mountedRef.current) {
       return;
@@ -226,11 +226,11 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     streamCleanupRef.current = streamPresentationGeneration(sessionId, generationId, {
       onStarted: () => {
         resetTransportRecovery();
-        markTurnRunning();
+        setTurnStatus("running");
       },
       onRunning: () => {
         resetTransportRecovery();
-        markTurnRunning();
+        setTurnStatus("running");
       },
       onCompleted: (payload) => {
         if (!mountedRef.current) {
@@ -251,7 +251,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
         setSubmissionState("idle");
       },
       onTransportError: (message) => {
-        void reconcileTransportError(turnId, sessionId, generationId, markTurnRunning, message);
+        void reconcileTransportError(turnId, sessionId, generationId, setTurnStatus, message);
       },
     });
   }
@@ -260,7 +260,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     turnId: string,
     sessionId: string,
     generationId: string,
-    markTurnRunning: () => void,
+    setTurnStatus: (status: "pending" | "running") => void,
     fallbackMessage: string,
   ) {
     if (!mountedRef.current) {
@@ -300,8 +300,8 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
           if (!mountedRef.current) {
             return;
           }
-          markTurnRunning();
-          openStream(turnId, sessionId, generationId, markTurnRunning);
+          setTurnStatus(latest.status === "running" ? "running" : "pending");
+          openStream(turnId, sessionId, generationId, setTurnStatus);
         }, transportRecoveryBaseDelayMs * 2 ** (nextRetryCount - 1));
       }
     } catch {

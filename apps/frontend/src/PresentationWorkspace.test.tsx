@@ -388,6 +388,52 @@ describe("PresentationWorkspace", () => {
     10000,
   );
 
+  it("keeps the turn pending during recovery when the backend still reports pending", async () => {
+    mockedCreatePresentationGeneration.mockResolvedValue({
+      generationId: "gen-99999999-9999-9999-9999-999999999999",
+      status: "pending",
+      createdAt: "2026-03-31T10:02:00Z",
+    });
+    mockedGetPresentationGeneration.mockResolvedValue({
+      generationId: "gen-99999999-9999-9999-9999-999999999999",
+      sessionId: "22222222-2222-2222-2222-222222222222",
+      status: "pending",
+      prompt: "Deck still queued",
+      createdAt: "2026-03-31T10:02:00Z",
+      inputAssets: [],
+      outputAssets: [],
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+    await openPresentationWorkspace(user);
+
+    await user.type(screen.getByLabelText("Presentation prompt"), "Deck still queued");
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() => {
+      expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Queued…")).toBeInTheDocument();
+    });
+
+    vi.useFakeTimers();
+
+    await act(async () => {
+      presentationStreamHandlers?.onTransportError?.("Streaming connection closed before completion");
+    });
+
+    await flushPendingPromises();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(screen.getByText("Queued…")).toBeInTheDocument();
+    expect(screen.queryByText("Generating…")).not.toBeInTheDocument();
+    expect(mockedStreamPresentationGeneration).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry stream recovery after the workspace unmounts", async () => {
     mockedCreatePresentationGeneration.mockResolvedValue({
       generationId: "gen-77777777-7777-7777-7777-777777777777",
