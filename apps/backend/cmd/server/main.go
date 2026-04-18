@@ -117,8 +117,9 @@ func main() {
 			RequestTimeout: cfg.Presentation.RequestTimeout,
 			StreamTimeout:  cfg.Presentation.StreamTimeout,
 		},
-		BlobStore:      blobClient,
-		ResponseClient: presentationClient,
+		BlobStore:       blobClient,
+		ResponseClient:  presentationClient,
+		EnableWebSearch: cfg.AzureOpenAIWebSearch,
 	})
 
 	server := &http.Server{

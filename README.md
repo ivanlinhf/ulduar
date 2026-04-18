@@ -68,7 +68,7 @@ Backend app startup validates these:
 - `AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT`
   Optional planner-specific system prompt prefix. The backend always appends the Ulduar v1 presentation-dialect JSON contract and strict "JSON only" instructions separately. If unset, this prefix defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the prefix explicitly. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_ENABLE_WEB_SEARCH`
-  Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests, persists final assistant URL citations, and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
+  Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests for chat and presentation planning. Chat persists final assistant URL citations and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
   Optional duration for non-stream Responses API calls. Default `90s`.
 - `AZURE_OPENAI_STREAM_TIMEOUT`
@@ -200,7 +200,7 @@ Frontend will be available at `http://localhost:3000`.
 
 ### Optional Azure web search in dev/test
 
-Web search stays disabled by default. To validate it locally, set `AZURE_OPENAI_ENABLE_WEB_SEARCH=true` before starting the backend, then ask a prompt where fresh web results are helpful.
+Web search stays disabled by default. To validate it locally, set `AZURE_OPENAI_ENABLE_WEB_SEARCH=true` before starting the backend, then try a chat prompt or presentation prompt where fresh web results are helpful.
 
 When Azure web search is available and the model chooses to use it:
 
@@ -211,6 +211,7 @@ When Azure web search is available and the model chooses to use it:
 Operational notes:
 
 - the model decides when to search; users do not need a special command
+- the same flag now applies to presentation-planner requests as well as chat requests
 - production rollout is still a separate manual config change
 - rollback is simply setting `AZURE_OPENAI_ENABLE_WEB_SEARCH=false` and restarting the backend
 
@@ -418,7 +419,7 @@ cd apps/backend
 GOCACHE=/tmp/ulduar-go-build go test ./...
 ```
 
-When `AZURE_OPENAI_ENABLE_WEB_SEARCH=true`, the backend still keeps the existing request and response shapes stable, but assistant message content may include optional citation metadata on text parts and the SSE stream may include `tool.status` events for Azure `web_search` progress. With the flag unset or `false`, backend behavior remains effectively unchanged.
+When `AZURE_OPENAI_ENABLE_WEB_SEARCH=true`, the backend still keeps the existing request and response shapes stable, but assistant message content may include optional citation metadata on text parts, the SSE stream may include `tool.status` events for Azure `web_search` progress, and presentation-planner requests may also use Azure-native `web_search`. With the flag unset or `false`, backend behavior remains effectively unchanged.
 
 Frontend:
 

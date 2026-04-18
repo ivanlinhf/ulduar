@@ -67,7 +67,7 @@ No rollout-notes document is required.
 - Loads all session state from Postgres and Blob Storage as needed
 - Calls Azure OpenAI Responses API for chat
 - Streams assistant output to the SPA via SSE
-- Can optionally attach Azure-native `web_search` behind backend configuration, disabled by default for manual rollout
+- Can optionally attach Azure-native `web_search` behind backend configuration for chat and presentation-planner requests, disabled by default for manual rollout
 - Supports a pluggable image generation provider; Azure AI Foundry FLUX is the initial configured adapter, enabled when both `AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY` are set
 - Supports a presentation planner/compiler workflow, enabled only when `AZURE_OPENAI_PRESENTATION_ENDPOINT` and related planner settings are configured
 
@@ -243,6 +243,7 @@ Environment variables should cover:
 - Azure model deployment name
 - System prompt or default assistant instruction
 - Optional Azure-native `web_search` enablement flag, disabled by default and intended for manual dev/test rollout first
+- The same flag applies to chat requests and presentation-planner requests
 - Web-search runs must preserve the existing session model, API shape, and anonymous chat flow while persisting only final citation metadata
 - `VITE_IMAGE_GENERATION_ENABLED` (frontend-only build flag): when unset or `false`, the image-generation UI is hidden entirely. Setting this to `true` exposes the image workspace but backend provider configuration is required separately for image generation to function.
 - `VITE_PRESENTATION_GENERATION_ENABLED` (frontend-only build flag): when unset or `false`, the presentation-generation UI is hidden entirely. Keep it disabled by default until manual validation passes. Setting this to `true` exposes the presentation workspace, but backend planner configuration is required separately for presentation generation to function.

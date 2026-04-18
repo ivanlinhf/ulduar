@@ -118,14 +118,16 @@ type Service struct {
 	planner        PlannerConfig
 	blobs          BlobStore
 	responses      ResponseClient
+	webSearch      bool
 	generationRead generationReader
 	assetRead      assetReader
 }
 
 type ServiceOptions struct {
-	Planner        PlannerConfig
-	BlobStore      BlobStore
-	ResponseClient ResponseClient
+	Planner         PlannerConfig
+	BlobStore       BlobStore
+	ResponseClient  ResponseClient
+	EnableWebSearch bool
 }
 
 type ValidationError struct {
@@ -153,6 +155,7 @@ func NewService(db *pgxpool.Pool, options ...ServiceOptions) *Service {
 		planner:   resolvedOptions.Planner,
 		blobs:     resolvedOptions.BlobStore,
 		responses: resolvedOptions.ResponseClient,
+		webSearch: resolvedOptions.EnableWebSearch,
 	}
 	if db != nil {
 		service.beginWriteTxFn = func(ctx context.Context) (writeTx, error) {
@@ -417,7 +420,16 @@ func (s *Service) newCreateResponseRequest(ctx context.Context, generation repos
 	return azureopenai.CreateResponseRequest{
 		Input:        input,
 		Instructions: s.instructions(),
+		Tools:        s.responseTools(),
 	}, nil
+}
+
+func (s *Service) responseTools() []azureopenai.Tool {
+	if !s.webSearch {
+		return nil
+	}
+
+	return []azureopenai.Tool{{Type: "web_search"}}
 }
 
 func (s *Service) preparePlannerInput(ctx context.Context, generation repository.PresentationGeneration, assets []repository.PresentationGenerationAsset, repairMessage string) ([]azureopenai.InputMessage, error) {
