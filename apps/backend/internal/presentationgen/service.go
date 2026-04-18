@@ -698,6 +698,9 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 	if s.blobs == nil {
 		return s.failGenerationWithPlan(ctx, generation, "store output presentation", "store_output_failed", fmt.Errorf("blob store is not configured"), plannerOutputJSON, dialectJSON)
 	}
+	if s.beginWriteTxFn == nil {
+		return s.failGenerationWithPlan(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"), plannerOutputJSON, dialectJSON)
+	}
 
 	document, err := presentationdialect.ParseJSON(dialectJSON)
 	if err != nil {
@@ -723,11 +726,6 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return s.failGenerationWithPlan(ctx, generation, "store output presentation", "store_output_failed", err, plannerOutputJSON, dialectJSON)
 	}
 	cleanupBlobPaths := append(slices.Clone(resolvedAssets.CleanupBlobPaths), blobPath)
-
-	if s.beginWriteTxFn == nil {
-		s.cleanupBlobs(cleanupBlobPaths)
-		return s.failGenerationWithPlan(ctx, generation, "begin output persistence transaction", "persist_output_failed", fmt.Errorf("presentation generation service is not configured"), plannerOutputJSON, dialectJSON)
-	}
 
 	tx, err := s.beginWriteTxFn(ctx)
 	if err != nil {

@@ -33,9 +33,8 @@ type ResolveAssetsParams struct {
 }
 
 type ResolveAssetsResult struct {
-	Assets            []repository.CreatePresentationGenerationAssetParams
-	CleanupBlobPaths  []string
-	AttachmentAliases []AttachmentAlias
+	Assets           []repository.CreatePresentationGenerationAssetParams
+	CleanupBlobPaths []string
 }
 
 type AttachmentAlias struct {
@@ -91,25 +90,25 @@ func newDefaultAssetResolver(blobs BlobStore) AssetResolver {
 func (r defaultAssetResolver) Resolve(ctx context.Context, params ResolveAssetsParams) (ResolveAssetsResult, error) {
 	refs := collectDocumentAssetRefs(params.Document)
 	if len(refs) == 0 {
-		return ResolveAssetsResult{AttachmentAliases: attachmentAliases(params.InputAssets)}, nil
+		return ResolveAssetsResult{}, nil
 	}
 
 	aliases := attachmentAliases(params.InputAssets)
+	inputAssetByID := make(map[string]repository.PresentationGenerationAsset, len(params.InputAssets))
+	for _, asset := range params.InputAssets {
+		inputAssetByID[asset.ID] = asset
+	}
 	aliasByRef := make(map[string]repository.PresentationGenerationAsset, len(aliases))
 	for _, alias := range aliases {
-		for _, asset := range params.InputAssets {
-			if asset.ID == alias.AssetID {
-				aliasByRef[alias.AssetRef] = asset
-				break
-			}
+		if asset, ok := inputAssetByID[alias.AssetID]; ok {
+			aliasByRef[alias.AssetRef] = asset
 		}
 	}
 
 	resolvedPresetID := presentationdialect.ResolveThemePresetID(dereferenceString(params.Document.ThemePresetID))
 	result := ResolveAssetsResult{
-		Assets:            make([]repository.CreatePresentationGenerationAssetParams, 0, len(refs)),
-		CleanupBlobPaths:  make([]string, 0, len(refs)),
-		AttachmentAliases: aliases,
+		Assets:           make([]repository.CreatePresentationGenerationAssetParams, 0, len(refs)),
+		CleanupBlobPaths: make([]string, 0, len(refs)),
 	}
 	for index, assetRef := range refs {
 		sourceType, key, err := parseResolvedAssetRef(assetRef)

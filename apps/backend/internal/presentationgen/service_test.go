@@ -801,8 +801,11 @@ func TestCompleteGenerationPersistsPlanWhenOutputPersistenceTransactionCannotSta
 	if got := string(reader.updateCalls[0].DialectJSON); got != string(dialectJSON) {
 		t.Fatalf("reader.updateCalls[0].DialectJSON = %s", got)
 	}
-	if len(blobs.deleteCalls) != 1 || !strings.Contains(blobs.deleteCalls[0], "/outputs/") {
-		t.Fatalf("blobs.deleteCalls = %#v, want uploaded output blob cleanup", blobs.deleteCalls)
+	if len(blobs.uploadCalls) != 0 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 0", len(blobs.uploadCalls))
+	}
+	if len(blobs.deleteCalls) != 0 {
+		t.Fatalf("blobs.deleteCalls = %#v, want no cleanup because no blobs were uploaded", blobs.deleteCalls)
 	}
 }
 
