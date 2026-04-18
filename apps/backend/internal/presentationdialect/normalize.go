@@ -85,6 +85,8 @@ var (
 		BlockTypeBadge,
 		BlockTypeImage,
 	}
+	// Empty tone values are normalized away by storing Tone as a pointer and
+	// leaving it nil unless a non-empty value is provided.
 	v2ToneValues = []string{
 		"neutral",
 		"accent",
@@ -650,7 +652,7 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 		if isNilOrEmpty(normalized.Text) {
 			return Block{}, validationError("%s.text is required for badge blocks", path)
 		}
-		if block.Tone != nil && normalized.Tone != nil && !slices.Contains(v2ToneValues, *normalized.Tone) {
+		if normalized.Tone != nil && !slices.Contains(v2ToneValues, *normalized.Tone) {
 			return Block{}, validationError(`%s.tone must be one of: neutral, accent, success, warning`, path)
 		}
 		if block.Title != nil || block.Items != nil || block.Header != nil || block.Rows != nil || block.Attribution != nil || block.AssetRef != nil || block.AltText != nil || block.Caption != nil || block.Body != nil || block.Label != nil || block.Value != nil || block.Spans != nil {
