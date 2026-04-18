@@ -248,7 +248,7 @@ Supported v1 presentation workflow:
 
 - Request input is a required `prompt` plus optional JPEG, PNG, WebP, and/or PDF references only.
 - JSON create requests accept `prompt` only.
-- `multipart/form-data` create requests accept `prompt` plus optional files under `attachments`.
+- `multipart/form-data` create requests accept `prompt` plus optional files under either `attachments` or `attachments[]`.
 - Each completed generation produces a downloadable PPTX output asset.
 - The planner/compiler JSON contract is documented in [docs/presentation-dialect.md](docs/presentation-dialect.md); this README intentionally links to that source of truth instead of duplicating the dialect here.
 
