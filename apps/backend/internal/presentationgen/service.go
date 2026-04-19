@@ -900,11 +900,17 @@ func (s *Service) loadCompileAssets(ctx context.Context, assets []repository.Cre
 
 	compileAssets := make(map[string]pptx.CompileAsset, len(assets))
 	for _, asset := range assets {
-		if strings.TrimSpace(asset.AssetRef) == "" || asset.SizeBytes <= 0 {
+		if strings.TrimSpace(asset.AssetRef) == "" {
 			continue
 		}
 		if !supportsPPTXCompileAssetMediaType(asset.MediaType) {
 			continue
+		}
+		if asset.SizeBytes <= 0 {
+			return nil, fmt.Errorf("resolved asset %q has invalid size %d", asset.AssetRef, asset.SizeBytes)
+		}
+		if strings.TrimSpace(asset.BlobPath) == "" {
+			return nil, fmt.Errorf("resolved asset %q is missing blob path", asset.AssetRef)
 		}
 		data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, asset.SizeBytes)
 		if err != nil {

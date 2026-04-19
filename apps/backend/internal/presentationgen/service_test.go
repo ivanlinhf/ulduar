@@ -792,6 +792,57 @@ func TestLoadCompileAssetsRejectsUnexpectedBlobSize(t *testing.T) {
 	}
 }
 
+func TestLoadCompileAssetsRejectsInvalidStoredMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		asset repository.CreatePresentationGenerationAssetParams
+		want  string
+	}{
+		{
+			name: "invalid size",
+			asset: repository.CreatePresentationGenerationAssetParams{
+				AssetRef:  "theme:hero-image",
+				BlobPath:  "blob://hero",
+				MediaType: InputMediaTypePNG,
+				Filename:  "hero.png",
+				SizeBytes: 0,
+			},
+			want: `resolved asset "theme:hero-image" has invalid size 0`,
+		},
+		{
+			name: "missing blob path",
+			asset: repository.CreatePresentationGenerationAssetParams{
+				AssetRef:  "theme:hero-image",
+				MediaType: InputMediaTypePNG,
+				Filename:  "hero.png",
+				SizeBytes: int64(len(testPNGData())),
+			},
+			want: `resolved asset "theme:hero-image" is missing blob path`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{blobs: &stubBlobStore{data: map[string][]byte{
+				"blob://hero": testPNGData(),
+			}}}
+
+			_, err := service.loadCompileAssets(context.Background(), []repository.CreatePresentationGenerationAssetParams{test.asset})
+			if err == nil {
+				t.Fatal("loadCompileAssets() error = nil, want error")
+			}
+			if got := err.Error(); got != test.want {
+				t.Fatalf("loadCompileAssets() error = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestCompleteGenerationCleansUpUploadedBlobsWhenGenerationBecomesTerminalBeforePersistence(t *testing.T) {
 	t.Parallel()
 
