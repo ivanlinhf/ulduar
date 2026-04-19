@@ -27,7 +27,7 @@ var zipModifiedTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 type zipEntry struct {
 	name string
-	data string
+	data []byte
 }
 
 type textBox struct {
@@ -37,11 +37,16 @@ type textBox struct {
 	y          int
 	cx         int
 	cy         int
+	fillColor  string
+	fillAlpha  int
+	lineColor  string
+	geometry   string
 	paragraphs []textParagraph
 }
 
 type textParagraph struct {
 	text        string
+	runs        []textRun
 	size        int
 	bold        bool
 	italic      bool
@@ -49,6 +54,16 @@ type textParagraph struct {
 	bullet      bulletKind
 	bulletIndex int
 	color       string
+}
+
+type textRun struct {
+	text          string
+	bold          bool
+	italic        bool
+	color         string
+	lang          string
+	latinFont     string
+	eastAsianFont string
 }
 
 type bulletKind int
@@ -60,31 +75,39 @@ const (
 )
 
 func Compile(document presentationdialect.Document) ([]byte, error) {
+	return CompileWithAssets(document, nil)
+}
+
+func CompileWithAssets(document presentationdialect.Document, assets map[string]CompileAsset) ([]byte, error) {
 	normalized, err := presentationdialect.Normalize(document)
 	if err != nil {
 		return nil, fmt.Errorf("normalize presentation document: %w", err)
 	}
 
+	if normalized.Version == presentationdialect.VersionV2 {
+		return compileV2(normalized, assets)
+	}
+
 	entries := make([]zipEntry, 0, 11+len(normalized.Slides)*2)
 	entries = append(entries,
-		zipEntry{name: "[Content_Types].xml", data: buildContentTypesXML(len(normalized.Slides))},
-		zipEntry{name: "_rels/.rels", data: rootRelationshipsXML},
-		zipEntry{name: "docProps/app.xml", data: buildAppPropertiesXML(normalized)},
-		zipEntry{name: "docProps/core.xml", data: corePropertiesXML},
-		zipEntry{name: "ppt/presentation.xml", data: buildPresentationXML(normalized)},
-		zipEntry{name: "ppt/_rels/presentation.xml.rels", data: buildPresentationRelationshipsXML(len(normalized.Slides))},
-		zipEntry{name: "ppt/slideMasters/slideMaster1.xml", data: slideMasterXML},
-		zipEntry{name: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: slideMasterRelationshipsXML},
-		zipEntry{name: "ppt/slideLayouts/slideLayout1.xml", data: slideLayoutXML},
-		zipEntry{name: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: slideLayoutRelationshipsXML},
-		zipEntry{name: "ppt/theme/theme1.xml", data: themeXML},
+		zipEntry{name: "[Content_Types].xml", data: []byte(buildContentTypesXML(len(normalized.Slides)))},
+		zipEntry{name: "_rels/.rels", data: []byte(rootRelationshipsXML)},
+		zipEntry{name: "docProps/app.xml", data: []byte(buildAppPropertiesXML(normalized))},
+		zipEntry{name: "docProps/core.xml", data: []byte(corePropertiesXML)},
+		zipEntry{name: "ppt/presentation.xml", data: []byte(buildPresentationXML(normalized))},
+		zipEntry{name: "ppt/_rels/presentation.xml.rels", data: []byte(buildPresentationRelationshipsXML(len(normalized.Slides)))},
+		zipEntry{name: "ppt/slideMasters/slideMaster1.xml", data: []byte(slideMasterXML)},
+		zipEntry{name: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: []byte(slideMasterRelationshipsXML)},
+		zipEntry{name: "ppt/slideLayouts/slideLayout1.xml", data: []byte(slideLayoutXML)},
+		zipEntry{name: "ppt/slideLayouts/_rels/slideLayout1.xml.rels", data: []byte(slideLayoutRelationshipsXML)},
+		zipEntry{name: "ppt/theme/theme1.xml", data: []byte(themeXML)},
 	)
 
 	for index, slide := range normalized.Slides {
 		slideNumber := index + 1
 		entries = append(entries,
-			zipEntry{name: fmt.Sprintf("ppt/slides/slide%d.xml", slideNumber), data: buildSlideXML(slide)},
-			zipEntry{name: fmt.Sprintf("ppt/slides/_rels/slide%d.xml.rels", slideNumber), data: slideRelationshipsXML},
+			zipEntry{name: fmt.Sprintf("ppt/slides/slide%d.xml", slideNumber), data: []byte(buildSlideXML(slide))},
+			zipEntry{name: fmt.Sprintf("ppt/slides/_rels/slide%d.xml.rels", slideNumber), data: []byte(slideRelationshipsXML)},
 		)
 	}
 
@@ -101,7 +124,7 @@ func Compile(document presentationdialect.Document) ([]byte, error) {
 			_ = writer.Close()
 			return nil, fmt.Errorf("create pptx entry %q: %w", entry.name, err)
 		}
-		if _, err := fileWriter.Write([]byte(entry.data)); err != nil {
+		if _, err := fileWriter.Write(entry.data); err != nil {
 			_ = writer.Close()
 			return nil, fmt.Errorf("write pptx entry %q: %w", entry.name, err)
 		}
@@ -532,6 +555,10 @@ func closingSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 }
 
 func blockParagraphs(blocks []presentationdialect.Block) []textParagraph {
+	return blockParagraphsWithOptions(blocks, true)
+}
+
+func blockParagraphsWithOptions(blocks []presentationdialect.Block, includeImageNotes bool) []textParagraph {
 	paragraphs := make([]textParagraph, 0, len(blocks)*3)
 	for blockIndex, block := range blocks {
 		if blockIndex > 0 {
@@ -560,14 +587,16 @@ func blockParagraphs(blocks []presentationdialect.Block) []textParagraph {
 				paragraphs = append(paragraphs, textParagraph{text: strings.Join(row, " | "), size: 1500})
 			}
 		case presentationdialect.BlockTypeImage:
-			paragraphs = append(paragraphs, textParagraph{text: "Image asset: " + dereferenceString(block.AssetRef), size: 1500, italic: true, color: "666666"})
-			if block.Caption != nil {
+			if includeImageNotes {
+				paragraphs = append(paragraphs, textParagraph{text: "Image asset: " + dereferenceString(block.AssetRef), size: 1500, italic: true, color: "666666"})
+			}
+			if block.Caption != nil && includeImageNotes {
 				paragraphs = append(paragraphs, textParagraph{text: *block.Caption, size: 1400, color: "666666"})
 			}
 		case presentationdialect.BlockTypeBadge:
 			paragraphs = append(paragraphs, textParagraph{text: strings.ToUpper(dereferenceString(block.Text)), size: 1300, bold: true, color: "666666"})
 		case presentationdialect.BlockTypeRichText:
-			paragraphs = append(paragraphs, textParagraph{text: renderRichText(block.Spans), size: 1600})
+			paragraphs = append(paragraphs, textParagraph{runs: richTextRuns(block.Spans), size: 1600})
 		case presentationdialect.BlockTypeCallout:
 			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Title), size: 1700, bold: true})
 			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Body), size: 1600})
@@ -579,7 +608,7 @@ func blockParagraphs(blocks []presentationdialect.Block) []textParagraph {
 			if block.Body != nil {
 				paragraphs = append(paragraphs, textParagraph{text: *block.Body, size: 1500})
 			}
-			if block.AssetRef != nil {
+			if includeImageNotes && block.AssetRef != nil {
 				paragraphs = append(paragraphs, textParagraph{text: "Image asset: " + *block.AssetRef, size: 1400, italic: true, color: "666666"})
 			}
 		case presentationdialect.BlockTypeStat:
@@ -609,15 +638,26 @@ func centerParagraphs(paragraphs []textParagraph) []textParagraph {
 	return centered
 }
 
-func renderRichText(spans []presentationdialect.TextSpan) string {
-	parts := make([]string, 0, len(spans))
+func richTextRuns(spans []presentationdialect.TextSpan) []textRun {
+	runs := make([]textRun, 0, len(spans))
 	for _, span := range spans {
-		parts = append(parts, span.Text)
+		emphasis := strings.TrimSpace(span.Emphasis)
+		runs = append(runs, textRun{
+			text:   span.Text,
+			bold:   emphasis == "strong",
+			italic: emphasis == "emphasis",
+			color:  richTextColor(emphasis),
+			lang:   normalizeDrawingLanguage(span.Lang),
+		})
 	}
-	return strings.Join(parts, "")
+	return runs
 }
 
 func renderTextBox(textBox textBox) string {
+	return renderTextBoxWithFonts(textBox, defaultLegacyFonts())
+}
+
+func renderTextBoxWithFonts(textBox textBox, fonts themeFonts) string {
 	var builder strings.Builder
 	builder.WriteString(`<p:sp><p:nvSpPr><p:cNvPr id="`)
 	builder.WriteString(strconv.Itoa(textBox.id))
@@ -632,10 +672,39 @@ func renderTextBox(textBox textBox) string {
 	builder.WriteString(strconv.Itoa(textBox.cx))
 	builder.WriteString(`" cy="`)
 	builder.WriteString(strconv.Itoa(textBox.cy))
-	builder.WriteString(`"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>`)
+	builder.WriteString(`"/></a:xfrm><a:prstGeom prst="`)
+	if textBox.geometry != "" {
+		builder.WriteString(textBox.geometry)
+	} else {
+		builder.WriteString(`rect`)
+	}
+	builder.WriteString(`"><a:avLst/></a:prstGeom>`)
+	if textBox.fillColor != "" {
+		builder.WriteString(`<a:solidFill><a:srgbClr val="`)
+		builder.WriteString(textBox.fillColor)
+		builder.WriteString(`"`)
+		if textBox.fillAlpha > 0 {
+			builder.WriteString(`><a:alpha val="`)
+			builder.WriteString(strconv.Itoa(textBox.fillAlpha))
+			builder.WriteString(`"/></a:srgbClr></a:solidFill>`)
+		} else {
+			builder.WriteString(`/></a:solidFill>`)
+		}
+	} else {
+		builder.WriteString(`<a:noFill/>`)
+	}
+	builder.WriteString(`<a:ln>`)
+	if textBox.lineColor != "" {
+		builder.WriteString(`<a:solidFill><a:srgbClr val="`)
+		builder.WriteString(textBox.lineColor)
+		builder.WriteString(`"/></a:solidFill>`)
+	} else {
+		builder.WriteString(`<a:noFill/>`)
+	}
+	builder.WriteString(`</a:ln></p:spPr>`)
 	builder.WriteString(`<p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>`)
 	for _, paragraph := range textBox.paragraphs {
-		builder.WriteString(renderParagraph(paragraph))
+		builder.WriteString(renderParagraphWithFonts(paragraph, fonts))
 	}
 	builder.WriteString(`</p:txBody></p:sp>`)
 
@@ -643,6 +712,10 @@ func renderTextBox(textBox textBox) string {
 }
 
 func renderParagraph(paragraph textParagraph) string {
+	return renderParagraphWithFonts(paragraph, defaultLegacyFonts())
+}
+
+func renderParagraphWithFonts(paragraph textParagraph, fonts themeFonts) string {
 	size := paragraph.size
 	if size == 0 {
 		size = 1200
@@ -672,30 +745,60 @@ func renderParagraph(paragraph textParagraph) string {
 	}
 	builder.WriteString(`</a:pPr>`)
 
-	if paragraph.text != "" {
-		builder.WriteString(`<a:r><a:rPr lang="en-US" sz="`)
-		builder.WriteString(strconv.Itoa(size))
-		builder.WriteString(`"`)
-		if paragraph.bold {
-			builder.WriteString(` b="1"`)
-		}
-		if paragraph.italic {
-			builder.WriteString(` i="1"`)
-		}
-		builder.WriteString(`><a:latin typeface="Arial"/>`)
-		if paragraph.color != "" {
-			builder.WriteString(`<a:solidFill><a:srgbClr val="`)
-			builder.WriteString(paragraph.color)
-			builder.WriteString(`"/></a:solidFill>`)
-		}
-		builder.WriteString(`</a:rPr><a:t>`)
-		builder.WriteString(escapeXML(paragraph.text))
-		builder.WriteString(`</a:t></a:r>`)
-	} else {
+	runs := paragraph.runs
+	if len(runs) == 0 && paragraph.text != "" {
+		runs = []textRun{{
+			text:   paragraph.text,
+			bold:   paragraph.bold,
+			italic: paragraph.italic,
+			color:  paragraph.color,
+		}}
+	}
+
+	if len(runs) == 0 {
 		builder.WriteString(`<a:endParaRPr lang="en-US" sz="`)
 		builder.WriteString(strconv.Itoa(size))
 		builder.WriteString(`"/></a:p>`)
 		return builder.String()
+	}
+
+	for _, run := range runs {
+		if run.text == "" {
+			continue
+		}
+		lang := run.lang
+		if lang == "" {
+			lang = "en-US"
+		}
+		builder.WriteString(`<a:r><a:rPr lang="`)
+		builder.WriteString(lang)
+		builder.WriteString(`" sz="`)
+		builder.WriteString(strconv.Itoa(size))
+		builder.WriteString(`"`)
+		if run.bold {
+			builder.WriteString(` b="1"`)
+		}
+		if run.italic {
+			builder.WriteString(` i="1"`)
+		}
+		builder.WriteString(`><a:latin typeface="`)
+		builder.WriteString(escapeXML(firstNonEmpty(run.latinFont, fonts.Latin, "Arial")))
+		builder.WriteString(`"/>`)
+		if eastAsianFont := firstNonEmpty(run.eastAsianFont, eastAsianFontForLang(lang, fonts)); eastAsianFont != "" {
+			builder.WriteString(`<a:ea typeface="`)
+			builder.WriteString(escapeXML(eastAsianFont))
+			builder.WriteString(`"/><a:cs typeface="`)
+			builder.WriteString(escapeXML(eastAsianFont))
+			builder.WriteString(`"/>`)
+		}
+		if color := firstNonEmpty(run.color, paragraph.color); color != "" {
+			builder.WriteString(`<a:solidFill><a:srgbClr val="`)
+			builder.WriteString(color)
+			builder.WriteString(`"/></a:solidFill>`)
+		}
+		builder.WriteString(`</a:rPr><a:t>`)
+		builder.WriteString(escapeXML(run.text))
+		builder.WriteString(`</a:t></a:r>`)
 	}
 
 	builder.WriteString(`<a:endParaRPr lang="en-US" sz="`)

@@ -1,6 +1,8 @@
 package presentationgen
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -597,6 +599,13 @@ func TestExecuteGenerationPersistsResolvedAssetsForAttachmentAndThemeRefs(t *tes
 	}
 	if !strings.Contains(blobs.uploadCalls[1].blobPath, "/outputs/") {
 		t.Fatalf("blobs.uploadCalls[1].blobPath = %q", blobs.uploadCalls[1].blobPath)
+	}
+	entries := readZipEntryNames(t, blobs.uploadCalls[1].data)
+	if _, ok := entries["ppt/media/image1.png"]; !ok {
+		t.Fatal("output pptx missing ppt/media/image1.png")
+	}
+	if _, ok := entries["ppt/media/image2.png"]; !ok {
+		t.Fatal("output pptx missing ppt/media/image2.png")
 	}
 }
 
@@ -1672,4 +1681,19 @@ func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string
 	}
 
 	return data, nil
+}
+
+func readZipEntryNames(t *testing.T, data []byte) map[string]struct{} {
+	t.Helper()
+
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("zip.NewReader() error = %v", err)
+	}
+
+	entries := make(map[string]struct{}, len(reader.File))
+	for _, file := range reader.File {
+		entries[file.Name] = struct{}{}
+	}
+	return entries
 }
