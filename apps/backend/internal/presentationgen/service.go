@@ -903,6 +903,9 @@ func (s *Service) loadCompileAssets(ctx context.Context, assets []repository.Cre
 		if strings.TrimSpace(asset.AssetRef) == "" || asset.SizeBytes <= 0 {
 			continue
 		}
+		if !supportsPPTXCompileAssetMediaType(asset.MediaType) {
+			continue
+		}
 		data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, asset.SizeBytes)
 		if err != nil {
 			return nil, fmt.Errorf("download resolved asset %q: %w", asset.AssetRef, err)
@@ -915,6 +918,15 @@ func (s *Service) loadCompileAssets(ctx context.Context, assets []repository.Cre
 	}
 
 	return compileAssets, nil
+}
+
+func supportsPPTXCompileAssetMediaType(mediaType string) bool {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case InputMediaTypePNG, InputMediaTypeJPEG, "image/jpg":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildInputBlobPath(sessionID, generationID string, index int, asset preparedAsset) string {
