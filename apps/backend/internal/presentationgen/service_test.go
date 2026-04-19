@@ -769,6 +769,29 @@ func TestLoadCompileAssetsSkipsUnsupportedPPTXMediaTypes(t *testing.T) {
 	}
 }
 
+func TestLoadCompileAssetsRejectsUnexpectedBlobSize(t *testing.T) {
+	t.Parallel()
+
+	blobs := &stubBlobStore{data: map[string][]byte{
+		"blob://hero": []byte{1, 2, 3},
+	}}
+	service := &Service{blobs: blobs}
+
+	_, err := service.loadCompileAssets(context.Background(), []repository.CreatePresentationGenerationAssetParams{{
+		AssetRef:  "theme:hero-image",
+		BlobPath:  "blob://hero",
+		MediaType: InputMediaTypePNG,
+		Filename:  "hero.png",
+		SizeBytes: 4,
+	}})
+	if err == nil {
+		t.Fatal("loadCompileAssets() error = nil, want error")
+	}
+	if got := err.Error(); got != `download resolved asset "theme:hero-image": expected 4 bytes, got 3` {
+		t.Fatalf("loadCompileAssets() error = %q", got)
+	}
+}
+
 func TestCompleteGenerationCleansUpUploadedBlobsWhenGenerationBecomesTerminalBeforePersistence(t *testing.T) {
 	t.Parallel()
 

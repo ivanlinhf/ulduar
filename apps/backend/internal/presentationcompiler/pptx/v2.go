@@ -309,7 +309,7 @@ func (b *slideBuilder) renderCoverHero(slide presentationdialect.Slide) error {
 	imageBlock := firstBlockOfType(slide.Blocks, presentationdialect.BlockTypeImage)
 	hasImage := imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef))
 	if hasImage {
-		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, slideWidthEMU, slideHeightEMU, slide.Title, true); err != nil {
+		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, slideWidthEMU, slideHeightEMU, blockAssetDescription(imageBlock, slide.Title), true); err != nil {
 			return err
 		}
 		b.addBox(textBox{
@@ -400,7 +400,7 @@ func (b *slideBuilder) renderCoverHero(slide presentationdialect.Slide) error {
 func (b *slideBuilder) renderChapterDivider(slide presentationdialect.Slide) error {
 	imageBlock := firstBlockOfType(slide.Blocks, presentationdialect.BlockTypeImage)
 	if imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef)) {
-		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 3657600, slideHeightEMU, slide.Title, true); err != nil {
+		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 3657600, slideHeightEMU, blockAssetDescription(imageBlock, slide.Title), true); err != nil {
 			return err
 		}
 	}
@@ -674,7 +674,7 @@ func (b *slideBuilder) renderSummaryMatrix(slide presentationdialect.Slide) erro
 func (b *slideBuilder) renderRecommendation(slide presentationdialect.Slide) error {
 	imageBlock := firstBlockOfType(slide.Blocks, presentationdialect.BlockTypeImage)
 	if imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef)) {
-		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 4876800, slideHeightEMU, slide.Title, true); err != nil {
+		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 4876800, slideHeightEMU, blockAssetDescription(imageBlock, slide.Title), true); err != nil {
 			return err
 		}
 	}
@@ -741,6 +741,17 @@ func (b *slideBuilder) addCard(block presentationdialect.Block, x, y, cx, cy int
 
 func cardParagraphs(block presentationdialect.Block, includeImageNote bool) []textParagraph {
 	return blockParagraphsWithOptions([]presentationdialect.Block{block}, includeImageNote)
+}
+
+func blockAssetDescription(block *presentationdialect.Block, fallback string) string {
+	if block != nil {
+		for _, candidate := range []*string{block.AltText, block.Caption, block.Title} {
+			if text := strings.TrimSpace(dereferenceString(candidate)); text != "" {
+				return text
+			}
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func renderPictureXML(id int, description, relID string, x, y, cx, cy int, crop pictureCrop) string {

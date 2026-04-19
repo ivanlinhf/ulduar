@@ -910,6 +910,9 @@ func (s *Service) loadCompileAssets(ctx context.Context, assets []repository.Cre
 		if err != nil {
 			return nil, fmt.Errorf("download resolved asset %q: %w", asset.AssetRef, err)
 		}
+		if int64(len(data)) != asset.SizeBytes {
+			return nil, fmt.Errorf("download resolved asset %q: expected %d bytes, got %d", asset.AssetRef, asset.SizeBytes, len(data))
+		}
 		compileAssets[asset.AssetRef] = pptx.CompileAsset{
 			Filename:  asset.Filename,
 			MediaType: asset.MediaType,

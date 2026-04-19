@@ -351,6 +351,71 @@ func TestCompileWithAssetsProducesDeterministicPPTXForV2SemanticLayouts(t *testi
 	}
 }
 
+func TestCompileWithAssetsUsesImageMetadataForPictureDescriptions(t *testing.T) {
+	t.Parallel()
+
+	coverAssetRef := "attachment:cover-photo"
+	dividerAssetRef := "theme:hero-image"
+	recommendationAssetRef := "attachment:hotel-photo"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{
+			{
+				Layout: presentationdialect.LayoutCoverHero,
+				Title:  "Kyoto in Four Days",
+				Blocks: []presentationdialect.Block{{
+					Type:     presentationdialect.BlockTypeImage,
+					AssetRef: &coverAssetRef,
+					AltText:  stringPtr("Arashiyama river at dusk"),
+					Caption:  stringPtr("Caption should not win"),
+				}},
+			},
+			{
+				Layout: presentationdialect.LayoutChapterDivider,
+				Title:  "Neighborhoods",
+				Blocks: []presentationdialect.Block{{
+					Type:     presentationdialect.BlockTypeImage,
+					AssetRef: &dividerAssetRef,
+					Caption:  stringPtr("Editorial hero crop"),
+				}},
+			},
+			{
+				Layout: presentationdialect.LayoutRecommendation,
+				Title:  "Where to stay",
+				Blocks: []presentationdialect.Block{
+					{
+						Type:     presentationdialect.BlockTypeImage,
+						AssetRef: &recommendationAssetRef,
+						AltText:  stringPtr("Machiya suite interior"),
+					},
+					{
+						Type:  presentationdialect.BlockTypeCallout,
+						Title: stringPtr("Note"),
+						Body:  stringPtr("Walkable base with quiet nights."),
+					},
+				},
+			},
+		},
+	}
+
+	data, err := CompileWithAssets(document, map[string]CompileAsset{
+		coverAssetRef:          {Filename: "cover.png", MediaType: "image/png", Data: testPNGData()},
+		dividerAssetRef:        {Filename: "hero.png", MediaType: "image/png", Data: testPNGData()},
+		recommendationAssetRef: {Filename: "hotel.png", MediaType: "image/png", Data: testPNGData()},
+	})
+	if err != nil {
+		t.Fatalf("CompileWithAssets() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `descr="Arashiyama river at dusk"`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `descr="Editorial hero crop"`)
+	assertContains(t, entries["ppt/slides/slide3.xml"], `descr="Machiya suite interior"`)
+	assertNotContains(t, entries["ppt/slides/slide1.xml"], `descr="Kyoto in Four Days"`)
+	assertNotContains(t, entries["ppt/slides/slide2.xml"], `descr="Neighborhoods"`)
+	assertNotContains(t, entries["ppt/slides/slide3.xml"], `descr="Where to stay"`)
+}
+
 func TestCompileWithAssetsUsesPresetAccentForRichText(t *testing.T) {
 	t.Parallel()
 
@@ -518,7 +583,9 @@ func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	binaryEntries := readZIPBinaryEntries(t, data)
 	entries := make(map[string]string, len(binaryEntries))
 	for name, content := range binaryEntries {
-		entries[name] = string(content)
+		if strings.HasSuffix(name, ".xml") || strings.HasSuffix(name, ".rels") {
+			entries[name] = string(content)
+		}
 	}
 
 	return entries
