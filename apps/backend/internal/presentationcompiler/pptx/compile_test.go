@@ -332,6 +332,8 @@ func TestCompileWithAssetsProducesDeterministicPPTXForV2SemanticLayouts(t *testi
 	assertContains(t, entries["ppt/theme/theme1.xml"], `Noto Serif CJK JP`)
 	assertContains(t, entries["ppt/slides/slide1.xml"], `<p:pic>`)
 	assertContains(t, entries["ppt/slides/slide1.xml"], `lang="ja-JP"`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `<a:t xml:space="preserve">A calm city break with </a:t>`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `<a:t>京都</a:t>`)
 	assertContains(t, entries["ppt/slides/slide1.xml"], `Noto Serif CJK JP`)
 	assertContains(t, entries["ppt/slides/_rels/slide1.xml.rels"], `relationships/image`)
 	assertContains(t, entries["ppt/slides/slide3.xml"], `<p:pic>`)

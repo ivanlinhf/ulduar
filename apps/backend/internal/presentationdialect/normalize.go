@@ -697,11 +697,11 @@ func normalizeBlock(block Block, path string, version string) (Block, error) {
 
 func normalizeTextSpan(span TextSpan, path string) (TextSpan, error) {
 	normalized := TextSpan{
-		Text:     strings.TrimSpace(span.Text),
+		Text:     span.Text,
 		Emphasis: strings.TrimSpace(span.Emphasis),
 		Lang:     strings.TrimSpace(span.Lang),
 	}
-	if normalized.Text == "" {
+	if strings.TrimSpace(normalized.Text) == "" {
 		return TextSpan{}, validationError("%s.text is required", path)
 	}
 	if !slices.Contains(v2SpanEmphasisValues, normalized.Emphasis) {

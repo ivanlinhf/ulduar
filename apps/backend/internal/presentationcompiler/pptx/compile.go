@@ -808,7 +808,11 @@ func renderParagraphWithFonts(paragraph textParagraph, fonts themeFonts) string 
 			builder.WriteString(color)
 			builder.WriteString(`"/></a:solidFill>`)
 		}
-		builder.WriteString(`</a:rPr><a:t>`)
+		builder.WriteString(`</a:rPr><a:t`)
+		if preservesBoundaryWhitespace(run.text) {
+			builder.WriteString(` xml:space="preserve"`)
+		}
+		builder.WriteString(`>`)
 		builder.WriteString(escapeXML(run.text))
 		builder.WriteString(`</a:t></a:r>`)
 	}
@@ -824,6 +828,10 @@ func dereferenceString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func preservesBoundaryWhitespace(value string) bool {
+	return value != strings.TrimSpace(value)
 }
 
 func escapeXML(value string) string {

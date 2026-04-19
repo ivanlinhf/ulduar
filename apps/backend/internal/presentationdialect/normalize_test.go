@@ -240,8 +240,14 @@ func TestNormalizeV2AppliesPresetFallbackAndTrimsSemanticBlocks(t *testing.T) {
 	if got := document.Slides[0].Blocks[1].Spans[0].Emphasis; got != "strong" {
 		t.Fatalf("document.Slides[0].Blocks[1].Spans[0].Emphasis = %q", got)
 	}
+	if got := document.Slides[0].Blocks[1].Spans[0].Text; got != " Slow travel " {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[0].Text = %q", got)
+	}
 	if got := document.Slides[0].Blocks[1].Spans[1].Lang; got != "ja" {
 		t.Fatalf("document.Slides[0].Blocks[1].Spans[1].Lang = %q", got)
+	}
+	if got := document.Slides[0].Blocks[1].Spans[1].Text; got != " 京都 " {
+		t.Fatalf("document.Slides[0].Blocks[1].Spans[1].Text = %q", got)
 	}
 }
 
