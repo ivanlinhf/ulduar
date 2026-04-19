@@ -251,41 +251,45 @@ func buildSlideXML(slide presentationdialect.Slide) string {
 }
 
 func slideTextBoxes(slide presentationdialect.Slide) []textBox {
+	return slideTextBoxesWithAccent(slide, "A45C40")
+}
+
+func slideTextBoxesWithAccent(slide presentationdialect.Slide, accentColor string) []textBox {
 	switch slide.Layout {
 	case presentationdialect.LayoutTitle:
 		return titleSlideTextBoxes(slide)
 	case presentationdialect.LayoutSection:
 		return sectionSlideTextBoxes(slide)
 	case presentationdialect.LayoutTitleBullets:
-		return titleBulletsSlideTextBoxes(slide)
+		return titleBulletsSlideTextBoxes(slide, accentColor)
 	case presentationdialect.LayoutTwoColumn:
-		return twoColumnSlideTextBoxes(slide)
+		return twoColumnSlideTextBoxes(slide, accentColor)
 	case presentationdialect.LayoutTable:
-		return tableSlideTextBoxes(slide)
+		return tableSlideTextBoxes(slide, accentColor)
 	case presentationdialect.LayoutClosing:
-		return closingSlideTextBoxes(slide)
+		return closingSlideTextBoxes(slide, accentColor)
 	case presentationdialect.LayoutCoverHero:
-		return semanticContentSlideTextBoxes(slide, true)
+		return semanticContentSlideTextBoxes(slide, true, accentColor)
 	case presentationdialect.LayoutChapterDivider:
-		return semanticContentSlideTextBoxes(slide, true)
+		return semanticContentSlideTextBoxes(slide, true, accentColor)
 	case presentationdialect.LayoutTOCGrid:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	case presentationdialect.LayoutCardGrid:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	case presentationdialect.LayoutComparisonCards:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	case presentationdialect.LayoutTimelineItinerary:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	case presentationdialect.LayoutSummaryMatrix:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	case presentationdialect.LayoutRecommendation:
-		return semanticContentSlideTextBoxes(slide, false)
+		return semanticContentSlideTextBoxes(slide, false, accentColor)
 	default:
 		return nil
 	}
 }
 
-func semanticContentSlideTextBoxes(slide presentationdialect.Slide, centered bool) []textBox {
+func semanticContentSlideTextBoxes(slide presentationdialect.Slide, centered bool, accentColor string) []textBox {
 	textBoxes := []textBox{
 		{
 			id:   2,
@@ -318,7 +322,7 @@ func semanticContentSlideTextBoxes(slide presentationdialect.Slide, centered boo
 		bodyY = 1676400
 	}
 
-	paragraphs := blockParagraphs(slide.Blocks)
+	paragraphs := blockParagraphsWithAccent(slide.Blocks, true, accentColor)
 	if centered {
 		paragraphs = centerParagraphs(paragraphs)
 	}
@@ -397,7 +401,7 @@ func sectionSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 	return textBoxes
 }
 
-func titleBulletsSlideTextBoxes(slide presentationdialect.Slide) []textBox {
+func titleBulletsSlideTextBoxes(slide presentationdialect.Slide, accentColor string) []textBox {
 	return []textBox{
 		{
 			id:   2,
@@ -417,12 +421,12 @@ func titleBulletsSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 			y:          1371600,
 			cx:         slideWidthEMU - 1828800,
 			cy:         slideHeightEMU - 1828800,
-			paragraphs: blockParagraphs(slide.Blocks),
+			paragraphs: blockParagraphsWithAccent(slide.Blocks, true, accentColor),
 		},
 	}
 }
 
-func twoColumnSlideTextBoxes(slide presentationdialect.Slide) []textBox {
+func twoColumnSlideTextBoxes(slide presentationdialect.Slide, accentColor string) []textBox {
 	columnWidth := (slideWidthEMU - 2*slideMarginXEMU - contentGapEMU) / 2
 	bodyY := 1371600
 	bodyHeight := slideHeightEMU - bodyY - slideMarginYEMU
@@ -474,7 +478,7 @@ func twoColumnSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 			y:          columnBodyY,
 			cx:         columnWidth,
 			cy:         columnBodyHeight,
-			paragraphs: blockParagraphs(column.Blocks),
+			paragraphs: blockParagraphsWithAccent(column.Blocks, true, accentColor),
 		})
 		nextID++
 	}
@@ -482,7 +486,7 @@ func twoColumnSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 	return textBoxes
 }
 
-func tableSlideTextBoxes(slide presentationdialect.Slide) []textBox {
+func tableSlideTextBoxes(slide presentationdialect.Slide, accentColor string) []textBox {
 	return []textBox{
 		{
 			id:   2,
@@ -502,12 +506,12 @@ func tableSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 			y:          1371600,
 			cx:         slideWidthEMU - 2*slideMarginXEMU,
 			cy:         slideHeightEMU - 1828800,
-			paragraphs: blockParagraphs(slide.Blocks),
+			paragraphs: blockParagraphsWithAccent(slide.Blocks, true, accentColor),
 		},
 	}
 }
 
-func closingSlideTextBoxes(slide presentationdialect.Slide) []textBox {
+func closingSlideTextBoxes(slide presentationdialect.Slide, accentColor string) []textBox {
 	textBoxes := []textBox{
 		{
 			id:   2,
@@ -547,7 +551,7 @@ func closingSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 			y:          bodyY,
 			cx:         slideWidthEMU - 3048000,
 			cy:         slideHeightEMU - bodyY - 762000,
-			paragraphs: centerParagraphs(blockParagraphs(slide.Blocks)),
+			paragraphs: centerParagraphs(blockParagraphsWithAccent(slide.Blocks, true, accentColor)),
 		})
 	}
 
@@ -555,10 +559,14 @@ func closingSlideTextBoxes(slide presentationdialect.Slide) []textBox {
 }
 
 func blockParagraphs(blocks []presentationdialect.Block) []textParagraph {
-	return blockParagraphsWithOptions(blocks, true)
+	return blockParagraphsWithAccent(blocks, true, "A45C40")
 }
 
 func blockParagraphsWithOptions(blocks []presentationdialect.Block, includeImageNotes bool) []textParagraph {
+	return blockParagraphsWithAccent(blocks, includeImageNotes, "A45C40")
+}
+
+func blockParagraphsWithAccent(blocks []presentationdialect.Block, includeImageNotes bool, accentColor string) []textParagraph {
 	paragraphs := make([]textParagraph, 0, len(blocks)*3)
 	for blockIndex, block := range blocks {
 		if blockIndex > 0 {
@@ -596,7 +604,7 @@ func blockParagraphsWithOptions(blocks []presentationdialect.Block, includeImage
 		case presentationdialect.BlockTypeBadge:
 			paragraphs = append(paragraphs, textParagraph{text: strings.ToUpper(dereferenceString(block.Text)), size: 1300, bold: true, color: "666666"})
 		case presentationdialect.BlockTypeRichText:
-			paragraphs = append(paragraphs, textParagraph{runs: richTextRuns(block.Spans), size: 1600})
+			paragraphs = append(paragraphs, textParagraph{runs: richTextRuns(block.Spans, accentColor), size: 1600})
 		case presentationdialect.BlockTypeCallout:
 			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Title), size: 1700, bold: true})
 			paragraphs = append(paragraphs, textParagraph{text: dereferenceString(block.Body), size: 1600})
@@ -638,7 +646,7 @@ func centerParagraphs(paragraphs []textParagraph) []textParagraph {
 	return centered
 }
 
-func richTextRuns(spans []presentationdialect.TextSpan) []textRun {
+func richTextRuns(spans []presentationdialect.TextSpan, accentColor string) []textRun {
 	runs := make([]textRun, 0, len(spans))
 	for _, span := range spans {
 		emphasis := strings.TrimSpace(span.Emphasis)
@@ -646,7 +654,7 @@ func richTextRuns(spans []presentationdialect.TextSpan) []textRun {
 			text:   span.Text,
 			bold:   emphasis == "strong",
 			italic: emphasis == "emphasis",
-			color:  richTextColor(emphasis),
+			color:  richTextColor(emphasis, accentColor),
 			lang:   normalizeDrawingLanguage(span.Lang),
 		})
 	}

@@ -71,11 +71,12 @@ type slideBuilder struct {
 }
 
 type v2PackageBuilder struct {
-	document        presentationdialect.Document
-	preset          themePreset
-	assets          map[string]CompileAsset
-	mediaByAssetRef map[string]mediaPart
-	mediaOrder      []string
+	document         presentationdialect.Document
+	preset           themePreset
+	assets           map[string]CompileAsset
+	mediaByAssetRef  map[string]mediaPart
+	mediaOrder       []string
+	imageConfigByRef map[string]image.Config
 }
 
 type pictureCrop struct {
@@ -87,10 +88,11 @@ type pictureCrop struct {
 
 func compileV2(document presentationdialect.Document, assets map[string]CompileAsset) ([]byte, error) {
 	builder := &v2PackageBuilder{
-		document:        document,
-		preset:          resolveThemePreset(dereferenceString(document.ThemePresetID)),
-		assets:          cloneCompileAssets(assets),
-		mediaByAssetRef: make(map[string]mediaPart),
+		document:         document,
+		preset:           resolveThemePreset(dereferenceString(document.ThemePresetID)),
+		assets:           cloneCompileAssets(assets),
+		mediaByAssetRef:  make(map[string]mediaPart),
+		imageConfigByRef: make(map[string]image.Config),
 	}
 
 	slides := make([]compiledSlide, 0, len(document.Slides))
@@ -176,7 +178,7 @@ func (b *v2PackageBuilder) buildSlide(slide presentationdialect.Slide) (compiled
 	var err error
 	switch slide.Layout {
 	case presentationdialect.LayoutTitle, presentationdialect.LayoutSection, presentationdialect.LayoutTitleBullets, presentationdialect.LayoutTwoColumn, presentationdialect.LayoutClosing:
-		sb.addLegacyTextBoxes(slideTextBoxes(slide))
+		sb.addLegacyTextBoxes(slideTextBoxesWithAccent(slide, b.preset.Accent))
 	case presentationdialect.LayoutTable:
 		err = sb.renderTableLayout(slide)
 	case presentationdialect.LayoutCoverHero:
@@ -194,7 +196,7 @@ func (b *v2PackageBuilder) buildSlide(slide presentationdialect.Slide) (compiled
 	case presentationdialect.LayoutRecommendation:
 		err = sb.renderRecommendation(slide)
 	default:
-		sb.addLegacyTextBoxes(semanticContentSlideTextBoxes(slide, false))
+		sb.addLegacyTextBoxes(semanticContentSlideTextBoxes(slide, false, b.preset.Accent))
 	}
 	if err != nil {
 		return compiledSlide{}, err
@@ -293,7 +295,7 @@ func (b *slideBuilder) addPicture(assetRef string, x, y, cx, cy int, description
 	}
 	var crop pictureCrop
 	if cropToFill {
-		crop = imageCropToFill(b.pkg.assets[assetRef].Data, cx, cy)
+		crop = b.pkg.imageCropToFill(assetRef, cx, cy)
 	}
 	b.elements = append(b.elements, renderPictureXML(b.nextShapeID(), description, relID, x, y, cx, cy, crop))
 	return nil
@@ -373,7 +375,7 @@ func (b *slideBuilder) renderCoverHero(slide presentationdialect.Slide) error {
 			lineColor: "",
 			geometry:  "roundRect",
 			paragraphs: centerParagraphs(
-				recolorParagraphs(blockParagraphsWithOptions(bodyBlocks, includeImageNotes), textColor, mutedColor),
+				recolorParagraphs(blockParagraphsWithAccent(bodyBlocks, includeImageNotes, b.preset.Accent), textColor, mutedColor),
 			),
 		})
 	}
@@ -446,7 +448,7 @@ func (b *slideBuilder) renderChapterDivider(slide presentationdialect.Slide) err
 			y:          3352800,
 			cx:         6553200,
 			cy:         1828800,
-			paragraphs: recolorParagraphs(blockParagraphsWithOptions(body, false), b.preset.Text, b.preset.Muted),
+			paragraphs: recolorParagraphs(blockParagraphsWithAccent(body, false, b.preset.Accent), b.preset.Text, b.preset.Muted),
 		})
 	}
 	return nil
@@ -487,7 +489,7 @@ func (b *slideBuilder) renderCardGrid(slide presentationdialect.Slide) error {
 	if len(slide.Blocks) >= 5 {
 		columns = 3
 	}
-	rows := (len(slide.Blocks) + columns - 1) / columns
+	rows := maxInt((len(slide.Blocks)+columns-1)/columns, 1)
 	cardGap := 228600
 	cardWidth := (slideWidthEMU - 2*slideMarginXEMU - (columns-1)*cardGap) / columns
 	cardHeight := (slideHeightEMU - startY - slideMarginYEMU - (rows-1)*cardGap) / rows
@@ -600,7 +602,7 @@ func (b *slideBuilder) renderTableLayout(slide presentationdialect.Slide) error 
 			lineColor: b.preset.Outline,
 			geometry:  "roundRect",
 			paragraphs: recolorParagraphs(
-				blockParagraphsWithOptions([]presentationdialect.Block{*callout}, false),
+				blockParagraphsWithAccent([]presentationdialect.Block{*callout}, false, b.preset.Accent),
 				b.preset.Text,
 				b.preset.Muted,
 			),
@@ -638,7 +640,7 @@ func (b *slideBuilder) renderSummaryMatrix(slide presentationdialect.Slide) erro
 			lineColor: b.preset.Outline,
 			geometry:  "roundRect",
 			paragraphs: recolorParagraphs(
-				blockParagraphsWithOptions([]presentationdialect.Block{stat}, false),
+				blockParagraphsWithAccent([]presentationdialect.Block{stat}, false, b.preset.Accent),
 				b.preset.Text,
 				b.preset.Muted,
 			),
@@ -658,7 +660,7 @@ func (b *slideBuilder) renderSummaryMatrix(slide presentationdialect.Slide) erro
 				lineColor: b.preset.Outline,
 				geometry:  "roundRect",
 				paragraphs: recolorParagraphs(
-					blockParagraphsWithOptions([]presentationdialect.Block{*callout}, false),
+					blockParagraphsWithAccent([]presentationdialect.Block{*callout}, false, b.preset.Accent),
 					b.preset.Text,
 					b.preset.Muted,
 				),
@@ -696,7 +698,7 @@ func (b *slideBuilder) renderRecommendation(slide presentationdialect.Slide) err
 			lineColor: b.preset.Outline,
 			geometry:  "roundRect",
 			paragraphs: recolorParagraphs(
-				blockParagraphsWithOptions(body, false),
+				blockParagraphsWithAccent(body, false, b.preset.Accent),
 				b.preset.Text,
 				b.preset.Muted,
 			),
@@ -1045,12 +1047,28 @@ func defaultLegacyFonts() themeFonts {
 	return themeFonts{Latin: "Arial"}
 }
 
-func imageCropToFill(data []byte, targetWidth, targetHeight int) pictureCrop {
+func (b *v2PackageBuilder) imageCropToFill(assetRef string, targetWidth, targetHeight int) pictureCrop {
 	if targetWidth <= 0 || targetHeight <= 0 {
 		return pictureCrop{}
 	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+	cfg, ok := b.imageConfigByRef[assetRef]
+	if !ok {
+		asset, ok := b.assets[assetRef]
+		if !ok {
+			return pictureCrop{}
+		}
+		decoded, _, err := image.DecodeConfig(bytes.NewReader(asset.Data))
+		if err != nil || decoded.Width <= 0 || decoded.Height <= 0 {
+			return pictureCrop{}
+		}
+		b.imageConfigByRef[assetRef] = decoded
+		cfg = decoded
+	}
+	return imageCropToFillConfig(cfg, targetWidth, targetHeight)
+}
+
+func imageCropToFillConfig(cfg image.Config, targetWidth, targetHeight int) pictureCrop {
+	if cfg.Width <= 0 || cfg.Height <= 0 || targetWidth <= 0 || targetHeight <= 0 {
 		return pictureCrop{}
 	}
 	imageAspect := float64(cfg.Width) / float64(cfg.Height)
@@ -1137,10 +1155,10 @@ func recolorParagraphs(paragraphs []textParagraph, textColor string, mutedColor 
 	return colored
 }
 
-func richTextColor(emphasis string) string {
+func richTextColor(emphasis string, accentColor string) string {
 	switch emphasis {
 	case "accent":
-		return "A45C40"
+		return accentColor
 	default:
 		return ""
 	}

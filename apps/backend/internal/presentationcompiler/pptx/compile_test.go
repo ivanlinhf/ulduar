@@ -349,6 +349,56 @@ func TestCompileWithAssetsProducesDeterministicPPTXForV2SemanticLayouts(t *testi
 	}
 }
 
+func TestCompileWithAssetsUsesPresetAccentForRichText(t *testing.T) {
+	t.Parallel()
+
+	document := presentationdialect.Document{
+		Version:       presentationdialect.VersionV2,
+		ThemePresetID: stringPtr(presentationdialect.ThemePresetGeneralClean),
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutClosing,
+			Title:  "Status",
+			Blocks: []presentationdialect.Block{{
+				Type: presentationdialect.BlockTypeRichText,
+				Spans: []presentationdialect.TextSpan{
+					{Text: "All systems "},
+					{Text: "nominal", Emphasis: "accent"},
+				},
+			}},
+		}},
+	}
+
+	data, err := CompileWithAssets(document, nil)
+	if err != nil {
+		t.Fatalf("CompileWithAssets() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `srgbClr val="2563EB"`)
+	assertNotContains(t, entries["ppt/slides/slide1.xml"], `srgbClr val="A45C40"`)
+}
+
+func TestCompileV2HandlesEmptyCardGrid(t *testing.T) {
+	t.Parallel()
+
+	document := presentationdialect.Document{
+		Version:       presentationdialect.VersionV2,
+		ThemePresetID: stringPtr(presentationdialect.ThemePresetGeneralClean),
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutCardGrid,
+			Title:  "Empty grid",
+		}},
+	}
+
+	data, err := compileV2(document, nil)
+	if err != nil {
+		t.Fatalf("compileV2() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Empty grid`)
+}
+
 func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 
@@ -394,6 +444,14 @@ func assertContains(t *testing.T, content string, needle string) {
 
 	if !strings.Contains(content, needle) {
 		t.Fatalf("content missing %q\ncontent=%s", needle, content)
+	}
+}
+
+func assertNotContains(t *testing.T, content string, needle string) {
+	t.Helper()
+
+	if strings.Contains(content, needle) {
+		t.Fatalf("content unexpectedly contains %q\ncontent=%s", needle, content)
 	}
 }
 
