@@ -460,6 +460,56 @@ func TestEnsureMediaPartReusesOwnedAssetBytes(t *testing.T) {
 	}
 }
 
+func TestRenderTextBoxWithFontsAddsEmptyParagraphWhenParagraphsMissing(t *testing.T) {
+	t.Parallel()
+
+	xml := renderTextBoxWithFonts(textBox{
+		id:   1,
+		name: "Background",
+		x:    0,
+		y:    0,
+		cx:   slideWidthEMU,
+		cy:   slideHeightEMU,
+	}, defaultLegacyFonts())
+
+	assertContains(t, xml, `<p:txBody>`)
+	assertContains(t, xml, `<a:p>`)
+}
+
+func TestCompileWithoutAssetsPreservesCardImagePlaceholder(t *testing.T) {
+	t.Parallel()
+
+	assetRef := "attachment:cover-photo"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutCardGrid,
+			Title:  "Stay options",
+			Blocks: []presentationdialect.Block{
+				{
+					Type:     presentationdialect.BlockTypeCard,
+					Title:    stringPtr("Gion"),
+					Body:     stringPtr("Best for walkable evenings."),
+					AssetRef: &assetRef,
+				},
+				{
+					Type:  presentationdialect.BlockTypeCard,
+					Title: stringPtr("Arashiyama"),
+					Body:  stringPtr("Best for a slower pace."),
+				},
+			},
+		}},
+	}
+
+	data, err := Compile(document)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Image asset: attachment:cover-photo`)
+}
+
 func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 

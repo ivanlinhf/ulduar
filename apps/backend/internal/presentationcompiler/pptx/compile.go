@@ -711,7 +711,11 @@ func renderTextBoxWithFonts(textBox textBox, fonts themeFonts) string {
 	}
 	builder.WriteString(`</a:ln></p:spPr>`)
 	builder.WriteString(`<p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>`)
-	for _, paragraph := range textBox.paragraphs {
+	paragraphs := textBox.paragraphs
+	if len(paragraphs) == 0 {
+		paragraphs = []textParagraph{{}}
+	}
+	for _, paragraph := range paragraphs {
 		builder.WriteString(renderParagraphWithFonts(paragraph, fonts))
 	}
 	builder.WriteString(`</p:txBody></p:sp>`)

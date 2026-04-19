@@ -727,13 +727,14 @@ func (b *slideBuilder) addCard(block presentationdialect.Block, x, y, cx, cy int
 		}
 		contentY += 1600200
 	}
+	includeImageNote := block.AssetRef != nil && !b.pkg.hasAsset(dereferenceString(block.AssetRef))
 	b.addBox(textBox{
 		name:       "Card Content",
 		x:          contentX,
 		y:          contentY,
 		cx:         contentWidth,
 		cy:         cy - (contentY - y) - 152400,
-		paragraphs: recolorParagraphs(cardParagraphs(block, false), b.preset.Text, b.preset.Muted),
+		paragraphs: recolorParagraphs(cardParagraphs(block, includeImageNote), b.preset.Text, b.preset.Muted),
 	})
 	return nil
 }
