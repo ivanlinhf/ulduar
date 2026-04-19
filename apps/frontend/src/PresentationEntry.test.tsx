@@ -88,6 +88,7 @@ describe("App presentation entry", () => {
       inputMediaTypes: ["application/pdf"],
       outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       providerName: "azure-openai",
+      themePresets: [{ id: "general_clean", label: "General Clean", isDefault: true }],
     });
 
     const { container } = render(<App />);
