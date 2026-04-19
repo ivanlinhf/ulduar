@@ -399,7 +399,8 @@ func (b *slideBuilder) renderCoverHero(slide presentationdialect.Slide) error {
 
 func (b *slideBuilder) renderChapterDivider(slide presentationdialect.Slide) error {
 	imageBlock := firstBlockOfType(slide.Blocks, presentationdialect.BlockTypeImage)
-	if imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef)) {
+	hasImage := imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef))
+	if hasImage {
 		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 3657600, slideHeightEMU, blockAssetDescription(imageBlock, slide.Title), true); err != nil {
 			return err
 		}
@@ -441,6 +442,9 @@ func (b *slideBuilder) renderChapterDivider(slide presentationdialect.Slide) err
 		})
 	}
 	body := nonImageBlocks(slide.Blocks)
+	if !hasImage {
+		body = slide.Blocks
+	}
 	if len(body) > 0 {
 		b.addBox(textBox{
 			name:       "Divider Body",
@@ -448,7 +452,7 @@ func (b *slideBuilder) renderChapterDivider(slide presentationdialect.Slide) err
 			y:          3352800,
 			cx:         6553200,
 			cy:         1828800,
-			paragraphs: recolorParagraphs(blockParagraphsWithAccent(body, false, b.preset.Accent), b.preset.Text, b.preset.Muted),
+			paragraphs: recolorParagraphs(blockParagraphsWithAccent(body, !hasImage, b.preset.Accent), b.preset.Text, b.preset.Muted),
 		})
 	}
 	return nil
@@ -673,7 +677,8 @@ func (b *slideBuilder) renderSummaryMatrix(slide presentationdialect.Slide) erro
 
 func (b *slideBuilder) renderRecommendation(slide presentationdialect.Slide) error {
 	imageBlock := firstBlockOfType(slide.Blocks, presentationdialect.BlockTypeImage)
-	if imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef)) {
+	hasImage := imageBlock != nil && imageBlock.AssetRef != nil && b.pkg.hasAsset(dereferenceString(imageBlock.AssetRef))
+	if hasImage {
 		if err := b.addPicture(dereferenceString(imageBlock.AssetRef), 0, 0, 4876800, slideHeightEMU, blockAssetDescription(imageBlock, slide.Title), true); err != nil {
 			return err
 		}
@@ -687,6 +692,9 @@ func (b *slideBuilder) renderRecommendation(slide presentationdialect.Slide) err
 		paragraphs: []textParagraph{{text: slide.Title, size: 2400, bold: true, color: b.preset.Text}},
 	})
 	body := nonImageBlocks(slide.Blocks)
+	if !hasImage {
+		body = slide.Blocks
+	}
 	if len(body) > 0 {
 		b.addBox(textBox{
 			name:      "Recommendation Body",
@@ -698,7 +706,7 @@ func (b *slideBuilder) renderRecommendation(slide presentationdialect.Slide) err
 			lineColor: b.preset.Outline,
 			geometry:  "roundRect",
 			paragraphs: recolorParagraphs(
-				blockParagraphsWithAccent(body, false, b.preset.Accent),
+				blockParagraphsWithAccent(body, !hasImage, b.preset.Accent),
 				b.preset.Text,
 				b.preset.Muted,
 			),

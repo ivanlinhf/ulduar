@@ -577,6 +577,60 @@ func TestCompileWithoutAssetsPreservesCardImagePlaceholder(t *testing.T) {
 	assertContains(t, entries["ppt/slides/slide1.xml"], `Image asset: attachment:cover-photo`)
 }
 
+func TestCompileWithoutAssetsPreservesChapterDividerAndRecommendationImagePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	chapterAssetRef := "theme:hero-image"
+	recommendationAssetRef := "attachment:hotel-photo"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{
+			{
+				Layout: presentationdialect.LayoutChapterDivider,
+				Title:  "Neighborhoods",
+				Blocks: []presentationdialect.Block{
+					{
+						Type:     presentationdialect.BlockTypeImage,
+						AssetRef: &chapterAssetRef,
+						Caption:  stringPtr("Editorial crop"),
+					},
+					{
+						Type: presentationdialect.BlockTypeBadge,
+						Text: stringPtr("Kyoto"),
+					},
+				},
+			},
+			{
+				Layout: presentationdialect.LayoutRecommendation,
+				Title:  "Where to stay",
+				Blocks: []presentationdialect.Block{
+					{
+						Type:     presentationdialect.BlockTypeImage,
+						AssetRef: &recommendationAssetRef,
+						Caption:  stringPtr("Machiya suite"),
+					},
+					{
+						Type:  presentationdialect.BlockTypeCallout,
+						Title: stringPtr("Note"),
+						Body:  stringPtr("Walkable base with quiet nights."),
+					},
+				},
+			},
+		},
+	}
+
+	data, err := Compile(document)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	entries := readZIPEntries(t, data)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Image asset: theme:hero-image`)
+	assertContains(t, entries["ppt/slides/slide1.xml"], `Editorial crop`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `Image asset: attachment:hotel-photo`)
+	assertContains(t, entries["ppt/slides/slide2.xml"], `Machiya suite`)
+}
+
 func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 
