@@ -713,7 +713,13 @@ func (s *Service) completeGeneration(ctx context.Context, generation repository.
 		return s.failGenerationWithPlan(ctx, generation, "resolve presentation assets", assetResolutionErrorCode(err), err, plannerOutputJSON, dialectJSON)
 	}
 
-	outputAsset, err := prepareOutputAssetDocument(document)
+	compileAssets, err := s.loadCompileAssets(ctx, resolvedAssets.Assets)
+	if err != nil {
+		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
+		return s.failGenerationWithPlan(ctx, generation, "load resolved presentation assets", "compile_assets_failed", err, plannerOutputJSON, dialectJSON)
+	}
+
+	outputAsset, err := prepareOutputAssetDocumentWithAssets(document, compileAssets)
 	if err != nil {
 		s.cleanupBlobs(resolvedAssets.CleanupBlobPaths)
 		return s.failGenerationWithPlan(ctx, generation, "compile output presentation", plannerFailureInvalidJSON, err, plannerOutputJSON, dialectJSON)
@@ -865,7 +871,11 @@ func prepareOutputAsset(dialectJSON []byte) (preparedAsset, error) {
 }
 
 func prepareOutputAssetDocument(document presentationdialect.Document) (preparedAsset, error) {
-	data, err := pptx.Compile(document)
+	return prepareOutputAssetDocumentWithAssets(document, nil)
+}
+
+func prepareOutputAssetDocumentWithAssets(document presentationdialect.Document, assets map[string]pptx.CompileAsset) (preparedAsset, error) {
+	data, err := pptx.CompileWithAssets(document, assets)
 	if err != nil {
 		return preparedAsset{}, fmt.Errorf("compile pptx: %w", err)
 	}
@@ -878,6 +888,54 @@ func prepareOutputAssetDocument(document presentationdialect.Document) (prepared
 		SHA256:    hex.EncodeToString(sum[:]),
 		Data:      data,
 	}, nil
+}
+
+func (s *Service) loadCompileAssets(ctx context.Context, assets []repository.CreatePresentationGenerationAssetParams) (map[string]pptx.CompileAsset, error) {
+	if len(assets) == 0 {
+		return nil, nil
+	}
+	if s.blobs == nil {
+		return nil, fmt.Errorf("blob store is not configured")
+	}
+
+	compileAssets := make(map[string]pptx.CompileAsset, len(assets))
+	for _, asset := range assets {
+		if strings.TrimSpace(asset.AssetRef) == "" {
+			continue
+		}
+		if !supportsPPTXCompileAssetMediaType(asset.MediaType) {
+			continue
+		}
+		if asset.SizeBytes <= 0 {
+			return nil, fmt.Errorf("resolved asset %q has invalid size %d", asset.AssetRef, asset.SizeBytes)
+		}
+		if strings.TrimSpace(asset.BlobPath) == "" {
+			return nil, fmt.Errorf("resolved asset %q is missing blob path", asset.AssetRef)
+		}
+		data, err := s.blobs.DownloadWithinLimit(ctx, asset.BlobPath, asset.SizeBytes)
+		if err != nil {
+			return nil, fmt.Errorf("download resolved asset %q: %w", asset.AssetRef, err)
+		}
+		if int64(len(data)) != asset.SizeBytes {
+			return nil, fmt.Errorf("download resolved asset %q: expected %d bytes, got %d", asset.AssetRef, asset.SizeBytes, len(data))
+		}
+		compileAssets[asset.AssetRef] = pptx.CompileAsset{
+			Filename:  asset.Filename,
+			MediaType: asset.MediaType,
+			Data:      data,
+		}
+	}
+
+	return compileAssets, nil
+}
+
+func supportsPPTXCompileAssetMediaType(mediaType string) bool {
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case InputMediaTypePNG, InputMediaTypeJPEG, "image/jpg":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildInputBlobPath(sessionID, generationID string, index int, asset preparedAsset) string {

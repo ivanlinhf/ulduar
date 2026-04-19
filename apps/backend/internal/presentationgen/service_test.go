@@ -1,17 +1,21 @@
 package presentationgen
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationcompiler/pptx"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
@@ -78,6 +82,44 @@ func TestPlannerConfigured(t *testing.T) {
 	})
 	if !service.PlannerConfigured() {
 		t.Fatal("PlannerConfigured() = false, want true")
+	}
+}
+
+func TestPrepareOutputAssetDocumentWithAssetsDoesNotDoublePrefixCompileErrors(t *testing.T) {
+	t.Parallel()
+
+	assetRef := "attachment:unsupported"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutRecommendation,
+			Title:  "Unsupported image",
+			Blocks: []presentationdialect.Block{{
+				Type:     presentationdialect.BlockTypeImage,
+				AssetRef: &assetRef,
+			}, {
+				Type:  presentationdialect.BlockTypeCallout,
+				Title: stringPtr("Note"),
+				Body:  stringPtr("Body"),
+			}},
+		}},
+	}
+
+	_, err := prepareOutputAssetDocumentWithAssets(document, map[string]pptx.CompileAsset{
+		assetRef: {
+			Filename:  "cover.gif",
+			MediaType: "image/gif",
+			Data:      testPNGData(),
+		},
+	})
+	if err == nil {
+		t.Fatal("prepareOutputAssetDocumentWithAssets() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), `compile pptx: unsupported pptx image media type "image/gif"`) {
+		t.Fatalf("prepareOutputAssetDocumentWithAssets() error = %q", err)
+	}
+	if strings.Contains(err.Error(), `compile pptx: compile pptx:`) {
+		t.Fatalf("prepareOutputAssetDocumentWithAssets() error = %q", err)
 	}
 }
 
@@ -597,6 +639,207 @@ func TestExecuteGenerationPersistsResolvedAssetsForAttachmentAndThemeRefs(t *tes
 	}
 	if !strings.Contains(blobs.uploadCalls[1].blobPath, "/outputs/") {
 		t.Fatalf("blobs.uploadCalls[1].blobPath = %q", blobs.uploadCalls[1].blobPath)
+	}
+	entries := readZipEntryNames(t, blobs.uploadCalls[1].data)
+	if _, ok := entries["ppt/media/image1.png"]; !ok {
+		t.Fatal("output pptx missing ppt/media/image1.png")
+	}
+	if _, ok := entries["ppt/media/image2.png"]; !ok {
+		t.Fatal("output pptx missing ppt/media/image2.png")
+	}
+}
+
+func TestExecuteGenerationSkipsWEBPCompileAssetsAndFallsBackToPlaceholders(t *testing.T) {
+	t.Parallel()
+
+	reader := &stubGenerationReader{
+		generation: repository.PresentationGeneration{
+			ID:        "22222222-2222-2222-2222-222222222223",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+			Prompt:    "Build a Kyoto travel deck",
+			Status:    string(StatusPending),
+		},
+		claimPendingResult: true,
+	}
+	assets := []repository.PresentationGenerationAsset{{
+		ID:           "asset-cover",
+		GenerationID: "22222222-2222-2222-2222-222222222223",
+		Role:         string(AssetRoleInput),
+		SortOrder:    0,
+		BlobPath:     "blob://cover",
+		MediaType:    InputMediaTypeWEBP,
+		Filename:     "cover.webp",
+		SizeBytes:    3,
+		Sha256:       "cover-sha",
+	}}
+	client := &stubResponseClient{
+		responses: []azureopenai.Response{{
+			Model: "gpt-5-presentation",
+			OutputText: `{
+				"version": "v2",
+				"themePresetId": "travel_editorial",
+				"slides": [
+					{"layout": "cover_hero", "title": "Kyoto", "blocks": [{"type": "image", "assetRef": "attachment:cover"}]},
+					{"layout": "chapter_divider", "title": "Highlights", "blocks": [{"type": "image", "assetRef": "theme:hero-image"}]}
+				]
+			}`,
+		}},
+	}
+	tx := &stubWriteTx{
+		lockedGeneration: repository.PresentationGeneration{
+			ID:            "22222222-2222-2222-2222-222222222223",
+			SessionID:     "11111111-1111-1111-1111-111111111111",
+			ProviderName:  plannerProviderName,
+			ProviderModel: "presentation-deployment",
+			Status:        string(StatusRunning),
+		},
+	}
+	blobs := &stubBlobStore{data: map[string][]byte{"blob://cover": {1, 2, 3}}}
+	service := &Service{
+		planner:        PlannerConfig{Deployment: "presentation-deployment"},
+		blobs:          blobs,
+		responses:      client,
+		generationRead: reader,
+		assetRead:      stubAssetReader{assets: assets},
+		beginWriteTxFn: func(context.Context) (writeTx, error) { return tx, nil },
+		assetResolver:  newDefaultAssetResolver(blobs),
+	}
+
+	if err := service.ExecuteGeneration(context.Background(), "22222222-2222-2222-2222-222222222223"); err != nil {
+		t.Fatalf("ExecuteGeneration() error = %v", err)
+	}
+
+	if len(tx.createAssetCalls) != 3 {
+		t.Fatalf("len(tx.createAssetCalls) = %d, want 3", len(tx.createAssetCalls))
+	}
+	if len(blobs.uploadCalls) != 2 {
+		t.Fatalf("len(blobs.uploadCalls) = %d, want 2", len(blobs.uploadCalls))
+	}
+	entries := readZipEntryNames(t, blobs.uploadCalls[1].data)
+	if _, ok := entries["ppt/media/image1.png"]; !ok {
+		t.Fatal("output pptx missing ppt/media/image1.png")
+	}
+	if _, ok := entries["ppt/media/image2.png"]; ok {
+		t.Fatal("output pptx unexpectedly embedded skipped WEBP asset")
+	}
+}
+
+func TestLoadCompileAssetsSkipsUnsupportedPPTXMediaTypes(t *testing.T) {
+	t.Parallel()
+
+	blobs := &stubBlobStore{data: map[string][]byte{
+		"blob://cover": []byte{1, 2, 3},
+		"blob://hero":  testPNGData(),
+	}}
+	service := &Service{blobs: blobs}
+
+	compileAssets, err := service.loadCompileAssets(context.Background(), []repository.CreatePresentationGenerationAssetParams{
+		{
+			AssetRef:  "attachment:cover",
+			BlobPath:  "blob://cover",
+			MediaType: InputMediaTypeWEBP,
+			Filename:  "cover.webp",
+			SizeBytes: 3,
+		},
+		{
+			AssetRef:  "theme:hero-image",
+			BlobPath:  "blob://hero",
+			MediaType: InputMediaTypePNG,
+			Filename:  "hero.png",
+			SizeBytes: int64(len(testPNGData())),
+		},
+	})
+	if err != nil {
+		t.Fatalf("loadCompileAssets() error = %v", err)
+	}
+	if len(compileAssets) != 1 {
+		t.Fatalf("len(compileAssets) = %d, want 1", len(compileAssets))
+	}
+	if _, ok := compileAssets["attachment:cover"]; ok {
+		t.Fatal("loadCompileAssets() unexpectedly included unsupported WEBP asset")
+	}
+	if _, ok := compileAssets["theme:hero-image"]; !ok {
+		t.Fatal("loadCompileAssets() missing supported PNG asset")
+	}
+	if slices.Contains(blobs.downloadCalls, "blob://cover") {
+		t.Fatalf("blobs.downloadCalls = %#v, unexpected WEBP blob download", blobs.downloadCalls)
+	}
+	if !slices.Contains(blobs.downloadCalls, "blob://hero") {
+		t.Fatalf("blobs.downloadCalls = %#v, missing PNG blob download", blobs.downloadCalls)
+	}
+}
+
+func TestLoadCompileAssetsRejectsUnexpectedBlobSize(t *testing.T) {
+	t.Parallel()
+
+	blobs := &stubBlobStore{data: map[string][]byte{
+		"blob://hero": []byte{1, 2, 3},
+	}}
+	service := &Service{blobs: blobs}
+
+	_, err := service.loadCompileAssets(context.Background(), []repository.CreatePresentationGenerationAssetParams{{
+		AssetRef:  "theme:hero-image",
+		BlobPath:  "blob://hero",
+		MediaType: InputMediaTypePNG,
+		Filename:  "hero.png",
+		SizeBytes: 4,
+	}})
+	if err == nil {
+		t.Fatal("loadCompileAssets() error = nil, want error")
+	}
+	if got := err.Error(); got != `download resolved asset "theme:hero-image": expected 4 bytes, got 3` {
+		t.Fatalf("loadCompileAssets() error = %q", got)
+	}
+}
+
+func TestLoadCompileAssetsRejectsInvalidStoredMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		asset repository.CreatePresentationGenerationAssetParams
+		want  string
+	}{
+		{
+			name: "invalid size",
+			asset: repository.CreatePresentationGenerationAssetParams{
+				AssetRef:  "theme:hero-image",
+				BlobPath:  "blob://hero",
+				MediaType: InputMediaTypePNG,
+				Filename:  "hero.png",
+				SizeBytes: 0,
+			},
+			want: `resolved asset "theme:hero-image" has invalid size 0`,
+		},
+		{
+			name: "missing blob path",
+			asset: repository.CreatePresentationGenerationAssetParams{
+				AssetRef:  "theme:hero-image",
+				MediaType: InputMediaTypePNG,
+				Filename:  "hero.png",
+				SizeBytes: int64(len(testPNGData())),
+			},
+			want: `resolved asset "theme:hero-image" is missing blob path`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{blobs: &stubBlobStore{data: map[string][]byte{
+				"blob://hero": testPNGData(),
+			}}}
+
+			_, err := service.loadCompileAssets(context.Background(), []repository.CreatePresentationGenerationAssetParams{test.asset})
+			if err == nil {
+				t.Fatal("loadCompileAssets() error = nil, want error")
+			}
+			if got := err.Error(); got != test.want {
+				t.Fatalf("loadCompileAssets() error = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -1662,6 +1905,10 @@ func testPNGData() []byte {
 	}
 }
 
+func stringPtr(value string) *string {
+	return &value
+}
+
 func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {
 	data, err := s.Download(ctx, blobPath)
 	if err != nil {
@@ -1672,4 +1919,19 @@ func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string
 	}
 
 	return data, nil
+}
+
+func readZipEntryNames(t *testing.T, data []byte) map[string]struct{} {
+	t.Helper()
+
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("zip.NewReader() error = %v", err)
+	}
+
+	entries := make(map[string]struct{}, len(reader.File))
+	for _, file := range reader.File {
+		entries[file.Name] = struct{}{}
+	}
+	return entries
 }
