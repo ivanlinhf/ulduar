@@ -399,6 +399,67 @@ func TestCompileV2HandlesEmptyCardGrid(t *testing.T) {
 	assertContains(t, entries["ppt/slides/slide1.xml"], `Empty grid`)
 }
 
+func TestCompileWithAssetsReturnsUnprefixedMediaErrors(t *testing.T) {
+	t.Parallel()
+
+	assetRef := "attachment:unsupported"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutRecommendation,
+			Title:  "Unsupported image",
+			Blocks: []presentationdialect.Block{{
+				Type:     presentationdialect.BlockTypeImage,
+				AssetRef: &assetRef,
+			}, {
+				Type:  presentationdialect.BlockTypeCallout,
+				Title: stringPtr("Note"),
+				Body:  stringPtr("Body"),
+			}},
+		}},
+	}
+
+	_, err := CompileWithAssets(document, map[string]CompileAsset{
+		assetRef: {
+			Filename:  "cover.gif",
+			MediaType: "image/gif",
+			Data:      testPNGData(),
+		},
+	})
+	if err == nil {
+		t.Fatal("CompileWithAssets() error = nil, want error")
+	}
+	assertContains(t, err.Error(), `unsupported pptx image media type "image/gif"`)
+	assertNotContains(t, err.Error(), `compile pptx:`)
+}
+
+func TestEnsureMediaPartReusesOwnedAssetBytes(t *testing.T) {
+	t.Parallel()
+
+	builder := &v2PackageBuilder{
+		assets: map[string]CompileAsset{
+			"attachment:cover": {
+				Filename:  "cover.png",
+				MediaType: "image/png",
+				Data:      testPNGData(),
+			},
+		},
+		mediaByAssetRef: make(map[string]mediaPart),
+	}
+
+	part, err := builder.ensureMediaPart("attachment:cover")
+	if err != nil {
+		t.Fatalf("ensureMediaPart() error = %v", err)
+	}
+	asset := builder.assets["attachment:cover"]
+	if len(part.data) == 0 || len(asset.Data) == 0 {
+		t.Fatal("expected non-empty media data")
+	}
+	if &part.data[0] != &asset.Data[0] {
+		t.Fatal("ensureMediaPart() cloned asset bytes instead of reusing the owned copy")
+	}
+}
+
 func readZIPEntries(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 

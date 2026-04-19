@@ -14,6 +14,7 @@ import (
 
 	"github.com/ivanlin/ulduar/apps/backend/internal/azureopenai"
 	"github.com/ivanlin/ulduar/apps/backend/internal/blobstorage"
+	"github.com/ivanlin/ulduar/apps/backend/internal/presentationcompiler/pptx"
 	"github.com/ivanlin/ulduar/apps/backend/internal/presentationdialect"
 	"github.com/ivanlin/ulduar/apps/backend/internal/repository"
 )
@@ -80,6 +81,44 @@ func TestPlannerConfigured(t *testing.T) {
 	})
 	if !service.PlannerConfigured() {
 		t.Fatal("PlannerConfigured() = false, want true")
+	}
+}
+
+func TestPrepareOutputAssetDocumentWithAssetsDoesNotDoublePrefixCompileErrors(t *testing.T) {
+	t.Parallel()
+
+	assetRef := "attachment:unsupported"
+	document := presentationdialect.Document{
+		Version: presentationdialect.VersionV2,
+		Slides: []presentationdialect.Slide{{
+			Layout: presentationdialect.LayoutRecommendation,
+			Title:  "Unsupported image",
+			Blocks: []presentationdialect.Block{{
+				Type:     presentationdialect.BlockTypeImage,
+				AssetRef: &assetRef,
+			}, {
+				Type:  presentationdialect.BlockTypeCallout,
+				Title: stringPtr("Note"),
+				Body:  stringPtr("Body"),
+			}},
+		}},
+	}
+
+	_, err := prepareOutputAssetDocumentWithAssets(document, map[string]pptx.CompileAsset{
+		assetRef: {
+			Filename:  "cover.gif",
+			MediaType: "image/gif",
+			Data:      testPNGData(),
+		},
+	})
+	if err == nil {
+		t.Fatal("prepareOutputAssetDocumentWithAssets() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), `compile pptx: unsupported pptx image media type "image/gif"`) {
+		t.Fatalf("prepareOutputAssetDocumentWithAssets() error = %q", err)
+	}
+	if strings.Contains(err.Error(), `compile pptx: compile pptx:`) {
+		t.Fatalf("prepareOutputAssetDocumentWithAssets() error = %q", err)
 	}
 }
 
@@ -1669,6 +1708,10 @@ func testPNGData() []byte {
 		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
 		0x42, 0x60, 0x82,
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func (s *stubBlobStore) DownloadWithinLimit(ctx context.Context, blobPath string, maxBytes int64) ([]byte, error) {

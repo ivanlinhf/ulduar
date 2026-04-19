@@ -235,19 +235,19 @@ func (b *v2PackageBuilder) ensureMediaPart(assetRef string) (mediaPart, error) {
 
 	asset, ok := b.assets[assetRef]
 	if !ok || len(asset.Data) == 0 {
-		return mediaPart{}, fmt.Errorf("compile pptx: missing image asset %q", assetRef)
+		return mediaPart{}, fmt.Errorf("missing image asset %q", assetRef)
 	}
 
 	ext, contentType, err := mediaExtension(asset)
 	if err != nil {
-		return mediaPart{}, fmt.Errorf("compile pptx: %w", err)
+		return mediaPart{}, err
 	}
 	index := len(b.mediaOrder) + 1
 	part := mediaPart{
 		partName:    fmt.Sprintf("ppt/media/image%d.%s", index, ext),
 		target:      fmt.Sprintf("../media/image%d.%s", index, ext),
 		contentType: contentType,
-		data:        slicesClone(asset.Data),
+		data:        asset.Data,
 	}
 	b.mediaByAssetRef[assetRef] = part
 	b.mediaOrder = append(b.mediaOrder, assetRef)
