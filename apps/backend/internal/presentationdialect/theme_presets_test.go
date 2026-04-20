@@ -123,7 +123,8 @@ func TestResolveThemePresetFallbackRemainsGeneralClean(t *testing.T) {
 	if builtIns[1].ID != ThemePresetTravelEditorial {
 		t.Fatalf("BuiltInThemePresets()[1] = %#v", builtIns[1])
 	}
-	if !strings.Contains(ResolveThemePreset(ThemePresetTravelEditorial).Treatments.Cover, "editorial") {
-		t.Fatalf("travel editorial cover treatment = %q, want editorial guidance", ResolveThemePreset(ThemePresetTravelEditorial).Treatments.Cover)
+	travelPreset := ResolveThemePreset(ThemePresetTravelEditorial)
+	if !strings.Contains(travelPreset.Treatments.Cover, "editorial") {
+		t.Fatalf("travel editorial cover treatment = %q, want editorial guidance", travelPreset.Treatments.Cover)
 	}
 }

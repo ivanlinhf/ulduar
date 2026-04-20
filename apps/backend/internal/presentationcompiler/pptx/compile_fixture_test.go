@@ -96,7 +96,9 @@ func buildFixtureCompileAssets(t *testing.T, document presentationdialect.Docume
 				Data:      testPNGData(),
 			}
 		case strings.HasPrefix(assetRef, "theme:"):
-			themeAsset, ok := presentationdialect.LookupThemeBundleAsset(dereferenceString(document.ThemePresetID), strings.TrimPrefix(assetRef, "theme:"))
+			presetID := dereferenceString(document.ThemePresetID)
+			themeKey := strings.TrimPrefix(assetRef, "theme:")
+			themeAsset, ok := presentationdialect.LookupThemeBundleAsset(presetID, themeKey)
 			if !ok {
 				t.Fatalf("missing bundled theme asset for %q", assetRef)
 			}

@@ -59,6 +59,8 @@ type ThemePresetDefinition struct {
 }
 
 type presetHeroSpec struct {
+	// Colors are six-character RGB hex strings used to synthesize a lightweight
+	// bundled hero image for preset-owned `theme:hero-image` slots.
 	background string
 	surface    string
 	accent     string
@@ -222,6 +224,11 @@ func cloneThemeBundleAsset(asset ThemeBundleAsset) ThemeBundleAsset {
 	return cloned
 }
 
+// mustBuildThemeHeroPNG synthesizes a deterministic 320x180 PNG used for
+// preset-owned bundled hero art. The drawing logic intentionally stays simple:
+// a full-canvas gradient base, one diagonal accent band, and two outlined panel
+// blocks arranged in slide-like coordinates so local dev and container builds
+// always ship owned preset imagery without external asset files.
 func mustBuildThemeHeroPNG(spec presetHeroSpec) []byte {
 	const (
 		width  = 320
