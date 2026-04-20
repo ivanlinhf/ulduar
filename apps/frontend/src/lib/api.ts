@@ -325,11 +325,12 @@ export async function createPresentationGeneration(input: {
 }): Promise<CreatePresentationGenerationResponse> {
   const { sessionId, prompt, attachments = [], themePresetId } = input;
   const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations`;
+  const normalizedThemePresetId = themePresetId?.trim();
 
   if (attachments.length === 0) {
     const body: { prompt: string; themePresetId?: string } = { prompt };
-    if (themePresetId && themePresetId.trim() !== "") {
-      body.themePresetId = themePresetId;
+    if (normalizedThemePresetId) {
+      body.themePresetId = normalizedThemePresetId;
     }
     return requestJSON<CreatePresentationGenerationResponse>(path, {
       method: "POST",
@@ -342,8 +343,8 @@ export async function createPresentationGeneration(input: {
 
   const formData = new FormData();
   formData.set("prompt", prompt);
-  if (themePresetId && themePresetId.trim() !== "") {
-    formData.set("themePresetId", themePresetId);
+  if (normalizedThemePresetId) {
+    formData.set("themePresetId", normalizedThemePresetId);
   }
   for (const file of attachments) {
     formData.append("attachments", file);

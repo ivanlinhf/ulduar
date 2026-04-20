@@ -109,7 +109,7 @@ export function PresentationComposer({
 
       <div className="image-composer-controls presentation-composer-controls">
         {themePickerVisible ? (
-          <div className="image-composer-controls-start presentation-composer-controls-start">
+          <div className="image-composer-controls-start">
             <label htmlFor="presentation-theme-preset" className="image-resolution-label">
               Theme
             </label>

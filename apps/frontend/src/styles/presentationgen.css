@@ -6,14 +6,6 @@
   justify-content: space-between;
 }
 
-.presentation-composer-controls-start {
-  flex-shrink: 0;
-}
-
-.presentation-composer .composer-footer-start {
-  flex: 1 1 auto;
-}
-
 .presentation-turn-card {
   gap: 14px;
 }

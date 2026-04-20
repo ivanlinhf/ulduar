@@ -54,7 +54,7 @@ describe("createPresentationGeneration", () => {
     vi.clearAllMocks();
   });
 
-  it("sends themePresetId in JSON requests when provided", async () => {
+  it("trims themePresetId before sending JSON requests", async () => {
     mockedFetch.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -72,7 +72,7 @@ describe("createPresentationGeneration", () => {
     await createPresentationGeneration({
       sessionId: "11111111-1111-1111-1111-111111111111",
       prompt: "build a travel deck",
-      themePresetId: "travel_editorial",
+      themePresetId: "  travel_editorial  ",
     });
 
     expect(mockedFetch).toHaveBeenCalledTimes(1);
@@ -82,7 +82,7 @@ describe("createPresentationGeneration", () => {
     );
   });
 
-  it("sends themePresetId in multipart requests when attachments are present", async () => {
+  it("trims themePresetId before sending multipart requests", async () => {
     mockedFetch.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -100,7 +100,7 @@ describe("createPresentationGeneration", () => {
     await createPresentationGeneration({
       sessionId: "11111111-1111-1111-1111-111111111111",
       prompt: "build a travel deck",
-      themePresetId: "travel_editorial",
+      themePresetId: "  travel_editorial  ",
       attachments: [new File(["pdf"], "brief.pdf", { type: "application/pdf" })],
     });
 
