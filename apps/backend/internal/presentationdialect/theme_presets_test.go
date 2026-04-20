@@ -104,6 +104,37 @@ func TestResolveThemePresetProvidesCuratedDefinitions(t *testing.T) {
 			t.Fatal("expected preset hero assets to be distinct")
 		}
 	})
+
+	t.Run("design resolver omits bundled assets", func(t *testing.T) {
+		t.Parallel()
+
+		preset := ResolveThemePresetDesign(ThemePresetTravelEditorial)
+		if preset.Metadata.ID != ThemePresetTravelEditorial {
+			t.Fatalf("preset.Metadata.ID = %q, want %q", preset.Metadata.ID, ThemePresetTravelEditorial)
+		}
+		if preset.Assets != nil {
+			t.Fatalf("preset.Assets = %#v, want nil", preset.Assets)
+		}
+	})
+
+	t.Run("resolved assets are cloned", func(t *testing.T) {
+		t.Parallel()
+
+		preset := ResolveThemePreset(ThemePresetGeneralClean)
+		asset, ok := preset.Assets[themeBundleAssetHeroImage]
+		if !ok {
+			t.Fatalf("preset.Assets missing %q", themeBundleAssetHeroImage)
+		}
+		asset.Data[0] ^= 0xFF
+
+		lookedUp, ok := LookupThemeBundleAsset(ThemePresetGeneralClean, themeBundleAssetHeroImage)
+		if !ok {
+			t.Fatalf("LookupThemeBundleAsset() missing %q", themeBundleAssetHeroImage)
+		}
+		if bytes.Equal(asset.Data, lookedUp.Data) {
+			t.Fatal("expected bundled asset lookup to return isolated bytes")
+		}
+	})
 }
 
 func TestResolveThemePresetFallbackRemainsGeneralClean(t *testing.T) {

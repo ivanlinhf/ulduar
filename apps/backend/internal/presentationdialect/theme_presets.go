@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"strings"
+	"sync"
 )
 
 const themeBundleAssetHeroImage = "hero-image"
@@ -58,6 +59,20 @@ type ThemePresetDefinition struct {
 	Assets     map[string]ThemeBundleAsset
 }
 
+type themePresetRegistryEntry struct {
+	definition ThemePresetDefinition
+	assets     map[string]*themeBundleAssetEntry
+}
+
+type themeBundleAssetEntry struct {
+	filename  string
+	mediaType string
+	build     func() []byte
+
+	once sync.Once
+	data []byte
+}
+
 type presetHeroSpec struct {
 	// Colors are six-character RGB hex strings used to synthesize a lightweight
 	// bundled hero image for preset-owned `theme:hero-image` slots.
@@ -68,104 +83,100 @@ type presetHeroSpec struct {
 	outline    string
 }
 
-var builtInThemePresetDefinitions = []ThemePresetDefinition{
+var builtInThemePresetDefinitions = []themePresetRegistryEntry{
 	{
-		Metadata: ThemePresetMetadata{
-			ID:          ThemePresetGeneralClean,
-			Label:       "General Clean",
-			Description: "Default balanced preset for general-purpose decks.",
-			IsDefault:   true,
-		},
-		Palette: ThemePresetPalette{
-			Background:  "FFFFFF",
-			Surface:     "F8FAFC",
-			SurfaceAlt:  "E2E8F0",
-			Text:        "1F2937",
-			Muted:       "64748B",
-			Accent:      "2563EB",
-			AccentAlt:   "0F766E",
-			Success:     "059669",
-			Warning:     "D97706",
-			InverseText: "FFFFFF",
-			Outline:     "CBD5E1",
-		},
-		Fonts: ThemePresetFonts{
-			Latin: "Arial",
-			CJK:   "Noto Sans CJK JP",
-		},
-		Treatments: ThemePresetTreatments{
-			Cover:   "Balanced clean hero with cool gradient header band and quiet headline block.",
-			Chapter: "Neutral chapter divider with crisp accent stripe and reserved supporting image slot.",
-			Cards:   "Soft dashboard cards with cool-gray surfaces, blue emphasis, and modest corner rhythm.",
-			Table:   "Flat informational table with subtle row fills and clear rule contrast.",
-			Image:   "Straight crops with clean borders and restrained shadow treatment.",
-		},
-		Spacing: ThemePresetSpacing{
-			Tight: 16,
-			Base:  24,
-			Loose: 36,
-		},
-		Assets: map[string]ThemeBundleAsset{
-			themeBundleAssetHeroImage: {
-				Filename:  "general-clean-hero-image.png",
-				MediaType: "image/png",
-				Data: mustBuildThemeHeroPNG(presetHeroSpec{
-					background: "FFFFFF",
-					surface:    "E2E8F0",
-					accent:     "2563EB",
-					accentAlt:  "0F766E",
-					outline:    "CBD5E1",
-				}),
+		definition: ThemePresetDefinition{
+			Metadata: ThemePresetMetadata{
+				ID:          ThemePresetGeneralClean,
+				Label:       "General Clean",
+				Description: "Default balanced preset for general-purpose decks.",
+				IsDefault:   true,
 			},
+			Palette: ThemePresetPalette{
+				Background:  "FFFFFF",
+				Surface:     "F8FAFC",
+				SurfaceAlt:  "E2E8F0",
+				Text:        "1F2937",
+				Muted:       "64748B",
+				Accent:      "2563EB",
+				AccentAlt:   "0F766E",
+				Success:     "059669",
+				Warning:     "D97706",
+				InverseText: "FFFFFF",
+				Outline:     "CBD5E1",
+			},
+			Fonts: ThemePresetFonts{
+				Latin: "Arial",
+				CJK:   "Noto Sans CJK JP",
+			},
+			Treatments: ThemePresetTreatments{
+				Cover:   "Balanced clean hero with cool gradient header band and quiet headline block.",
+				Chapter: "Neutral chapter divider with crisp accent stripe and reserved supporting image slot.",
+				Cards:   "Soft dashboard cards with cool-gray surfaces, blue emphasis, and modest corner rhythm.",
+				Table:   "Flat informational table with subtle row fills and clear rule contrast.",
+				Image:   "Straight crops with clean borders and restrained shadow treatment.",
+			},
+			Spacing: ThemePresetSpacing{
+				Tight: 16,
+				Base:  24,
+				Loose: 36,
+			},
+		},
+		assets: map[string]*themeBundleAssetEntry{
+			themeBundleAssetHeroImage: newPresetHeroAsset("general-clean-hero-image.png", presetHeroSpec{
+				background: "FFFFFF",
+				surface:    "E2E8F0",
+				accent:     "2563EB",
+				accentAlt:  "0F766E",
+				outline:    "CBD5E1",
+			}),
 		},
 	},
 	{
-		Metadata: ThemePresetMetadata{
-			ID:          ThemePresetTravelEditorial,
-			Label:       "Travel Editorial",
-			Description: "Editorial preset for image-led travel and itinerary narratives.",
-		},
-		Palette: ThemePresetPalette{
-			Background:  "F7F1EA",
-			Surface:     "FFF9F3",
-			SurfaceAlt:  "E6D5C3",
-			Text:        "2D241D",
-			Muted:       "7A6859",
-			Accent:      "A45C40",
-			AccentAlt:   "2F5D7C",
-			Success:     "4A7C59",
-			Warning:     "C0843D",
-			InverseText: "FFF9F3",
-			Outline:     "D9C9B7",
-		},
-		Fonts: ThemePresetFonts{
-			Latin: "Georgia",
-			CJK:   "Noto Serif CJK JP",
-		},
-		Treatments: ThemePresetTreatments{
-			Cover:   "Image-led editorial cover with warm paper overlay, serif headlines, and travel kicker accents.",
-			Chapter: "Panoramic chapter divider with label chip, image band, and spacious vertical rhythm.",
-			Cards:   "Magazine-style comparison cards with warm surfaces and image-first emphasis.",
-			Table:   "Editorial summary panel with warm ruled table styling and muted support copy.",
-			Image:   "Large travel-image crops with caption-led framing and gentle edge shading.",
-		},
-		Spacing: ThemePresetSpacing{
-			Tight: 18,
-			Base:  28,
-			Loose: 42,
-		},
-		Assets: map[string]ThemeBundleAsset{
-			themeBundleAssetHeroImage: {
-				Filename:  "travel-editorial-hero-image.png",
-				MediaType: "image/png",
-				Data: mustBuildThemeHeroPNG(presetHeroSpec{
-					background: "F7F1EA",
-					surface:    "E6D5C3",
-					accent:     "A45C40",
-					accentAlt:  "2F5D7C",
-					outline:    "D9C9B7",
-				}),
+		definition: ThemePresetDefinition{
+			Metadata: ThemePresetMetadata{
+				ID:          ThemePresetTravelEditorial,
+				Label:       "Travel Editorial",
+				Description: "Editorial preset for image-led travel and itinerary narratives.",
 			},
+			Palette: ThemePresetPalette{
+				Background:  "F7F1EA",
+				Surface:     "FFF9F3",
+				SurfaceAlt:  "E6D5C3",
+				Text:        "2D241D",
+				Muted:       "7A6859",
+				Accent:      "A45C40",
+				AccentAlt:   "2F5D7C",
+				Success:     "4A7C59",
+				Warning:     "C0843D",
+				InverseText: "FFF9F3",
+				Outline:     "D9C9B7",
+			},
+			Fonts: ThemePresetFonts{
+				Latin: "Georgia",
+				CJK:   "Noto Serif CJK JP",
+			},
+			Treatments: ThemePresetTreatments{
+				Cover:   "Image-led editorial cover with warm paper overlay, serif headlines, and travel kicker accents.",
+				Chapter: "Panoramic chapter divider with label chip, image band, and spacious vertical rhythm.",
+				Cards:   "Magazine-style comparison cards with warm surfaces and image-first emphasis.",
+				Table:   "Editorial summary panel with warm ruled table styling and muted support copy.",
+				Image:   "Large travel-image crops with caption-led framing and gentle edge shading.",
+			},
+			Spacing: ThemePresetSpacing{
+				Tight: 18,
+				Base:  28,
+				Loose: 42,
+			},
+		},
+		assets: map[string]*themeBundleAssetEntry{
+			themeBundleAssetHeroImage: newPresetHeroAsset("travel-editorial-hero-image.png", presetHeroSpec{
+				background: "F7F1EA",
+				surface:    "E6D5C3",
+				accent:     "A45C40",
+				accentAlt:  "2F5D7C",
+				outline:    "D9C9B7",
+			}),
 		},
 	},
 }
@@ -173,7 +184,7 @@ var builtInThemePresetDefinitions = []ThemePresetDefinition{
 func BuiltInThemePresets() []ThemePresetMetadata {
 	presets := make([]ThemePresetMetadata, 0, len(builtInThemePresetDefinitions))
 	for _, preset := range builtInThemePresetDefinitions {
-		presets = append(presets, preset.Metadata)
+		presets = append(presets, preset.definition.Metadata)
 	}
 	return presets
 }
@@ -181,47 +192,85 @@ func BuiltInThemePresets() []ThemePresetMetadata {
 func ResolveThemePresetID(requested string) string {
 	requested = strings.TrimSpace(requested)
 	for _, preset := range builtInThemePresetDefinitions {
-		if preset.Metadata.ID == requested {
-			return preset.Metadata.ID
+		if preset.definition.Metadata.ID == requested {
+			return preset.definition.Metadata.ID
 		}
 	}
 	return ThemePresetGeneralClean
 }
 
+// ResolveThemePresetDesign returns the curated preset tokens without bundled
+// asset bytes. Callers that need bundled assets should use ResolveThemePreset
+// or LookupThemeBundleAsset.
+func ResolveThemePresetDesign(requested string) ThemePresetDefinition {
+	return resolveThemePresetEntry(requested).definition
+}
+
 func ResolveThemePreset(requested string) ThemePresetDefinition {
-	resolvedID := ResolveThemePresetID(requested)
-	for _, preset := range builtInThemePresetDefinitions {
-		if preset.Metadata.ID == resolvedID {
-			return cloneThemePresetDefinition(preset)
-		}
-	}
-	return cloneThemePresetDefinition(builtInThemePresetDefinitions[0])
+	return cloneThemePresetDefinition(resolveThemePresetEntry(requested))
 }
 
 func LookupThemeBundleAsset(requestedPresetID, key string) (ThemeBundleAsset, bool) {
-	preset := ResolveThemePreset(requestedPresetID)
-	asset, ok := preset.Assets[key]
+	preset := resolveThemePresetEntry(requestedPresetID)
+	asset, ok := preset.assets[key]
 	if !ok {
 		return ThemeBundleAsset{}, false
 	}
-	return cloneThemeBundleAsset(asset), true
+	return asset.clone(), true
 }
 
-func cloneThemePresetDefinition(preset ThemePresetDefinition) ThemePresetDefinition {
-	cloned := preset
-	if preset.Assets != nil {
-		cloned.Assets = make(map[string]ThemeBundleAsset, len(preset.Assets))
-		for key, asset := range preset.Assets {
-			cloned.Assets[key] = cloneThemeBundleAsset(asset)
+func resolveThemePresetEntry(requested string) *themePresetRegistryEntry {
+	resolvedID := ResolveThemePresetID(requested)
+	for index := range builtInThemePresetDefinitions {
+		if builtInThemePresetDefinitions[index].definition.Metadata.ID == resolvedID {
+			return &builtInThemePresetDefinitions[index]
 		}
+	}
+	return &builtInThemePresetDefinitions[0]
+}
+
+func cloneThemePresetDefinition(entry *themePresetRegistryEntry) ThemePresetDefinition {
+	cloned := entry.definition
+	if len(entry.assets) == 0 {
+		return cloned
+	}
+	cloned.Assets = make(map[string]ThemeBundleAsset, len(entry.assets))
+	for key, asset := range entry.assets {
+		cloned.Assets[key] = asset.clone()
 	}
 	return cloned
 }
 
-func cloneThemeBundleAsset(asset ThemeBundleAsset) ThemeBundleAsset {
-	cloned := asset
-	cloned.Data = append([]byte(nil), asset.Data...)
+func newPresetHeroAsset(filename string, spec presetHeroSpec) *themeBundleAssetEntry {
+	specCopy := spec
+	return &themeBundleAssetEntry{
+		filename:  filename,
+		mediaType: "image/png",
+		build: func() []byte {
+			return mustBuildThemeHeroPNG(specCopy)
+		},
+	}
+}
+
+func (asset *themeBundleAssetEntry) clone() ThemeBundleAsset {
+	cloned := ThemeBundleAsset{
+		Filename:  asset.filename,
+		MediaType: asset.mediaType,
+	}
+	data := asset.bytes()
+	if len(data) != 0 {
+		cloned.Data = append([]byte(nil), data...)
+	}
 	return cloned
+}
+
+func (asset *themeBundleAssetEntry) bytes() []byte {
+	asset.once.Do(func() {
+		if asset.build != nil {
+			asset.data = asset.build()
+		}
+	})
+	return asset.data
 }
 
 // mustBuildThemeHeroPNG synthesizes a deterministic 320x180 PNG used for

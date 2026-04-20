@@ -1019,7 +1019,7 @@ func buildThemeXMLV2(preset themePreset) string {
 }
 
 func resolveThemePreset(id string) themePreset {
-	definition := presentationdialect.ResolveThemePreset(id)
+	definition := presentationdialect.ResolveThemePresetDesign(id)
 	return themePreset{
 		ID:          definition.Metadata.ID,
 		Name:        definition.Metadata.Label,
