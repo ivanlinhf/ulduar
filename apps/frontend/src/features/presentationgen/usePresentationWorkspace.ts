@@ -61,6 +61,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     () => buildPresentationAttachmentAccept(capabilities.inputMediaTypes),
     [capabilities.inputMediaTypes],
   );
+  const themePresets = useMemo(() => capabilities.themePresets ?? [], [capabilities.themePresets]);
+  const themePickerVisible = themePresets.length > 1;
+  const [themePresetId, setThemePresetId] = useState("");
   const attachmentsSupported = useMemo(
     () => presentationAttachmentsSupported(capabilities.inputMediaTypes),
     [capabilities.inputMediaTypes],
@@ -113,6 +116,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     setPrompt("");
     setAttachments([]);
     attachmentsRef.current = [];
+    setThemePresetId("");
     setSessionId("");
     setTurns([]);
 
@@ -178,6 +182,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
         sessionId: draftSessionId,
         prompt: draftPrompt,
         attachments: draftAttachments.map((attachment) => attachment.file),
+        themePresetId: themePresetId || undefined,
       });
       if (!mountedRef.current) {
         return;
@@ -355,6 +360,10 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     }
   }
 
+  function handleThemePresetChange(event: ChangeEvent<HTMLSelectElement>) {
+    setThemePresetId(event.target.value);
+  }
+
   function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -448,6 +457,7 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     handleFileSelection,
     handlePromptChange,
     handlePromptKeyDown,
+    handleThemePresetChange,
     handleSubmit,
     inputAccept,
     attachmentsSupported,
@@ -457,6 +467,9 @@ export function usePresentationWorkspace(capabilities: PresentationGenerationCap
     screenError,
     sessionId,
     submissionState,
+    themePickerVisible,
+    themePresetId,
+    themePresets,
     turns,
     workspaceSubtitle,
   };

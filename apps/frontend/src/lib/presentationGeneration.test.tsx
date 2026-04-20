@@ -34,6 +34,7 @@ describe("usePresentationGenerationBootstrap", () => {
       inputMediaTypes: ["application/pdf", "image/png"],
       outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       providerName: "azure-openai",
+      themePresets: [{ id: "general_clean", label: "General Clean", isDefault: true }],
     };
     mockedGetPresentationGenerationCapabilities.mockResolvedValue(capabilities);
 

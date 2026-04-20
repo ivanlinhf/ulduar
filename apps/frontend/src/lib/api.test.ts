@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createImageGeneration } from "./api";
+import { createImageGeneration, createPresentationGeneration } from "./api";
 
 describe("createImageGeneration", () => {
   const mockedFetch = vi.fn<typeof fetch>();
@@ -39,5 +39,78 @@ describe("createImageGeneration", () => {
     ).rejects.toThrow("referenceImages are only supported for image_edit");
 
     expect(mockedFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("createPresentationGeneration", () => {
+  const mockedFetch = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockedFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("trims themePresetId before sending JSON requests", async () => {
+    mockedFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          generationId: "gen-1",
+          status: "pending",
+          createdAt: "2026-04-19T15:00:00Z",
+        }),
+        {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await createPresentationGeneration({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      prompt: "build a travel deck",
+      themePresetId: "  travel_editorial  ",
+    });
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    const [, init] = mockedFetch.mock.calls[0]!;
+    expect(init?.body).toBe(
+      JSON.stringify({ prompt: "build a travel deck", themePresetId: "travel_editorial" }),
+    );
+  });
+
+  it("trims themePresetId before sending multipart requests", async () => {
+    mockedFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          generationId: "gen-2",
+          status: "pending",
+          createdAt: "2026-04-19T15:00:00Z",
+        }),
+        {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await createPresentationGeneration({
+      sessionId: "11111111-1111-1111-1111-111111111111",
+      prompt: "build a travel deck",
+      themePresetId: "  travel_editorial  ",
+      attachments: [new File(["pdf"], "brief.pdf", { type: "application/pdf" })],
+    });
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    const [, init] = mockedFetch.mock.calls[0]!;
+    expect(init?.body).toBeInstanceOf(FormData);
+
+    const formData = init?.body as FormData;
+    expect(formData.get("prompt")).toBe("build a travel deck");
+    expect(formData.get("themePresetId")).toBe("travel_editorial");
+    expect(formData.getAll("attachments")).toHaveLength(1);
   });
 });

@@ -92,6 +92,14 @@ export type PresentationGenerationCapabilitiesResponse = {
   inputMediaTypes: string[];
   outputMediaType: string;
   providerName?: string;
+  themePresets?: PresentationThemePresetResponse[];
+};
+
+export type PresentationThemePresetResponse = {
+  id: string;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
 };
 
 export type PresentationGenerationStatus = "pending" | "running" | "completed" | "failed";
@@ -156,6 +164,8 @@ export type PresentationGenerationResponse = {
   dialectJson?: unknown;
   providerName?: string;
   providerModel?: string;
+  requestedThemePresetId?: string;
+  resolvedThemePresetId?: string;
   errorCode?: string;
   errorMessage?: string;
   createdAt: string;
@@ -311,22 +321,31 @@ export async function createPresentationGeneration(input: {
   sessionId: string;
   prompt: string;
   attachments?: File[];
+  themePresetId?: string;
 }): Promise<CreatePresentationGenerationResponse> {
-  const { sessionId, prompt, attachments = [] } = input;
+  const { sessionId, prompt, attachments = [], themePresetId } = input;
   const path = `/api/v1/sessions/${encodeURIComponent(sessionId)}/presentation-generations`;
+  const normalizedThemePresetId = themePresetId?.trim();
 
   if (attachments.length === 0) {
+    const body: { prompt: string; themePresetId?: string } = { prompt };
+    if (normalizedThemePresetId) {
+      body.themePresetId = normalizedThemePresetId;
+    }
     return requestJSON<CreatePresentationGenerationResponse>(path, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(body),
     });
   }
 
   const formData = new FormData();
   formData.set("prompt", prompt);
+  if (normalizedThemePresetId) {
+    formData.set("themePresetId", normalizedThemePresetId);
+  }
   for (const file of attachments) {
     formData.append("attachments", file);
   }

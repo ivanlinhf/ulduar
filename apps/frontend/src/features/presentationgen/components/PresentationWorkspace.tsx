@@ -63,9 +63,13 @@ export function PresentationWorkspace({
         onPromptKeyDown={workspace.handlePromptKeyDown}
         onRemoveAttachment={workspace.removeAttachment}
         onSubmit={workspace.handleSubmit}
+        onThemePresetChange={workspace.handleThemePresetChange}
         prompt={workspace.prompt}
         screenError={workspace.screenError}
         submissionState={workspace.submissionState}
+        themePickerVisible={workspace.themePickerVisible}
+        themePresetId={workspace.themePresetId}
+        themePresets={workspace.themePresets}
       />
     </section>
   );

@@ -4,6 +4,7 @@ import { ActionTooltip } from "../../chat/components/ActionTooltip";
 import { IconAttachment, IconClose, IconSend, IconSpinner } from "../../chat/components/icons";
 import { compactMediaType } from "../utils";
 import type { PresentationSubmissionState, SelectedPresentationAttachment } from "../types";
+import type { PresentationThemePresetResponse } from "../../../lib/api";
 
 type PresentationComposerProps = {
   attachmentToast: string;
@@ -21,9 +22,13 @@ type PresentationComposerProps = {
   onPromptKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onRemoveAttachment: (id: string) => void;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
+  onThemePresetChange: (event: ChangeEvent<HTMLSelectElement>) => void;
   prompt: string;
   screenError: string;
   submissionState: PresentationSubmissionState;
+  themePickerVisible: boolean;
+  themePresetId: string;
+  themePresets: PresentationThemePresetResponse[];
 };
 
 export function PresentationComposer({
@@ -42,9 +47,13 @@ export function PresentationComposer({
   onPromptKeyDown,
   onRemoveAttachment,
   onSubmit,
+  onThemePresetChange,
   prompt,
   screenError,
   submissionState,
+  themePickerVisible,
+  themePresetId,
+  themePresets,
 }: PresentationComposerProps) {
   const previewUrlMapRef = useRef<Map<string, string>>(new Map());
   const [previewUrls, setPreviewUrls] = useState<Map<string, string>>(new Map());
@@ -99,6 +108,29 @@ export function PresentationComposer({
       </div>
 
       <div className="image-composer-controls presentation-composer-controls">
+        {themePickerVisible ? (
+          <div className="image-composer-controls-start">
+            <label htmlFor="presentation-theme-preset" className="image-resolution-label">
+              Theme
+            </label>
+            <select
+              id="presentation-theme-preset"
+              className="image-resolution-select"
+              value={themePresetId}
+              onChange={onThemePresetChange}
+              disabled={busy}
+              aria-label="Theme"
+            >
+              <option value="">Automatic</option>
+              {themePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="composer-footer-start">
           <ActionTooltip
             align="left"

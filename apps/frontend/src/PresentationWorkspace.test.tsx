@@ -113,6 +113,10 @@ describe("PresentationWorkspace", () => {
       inputMediaTypes: ["image/png", "image/jpeg", "image/webp", "application/pdf"],
       outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       providerName: "azure-openai",
+      themePresets: [
+        { id: "general_clean", label: "General Clean", isDefault: true },
+        { id: "travel_editorial", label: "Travel Editorial" },
+      ],
     });
     mockedGetPresentationGeneration.mockResolvedValue({
       generationId: "gen-default",
@@ -160,6 +164,7 @@ describe("PresentationWorkspace", () => {
       const pdfFile = new File(["pdf"], "notes.pdf", { type: "application/pdf" });
       fireEvent.change(fileInput, { target: { files: [imageFile, pdfFile] } });
 
+      await user.selectOptions(screen.getByRole("combobox", { name: "Theme" }), "travel_editorial");
       await user.type(screen.getByLabelText("Presentation prompt"), "Build a quarterly review deck");
       await user.click(screen.getByRole("button", { name: "Generate" }));
 
@@ -168,6 +173,7 @@ describe("PresentationWorkspace", () => {
           sessionId: "22222222-2222-2222-2222-222222222222",
           prompt: "Build a quarterly review deck",
           attachments: [imageFile, pdfFile],
+          themePresetId: "travel_editorial",
         });
       });
 
@@ -248,8 +254,25 @@ describe("PresentationWorkspace", () => {
         sessionId: "22222222-2222-2222-2222-222222222222",
         prompt: "Deck with invalid reference",
         attachments: [],
+        themePresetId: undefined,
       });
     });
+  });
+
+  it("hides the theme picker when the backend only exposes a minimal fallback preset", async () => {
+    mockedGetPresentationGenerationCapabilities.mockResolvedValueOnce({
+      inputMediaTypes: ["application/pdf"],
+      outputMediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      providerName: "azure-openai",
+      themePresets: [{ id: "general_clean", label: "General Clean", isDefault: true }],
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Ready for the next turn.");
+    await openPresentationWorkspace(user);
+
+    expect(screen.queryByRole("combobox", { name: "Theme" })).not.toBeInTheDocument();
   });
 
   it("shows failed status when the backend stream reports a failure", async () => {
