@@ -1,0 +1,170 @@
+{
+  "document": {
+    "version": "v2",
+    "themePresetId": "travel_editorial",
+    "slides": [
+      {
+        "layout": "cover_hero",
+        "title": "Kyoto vs Kanazawa",
+        "subtitle": "Autumn comparison",
+        "blocks": [
+          {
+            "type": "image",
+            "assetRef": "attachment:cover-photo",
+            "caption": "Maple season arrival"
+          },
+          {
+            "type": "rich_text",
+            "spans": [
+              {
+                "text": "A short-list for "
+              },
+              {
+                "text": "紅葉",
+                "lang": "ja",
+                "emphasis": "accent"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "layout": "chapter_divider",
+        "title": "How to read the trip",
+        "subtitle": "Three lenses",
+        "blocks": [
+          {
+            "type": "image",
+            "assetRef": "theme:hero-image",
+            "caption": "Editorial divider"
+          },
+          {
+            "type": "badge",
+            "text": "Route overview"
+          }
+        ]
+      },
+      {
+        "layout": "card_grid",
+        "title": "Signature moments",
+        "blocks": [
+          {
+            "type": "card",
+            "title": "Kyoto",
+            "body": "Temple dawns, tea lanes, and ryokan evenings.",
+            "assetRef": "attachment:district-photo"
+          },
+          {
+            "type": "card",
+            "title": "Kanazawa",
+            "body": "Markets, museums, and compact samurai quarters."
+          }
+        ]
+      },
+      {
+        "layout": "comparison_cards",
+        "title": "Best fit by traveler type",
+        "blocks": [
+          {
+            "type": "card",
+            "title": "Kyoto",
+            "body": "Richer spread of iconic sights and polished hotel options."
+          },
+          {
+            "type": "card",
+            "title": "Kanazawa",
+            "body": "Calmer pace, easier navigation, and strong craft culture."
+          }
+        ]
+      },
+      {
+        "layout": "summary_matrix",
+        "title": "Decision matrix",
+        "blocks": [
+          {
+            "type": "stat",
+            "label": "Best first trip",
+            "value": "Kyoto"
+          },
+          {
+            "type": "stat",
+            "label": "Best relaxed pace",
+            "value": "Kanazawa"
+          },
+          {
+            "type": "table",
+            "header": [
+              "Lens",
+              "Kyoto",
+              "Kanazawa"
+            ],
+            "rows": [
+              [
+                "Food",
+                "Deep traditional dining",
+                "Seafood-forward market scene"
+              ],
+              [
+                "Crowds",
+                "Higher",
+                "Moderate"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "layout": "closing",
+        "title": "Recommendation",
+        "subtitle": "Choose the trip that matches your pace",
+        "blocks": [
+          {
+            "type": "callout",
+            "title": "Editor note",
+            "body": "Kyoto wins for first-time breadth; Kanazawa wins for a calmer long weekend."
+          }
+        ]
+      }
+    ]
+  },
+  "expectedEntries": {
+    "ppt/theme/theme1.xml": [
+      "Travel Editorial",
+      "A45C40",
+      "Noto Serif CJK JP"
+    ],
+    "ppt/slides/slide1.xml": [
+      "Kyoto vs Kanazawa",
+      "Maple season arrival",
+      "lang=\"ja-JP\""
+    ],
+    "ppt/slides/slide2.xml": [
+      "How to read the trip",
+      "Editorial divider",
+      "ROUTE OVERVIEW"
+    ],
+    "ppt/slides/slide3.xml": [
+      "Signature moments",
+      "Temple dawns, tea lanes, and ryokan evenings.",
+      "Kanazawa"
+    ],
+    "ppt/slides/slide4.xml": [
+      "Best fit by traveler type",
+      "Richer spread of iconic sights and polished hotel options."
+    ],
+    "ppt/slides/slide5.xml": [
+      "Decision matrix",
+      "Best first trip",
+      "Seafood-forward market scene"
+    ],
+    "ppt/slides/slide6.xml": [
+      "Recommendation",
+      "Kyoto wins for first-time breadth; Kanazawa wins for a calmer long weekend."
+    ]
+  },
+  "expectedBinaryEntries": [
+    "ppt/media/image1.png",
+    "ppt/media/image2.png",
+    "ppt/media/image3.png"
+  ]
+}

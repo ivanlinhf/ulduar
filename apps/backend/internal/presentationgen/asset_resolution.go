@@ -54,35 +54,6 @@ type themeBundleAsset struct {
 	data      []byte
 }
 
-var builtInThemeBundleAssets = map[string]map[string]themeBundleAsset{
-	presentationdialect.ThemePresetGeneralClean: {
-		"hero-image": {
-			filename:  "general-clean-hero-image.png",
-			mediaType: InputMediaTypePNG,
-			data:      fallbackThemePNG,
-		},
-	},
-	presentationdialect.ThemePresetTravelEditorial: {
-		"hero-image": {
-			filename:  "travel-editorial-hero-image.png",
-			mediaType: InputMediaTypePNG,
-			data:      fallbackThemePNG,
-		},
-	},
-}
-
-var fallbackThemePNG = []byte{
-	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-	0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-	0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
-	0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-	0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
-	0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
-	0x42, 0x60, 0x82,
-}
-
 func newDefaultAssetResolver(blobs BlobStore) AssetResolver {
 	return defaultAssetResolver{blobs: blobs}
 }
@@ -135,9 +106,14 @@ func (r defaultAssetResolver) Resolve(ctx context.Context, params ResolveAssetsP
 				Sha256:        asset.Sha256,
 			})
 		case string(AssetSourceTypeThemeBundle):
-			themeAsset, ok := builtInThemeBundleAssets[resolvedPresetID][key]
+			builtInAsset, ok := presentationdialect.LookupThemeBundleAsset(resolvedPresetID, key)
 			if !ok {
 				return result, fmt.Errorf("%w: %q for preset %q", errThemeAssetUnavailable, assetRef, resolvedPresetID)
+			}
+			themeAsset := themeBundleAsset{
+				filename:  builtInAsset.Filename,
+				mediaType: builtInAsset.MediaType,
+				data:      builtInAsset.Data,
 			}
 			if r.blobs == nil {
 				return result, fmt.Errorf("blob store is not configured")

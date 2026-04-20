@@ -1,7 +1,5 @@
 package presentationdialect
 
-import "strings"
-
 const (
 	VersionV1      = "v1"
 	VersionV2      = "v2"
@@ -98,33 +96,3 @@ const (
 	ThemePresetGeneralClean    = "general_clean"
 	ThemePresetTravelEditorial = "travel_editorial"
 )
-
-var builtInThemePresets = []ThemePresetMetadata{
-	{
-		ID:          ThemePresetGeneralClean,
-		Label:       "General Clean",
-		Description: "Default balanced preset for general-purpose decks.",
-		IsDefault:   true,
-	},
-	{
-		ID:          ThemePresetTravelEditorial,
-		Label:       "Travel Editorial",
-		Description: "Editorial preset for image-led travel and itinerary narratives.",
-	},
-}
-
-func BuiltInThemePresets() []ThemePresetMetadata {
-	presets := make([]ThemePresetMetadata, len(builtInThemePresets))
-	copy(presets, builtInThemePresets)
-	return presets
-}
-
-func ResolveThemePresetID(requested string) string {
-	requested = strings.TrimSpace(requested)
-	for _, preset := range builtInThemePresets {
-		if preset.ID == requested {
-			return preset.ID
-		}
-	}
-	return ThemePresetGeneralClean
-}

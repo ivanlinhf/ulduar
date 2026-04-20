@@ -1019,47 +1019,25 @@ func buildThemeXMLV2(preset themePreset) string {
 }
 
 func resolveThemePreset(id string) themePreset {
-	switch presentationdialect.ResolveThemePresetID(id) {
-	case presentationdialect.ThemePresetTravelEditorial:
-		return themePreset{
-			ID:          presentationdialect.ThemePresetTravelEditorial,
-			Name:        "Travel Editorial",
-			Background:  "F7F1EA",
-			Surface:     "FFF9F3",
-			SurfaceAlt:  "E6D5C3",
-			Text:        "2D241D",
-			Muted:       "7A6859",
-			Accent:      "A45C40",
-			AccentAlt:   "2F5D7C",
-			Success:     "4A7C59",
-			Warning:     "C0843D",
-			InverseText: "FFF9F3",
-			Outline:     "D9C9B7",
-			Fonts: themeFonts{
-				Latin: "Georgia",
-				CJK:   "Noto Serif CJK JP",
-			},
-		}
-	default:
-		return themePreset{
-			ID:          presentationdialect.ThemePresetGeneralClean,
-			Name:        "General Clean",
-			Background:  "FFFFFF",
-			Surface:     "F8FAFC",
-			SurfaceAlt:  "E2E8F0",
-			Text:        "1F2937",
-			Muted:       "64748B",
-			Accent:      "2563EB",
-			AccentAlt:   "0F766E",
-			Success:     "059669",
-			Warning:     "D97706",
-			InverseText: "FFFFFF",
-			Outline:     "CBD5E1",
-			Fonts: themeFonts{
-				Latin: "Arial",
-				CJK:   "Noto Sans CJK JP",
-			},
-		}
+	definition := presentationdialect.ResolveThemePreset(id)
+	return themePreset{
+		ID:          definition.Metadata.ID,
+		Name:        definition.Metadata.Label,
+		Background:  definition.Palette.Background,
+		Surface:     definition.Palette.Surface,
+		SurfaceAlt:  definition.Palette.SurfaceAlt,
+		Text:        definition.Palette.Text,
+		Muted:       definition.Palette.Muted,
+		Accent:      definition.Palette.Accent,
+		AccentAlt:   definition.Palette.AccentAlt,
+		Success:     definition.Palette.Success,
+		Warning:     definition.Palette.Warning,
+		InverseText: definition.Palette.InverseText,
+		Outline:     definition.Palette.Outline,
+		Fonts: themeFonts{
+			Latin: definition.Fonts.Latin,
+			CJK:   definition.Fonts.CJK,
+		},
 	}
 }
 
