@@ -253,6 +253,13 @@ Supported v1 presentation workflow:
 - Each completed generation produces a downloadable PPTX output asset.
 - The planner/compiler JSON contract is documented in [docs/presentation-dialect.md](docs/presentation-dialect.md); this README intentionally links to that source of truth instead of duplicating the dialect here.
 
+Preset/manual validation checklist for the current v2 presentation rollout:
+
+- Run `cd apps/backend && GOCACHE=/tmp/ulduar-go-build go test ./internal/presentationdialect ./internal/presentationcompiler/pptx ./internal/presentationgen` to validate the curated `general_clean` and `travel_editorial` preset catalog plus the fixture-driven PPTX regressions.
+- Generate one travel comparison deck and confirm the output shows the intended high-level beats: cover image, chapter divider, image/card-driven comparison content, a summary matrix/table slide, and a closing recommendation slide using the `travel_editorial` theme.
+- Generate one generic business/informational deck and confirm the backend falls back cleanly to `general_clean` with neutral palette/fonts and no travel-specific styling assumptions.
+- If inspecting the compiled PPTX as a ZIP, confirm `ppt/theme/theme1.xml` contains the resolved preset label/fonts and that `ppt/media/` contains bundled theme imagery whenever a slide uses `theme:hero-image`.
+
 Image generation endpoints:
 
 Non-session-scoped:

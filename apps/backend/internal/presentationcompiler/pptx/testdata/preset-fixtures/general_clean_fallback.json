@@ -1,0 +1,155 @@
+{
+  "document": {
+    "version": "v2",
+    "themePresetId": "general_clean",
+    "slides": [
+      {
+        "layout": "cover_hero",
+        "title": "Q4 operating plan",
+        "subtitle": "General fallback quality bar",
+        "blocks": [
+          {
+            "type": "image",
+            "assetRef": "attachment:dashboard-cover",
+            "caption": "Operations overview"
+          },
+          {
+            "type": "badge",
+            "text": "general_clean"
+          }
+        ]
+      },
+      {
+        "layout": "toc_grid",
+        "title": "Agenda",
+        "blocks": [
+          {
+            "type": "card",
+            "title": "Performance",
+            "body": "KPIs and trends"
+          },
+          {
+            "type": "card",
+            "title": "Risks",
+            "body": "Key blockers"
+          },
+          {
+            "type": "card",
+            "title": "Actions",
+            "body": "Owner-led next steps"
+          }
+        ]
+      },
+      {
+        "layout": "summary_matrix",
+        "title": "KPI snapshot",
+        "blocks": [
+          {
+            "type": "stat",
+            "label": "Uptime",
+            "value": "99.95%"
+          },
+          {
+            "type": "stat",
+            "label": "NPS",
+            "value": "+42"
+          },
+          {
+            "type": "table",
+            "header": [
+              "Metric",
+              "Current",
+              "Target"
+            ],
+            "rows": [
+              [
+                "Latency",
+                "182 ms",
+                "<200 ms"
+              ],
+              [
+                "Backlog",
+                "14",
+                "<20"
+              ]
+            ]
+          }
+        ]
+      },
+      {
+        "layout": "recommendation_split",
+        "title": "Recommended next move",
+        "blocks": [
+          {
+            "type": "image",
+            "assetRef": "theme:hero-image",
+            "caption": "General clean divider art"
+          },
+          {
+            "type": "callout",
+            "title": "Decision",
+            "body": "Fund reliability work now, then expand activation experiments next quarter."
+          },
+          {
+            "type": "badge",
+            "text": "Fallback preset"
+          }
+        ]
+      },
+      {
+        "layout": "closing",
+        "title": "Thank you",
+        "subtitle": "Questions",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "spans": [
+              {
+                "text": "Prepared for the "
+              },
+              {
+                "text": "operating review",
+                "emphasis": "accent"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expectedEntries": {
+    "ppt/theme/theme1.xml": [
+      "General Clean",
+      "2563EB",
+      "Noto Sans CJK JP"
+    ],
+    "ppt/slides/slide1.xml": [
+      "Q4 operating plan",
+      "Operations overview",
+      "GENERAL_CLEAN"
+    ],
+    "ppt/slides/slide2.xml": [
+      "Agenda",
+      "Performance",
+      "Actions"
+    ],
+    "ppt/slides/slide3.xml": [
+      "KPI snapshot",
+      "99.95%",
+      "182 ms"
+    ],
+    "ppt/slides/slide4.xml": [
+      "Recommended next move",
+      "Fund reliability work now, then expand activation experiments next quarter.",
+      "General clean divider art"
+    ],
+    "ppt/slides/slide5.xml": [
+      "Thank you",
+      "operating review"
+    ]
+  },
+  "expectedBinaryEntries": [
+    "ppt/media/image1.png",
+    "ppt/media/image2.png"
+  ]
+}
