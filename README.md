@@ -66,7 +66,7 @@ Backend app startup validates these:
 - `AZURE_OPENAI_PRESENTATION_DEPLOYMENT`
   Optional Azure OpenAI deployment name for the presentation-generation planner workflow, for example `gpt-5-chat`. Required when `AZURE_OPENAI_PRESENTATION_ENDPOINT` is set.
 - `AZURE_OPENAI_PRESENTATION_SYSTEM_PROMPT`
-  Optional planner-specific system prompt prefix. The backend always appends the versioned Ulduar presentation-dialect JSON contract and strict "JSON only" instructions separately, targeting dialect `v2` for new planner output while continuing to accept stored `v1` documents. If unset, this prefix defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the prefix explicitly. Set it to a non-empty value to use that exact override.
+  Optional planner-specific system prompt prefix. The backend always appends the versioned Ulduar presentation-dialect JSON contract and strict "JSON only" instructions separately, targeting dialect `v2` for new planner output while continuing to accept stored `v1` documents. The current built-in preset registry is `general_clean` (default fallback) plus `travel_editorial`. If unset, this prefix defaults to the same markdown-friendly guidance as chat. Set it to an empty string only if you want to disable the prefix explicitly. Set it to a non-empty value to use that exact override.
 - `AZURE_OPENAI_ENABLE_WEB_SEARCH`
   Optional boolean. Default `false`. When set to `true`, the backend includes Azure-native `web_search` in Responses API requests for chat and presentation planning. Chat persists final assistant URL citations and may emit lightweight SSE `tool.status` events. Leave this disabled in production for now; enable it manually only in dev/test.
 - `AZURE_OPENAI_REQUEST_TIMEOUT`
@@ -233,25 +233,34 @@ The image generation layer uses a pluggable provider interface. Azure AI Foundry
 
 ### Optional presentation generation in dev/test
 
-Presentation generation is guarded by two independent gates that must both be enabled for the future UI to work:
+Presentation generation is guarded by two independent gates that must both be enabled for the UI to work:
 
 1. **Frontend flag** — `VITE_PRESENTATION_GENERATION_ENABLED` controls whether the presentation-generation entry point is built into the frontend bundle. When unset or `false`, the `New` button does not show `New Presentation`. This flag stays `false` in all examples here and should remain hidden by default until manual validation passes.
 2. **Backend provider** — `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` control whether the backend presentation generation endpoints are active. When these are unset, the capabilities and create endpoints return `503 Service Unavailable`.
 
 These gates are independent. Setting the frontend flag without a backend provider makes the `New Presentation` entry visible, but after `GET /api/v1/presentation-generations/capabilities` returns `503 Service Unavailable` the frontend treats presentation generation as unavailable: `New Presentation` stays visible but disabled and the presentation workspace cannot be entered. Setting the backend provider without the frontend flag keeps presentation generation hidden in the UI.
 
-To enable the presentation-generation foundation locally:
+To enable presentation generation locally:
 
 - Set `VITE_PRESENTATION_GENERATION_ENABLED=true` when starting the frontend.
 - Set `AZURE_OPENAI_PRESENTATION_ENDPOINT` and `AZURE_OPENAI_PRESENTATION_API_KEY` before starting the backend.
 
-Supported v1 presentation workflow:
+Current shipped v2 presentation workflow:
 
 - Request input is a required `prompt` plus optional JPEG, PNG, WebP, and/or PDF references only.
-- JSON create requests accept `prompt` only.
+- `GET /api/v1/presentation-generations/capabilities` advertises the built-in preset catalog (`general_clean` default fallback plus `travel_editorial`) alongside supported input/output media types.
+- JSON create requests accept `prompt` only; preset selection remains planner-driven in the current public API surface.
 - `multipart/form-data` create requests accept `prompt` plus optional files under either `attachments` or `attachments[]`.
+- The planner returns normalized dialect `v2` JSON, which is persisted separately from the raw planner output.
+- Symbolic asset refs such as `attachment:*` and `theme:hero-image` are resolved by the backend before PPTX compilation; remote image fetching is intentionally unsupported.
 - Each completed generation produces a downloadable PPTX output asset.
 - The planner/compiler JSON contract is documented in [docs/presentation-dialect.md](docs/presentation-dialect.md); this README intentionally links to that source of truth instead of duplicating the dialect here.
+
+Packaging and operations notes for the shipped v2 implementation:
+
+- No extra compose mounts or Docker `COPY` steps are required for presentation theme assets today. The built-in preset-owned `theme:hero-image` assets are synthesized inside the backend code rather than loaded from external files.
+- The generated PPTX theme records preset font family names (for example Arial/Georgia plus Noto CJK defaults), but the backend container does not currently ship font binaries. Final typography can therefore vary depending on the PowerPoint/viewer font fallback behavior.
+- Because there are no external template/font bundles in the current image, the rollout does not materially increase container size beyond normal binary changes and there are no extra font-licensing artifacts to distribute yet.
 
 Preset/manual validation checklist for the current v2 presentation rollout:
 
@@ -280,7 +289,7 @@ Presentation generation endpoints:
 
 Non-session-scoped:
 
-- `GET /api/v1/presentation-generations/capabilities` — returns supported input media types, the output PPTX media type, and provider info
+- `GET /api/v1/presentation-generations/capabilities` — returns supported input media types, the output PPTX media type, provider info, and the built-in theme preset metadata catalog
 
 Session-scoped:
 
@@ -416,6 +425,25 @@ Required GitHub repository variables:
 - `FRONTEND_VITE_API_BASE_URL`
 
 The workflows assume the Azure resource group, Azure Container Registry, PostgreSQL instance, storage account, backend Container App, and frontend Container App already exist.
+
+### Presentation generation rollout and rollback
+
+Recommended rollout order for the current v2 implementation:
+
+1. Deploy backend configuration first by setting `AZURE_OPENAI_PRESENTATION_*` on the backend while keeping `VITE_PRESENTATION_GENERATION_ENABLED=false` in the frontend build.
+2. Validate backend-only behavior before exposing the UI:
+   - `GET /api/v1/presentation-generations/capabilities` should return `200 OK` with `providerName` plus the built-in `themePresets` catalog.
+   - Run `cd apps/backend && GOCACHE=/tmp/ulduar-go-build go test ./internal/presentationdialect ./internal/presentationcompiler/pptx ./internal/presentationgen`.
+   - Generate one travel-style deck and one generic fallback deck, then download and inspect the PPTX outputs.
+3. After backend validation passes, rebuild and deploy the frontend with `VITE_PRESENTATION_GENERATION_ENABLED=true`.
+4. Re-run the local/manual checks below against the deployed environment before broadening access.
+
+Rollback options:
+
+- **Hide the UI quickly**: rebuild/redeploy the frontend with `VITE_PRESENTATION_GENERATION_ENABLED=false`.
+- **Disable new generations quickly**: unset `AZURE_OPENAI_PRESENTATION_ENDPOINT`/`AZURE_OPENAI_PRESENTATION_API_KEY` (and related planner settings if desired) and restart/redeploy the backend.
+- **Preserve existing outputs**: even when the planner is disabled, `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}` and existing asset download endpoints remain available for already-completed generations.
+- **No extra asset/package rollback**: the current v2 rollout does not ship external template or font bundles, so there is no separate presentation asset package or compose volume to roll back.
 
 ## Verification Commands
 

@@ -270,7 +270,11 @@ The backend exposes a dedicated presentation-generation path that reuses the ano
 
 - Planner configuration lives under the `AZURE_OPENAI_PRESENTATION_*` environment variables.
 - The planner accepts a required prompt plus optional JPEG, PNG, WebP, and PDF input references only.
+- `GET /api/v1/presentation-generations/capabilities` advertises the built-in preset catalog metadata (`general_clean` default fallback plus `travel_editorial`) so the frontend can understand what the backend supports.
 - The planner produces normalized JSON that follows [docs/presentation-dialect.md](presentation-dialect.md); new planning targets `v2` while stored `v1` documents remain valid and compilable.
+- The current public create API remains planner-driven: clients submit `prompt` plus optional attachments, and the planner chooses the preset within the built-in catalog rather than relying on a required user-supplied preset override.
+- Symbolic `attachment:*` and `theme:*` asset references are resolved by the backend before compilation. The only guaranteed bundled theme asset today is `theme:hero-image`, and remote image fetching is intentionally unsupported.
+- The PPTX compiler consumes normalized dialect JSON plus resolved assets and renders a deterministic output PPTX attachment from curated preset tokens rather than arbitrary slide coordinates.
 - The frontend entry point is gated separately by `VITE_PRESENTATION_GENERATION_ENABLED` and stays hidden by default until manual validation passes.
 
 #### V1 presentation generation constraints
@@ -389,7 +393,7 @@ Normalized planner/compiler JSON returned from presentation-generation APIs foll
 
 #### `GET /api/v1/presentation-generations/capabilities`
 
-Returns the supported input attachment media types, the output PPTX media type, and the provider name.
+Returns the supported input attachment media types, the output PPTX media type, the provider name, and the built-in theme preset metadata catalog.
 
 #### `POST /api/v1/sessions/{sessionId}/presentation-generations`
 
@@ -400,7 +404,7 @@ Accepts either:
 - `multipart/form-data`
   - Multipart fields: `prompt` plus zero or more image/PDF files under `attachments` (or `attachments[]` for repeated parts)
 
-Returns `202 Accepted` with a `generationId` and initial `status`.
+Returns `202 Accepted` with a `generationId` and initial `status`. In the current shipped implementation, preset selection remains backend/planner-driven within the built-in registry rather than requiring a public request field.
 
 #### `GET /api/v1/sessions/{sessionId}/presentation-generations/{generationId}`
 
@@ -568,6 +572,8 @@ Why Go remains a good fit:
 
 - `apps/backend/Dockerfile`
 - `apps/frontend/Dockerfile`
+- The backend image does not currently copy external presentation template, theme, or font directories. Built-in preset-owned imagery is synthesized in Go code and compiled into normal backend behavior, so no extra asset packaging path is required for the current v2 rollout.
+- The compiler writes preset font family names into the generated PPTX theme, but the container does not ship font binaries yet. Viewer-side font availability and fallback therefore remain an operational caveat for exact typography.
 
 ### Root compose file
 
@@ -584,6 +590,21 @@ Compatibility constraints:
 - Avoid Docker-only extensions
 - Use explicit named volumes where needed
 - Keep networking simple and portable
+- No extra compose volume or bind mount is required for the current presentation v2 preset assets because they are not stored as external runtime files.
+
+### Rollout and rollback
+
+Recommended deployment order for presentation generation v2:
+
+1. Deploy backend planner configuration first (`AZURE_OPENAI_PRESENTATION_*`) while keeping `VITE_PRESENTATION_GENERATION_ENABLED=false`.
+2. Validate `GET /api/v1/presentation-generations/capabilities`, run the presentation backend tests, and generate one travel/editorial deck plus one general fallback deck before exposing the UI.
+3. Rebuild and deploy the frontend with `VITE_PRESENTATION_GENERATION_ENABLED=true` only after backend validation passes.
+
+Rollback options:
+
+- Set `VITE_PRESENTATION_GENERATION_ENABLED=false` and redeploy the frontend to hide the entry points quickly.
+- Remove/unset the backend planner configuration and redeploy the backend to stop new generations while keeping completed-generation retrieval endpoints available.
+- No separate template/font package rollback is required in the current implementation because there are no external presentation asset bundles.
 
 ## Testing Strategy
 
