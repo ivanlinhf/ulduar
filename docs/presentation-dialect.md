@@ -59,6 +59,13 @@ Rules:
 - If a requested or planner-emitted preset is unknown or unavailable, normalization resolves it to `general_clean`.
 - Capabilities exposed to the frontend should return preset metadata in this exact shape.
 
+## Current shipped implementation notes
+
+- The built-in preset catalog currently contains `general_clean` (default) and `travel_editorial`.
+- The public create API does not require a user-supplied preset field today; the backend planner chooses within the built-in catalog and normalization still falls back to `general_clean`.
+- `theme:hero-image` resolves to a backend-managed generated PNG owned by the resolved preset. No external template pack, compose mount, or Docker `COPY` step is required for that asset in the current rollout.
+- The compiler writes preset font family names into the PPTX theme metadata, but it does not embed or package font binaries. Exact typography can therefore vary with the PowerPoint/viewer font fallback behavior.
+
 ### Preset boundary vs slide JSON
 
 Theme presets own:
